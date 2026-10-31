@@ -25,6 +25,8 @@ dependencies = [
   "sentencepiece==0.2.2",   # gemma4
   "keras==3.15.1",          # dlrm
   "keras-rs==0.4.0",        # dlrm
+  # export (python/cc_export)
+  "flatbuffers==25.9.23",   # jax.export.Exported.serialize (exported.bin)
 ]
 
 [tool.uv]
@@ -33,4 +35,5 @@ package = false
 [dependency-groups]
 dev = [
     "pytest>=9.2.0",
+    "jsonschema>=4.25",   # python/tests: export JSON against docs/schemas/
 ]

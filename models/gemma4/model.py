@@ -10,7 +10,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from models.spec import ModelSpec, Phase, as_spec
+from models.spec import ModelSpec, Phase, Sym, as_spec
 from models.gemma4 import net
 
 
@@ -22,10 +22,13 @@ class Config:
     prompt_len: int = 2048                 # prefill tokens
     decode_steps: int = 128                # decode_step trip count
     image_grid_hw: tuple[int, int] = (42, 60)   # patches; 42*60 = 2520 = 280 tokens * 3^2
+    batch: int = 1                         # sequences per text call (sampler batch)
+    num_images: int = 1                    # images per vision_encoder call
+    cache_len: int | None = None           # static decode cache; None: prompt + generated
 
-    @property
-    def cache_len(self) -> int:            # static decode cache: prompt + generated
-        return self.prompt_len + self.decode_steps
+    def __post_init__(self):
+        if self.cache_len is None:
+            object.__setattr__(self, "cache_len", self.prompt_len + self.decode_steps)
 
     @property
     def reduced(self) -> bool:
@@ -44,7 +47,7 @@ def _models(cfg: Config):
 
 
 def _cache_spec(cfg: Config):
-    return jax.eval_shape(lambda: cfg.tcfg.init_cache(batch_size=1, dtype=cfg.dtype,
+    return jax.eval_shape(lambda: cfg.tcfg.init_cache(batch_size=cfg.batch, dtype=cfg.dtype,
                                                       cache_length=cfg.cache_len))
 
 
@@ -52,18 +55,26 @@ def input_specs(cfg: Config) -> dict:
     ve = cfg.tcfg.vision_encoder
     h, w = cfg.image_grid_hw
     i32 = jnp.int32
+    B, N = cfg.batch, cfg.num_images
     return {
-        "prefill": (jax.ShapeDtypeStruct((1, cfg.prompt_len), i32),),
-        "decode_step": (jax.ShapeDtypeStruct((1, 1), i32), jax.ShapeDtypeStruct((1,), i32),
+        "prefill": (jax.ShapeDtypeStruct((B, cfg.prompt_len), i32),),
+        "decode_step": (jax.ShapeDtypeStruct((B, 1), i32), jax.ShapeDtypeStruct((B,), i32),
                         _cache_spec(cfg)),
-        "vision_encoder": (jax.ShapeDtypeStruct((1, h * w, ve.patch_size ** 2 * 3), jnp.float32),
-                           jax.ShapeDtypeStruct((1, h * w, 2), i32)),
+        "vision_encoder": (jax.ShapeDtypeStruct((N, h * w, ve.patch_size ** 2 * 3), jnp.float32),
+                           jax.ShapeDtypeStruct((N, h * w, 2), i32)),
     }
+
+
+def _cache_shapes(cfg: Config):
+    """Symbolic shape spec of the decode cache: batch B and capacity S on every leaf."""
+    by_leaf = {"k": "B, S, _, _", "v": "B, S, _, _", "positions": "B, S", "end_index": "B"}
+    return {layer: {leaf: by_leaf[leaf] for leaf in c} for layer, c in _cache_spec(cfg).items()}
 
 
 def image_positions(cfg: Config):
     h, w = cfg.image_grid_hw
     xy = np.stack(np.meshgrid(np.arange(w), np.arange(h)), -1).reshape(1, h * w, 2)
+    xy = np.broadcast_to(xy, (cfg.num_images, h * w, 2))
     return jnp.asarray(xy, jnp.int32)          # (x, y) per patch, row-major (library patchify)
 
 
@@ -74,18 +85,15 @@ def init_variables(cfg: Config, rng):
     tok = jnp.ones(ex["prefill"][0].shape, jnp.int32)
     with net.patched():
         tv = text.init(k1, tok)["params"]
-        vi = net._transformer.PreprocessedVisionInput(
-            patches=jnp.zeros(ex["vision_encoder"][0].shape, jnp.float32),
-            positions_xy=image_positions(cfg),
-            soft_token_counts=(cfg.tcfg.vision_encoder.num_mm_tokens_per_image,))
-        vv = tower.init(k2, vi, method="_encode_vision")["params"]
+        vv = tower.init(k2, jnp.zeros(ex["vision_encoder"][0].shape, jnp.float32),
+                        image_positions(cfg), method="encode_images")["params"]
     return {"text": tv, "vision": vv}
 
 
 def example_inputs(cfg: Config, rng):
     k1, k2, k3, k4 = jax.random.split(rng, 4)
     V = cfg.tcfg.num_embed
-    tokens = jax.random.randint(k1, (1, cfg.prompt_len), 1, V, jnp.int32)   # no PAD (=0)
+    tokens = jax.random.randint(k1, (cfg.batch, cfg.prompt_len), 1, V, jnp.int32)   # no PAD (=0)
     # Decode: static cache holding a P-token context, next token at position P.
     P = cfg.prompt_len
     cache = jax.tree.map(lambda s: jnp.zeros(s.shape, s.dtype), _cache_spec(cfg))
@@ -95,11 +103,12 @@ def example_inputs(cfg: Config, rng):
             valid = (jnp.arange(cfg.cache_len) < P)[None, :, None, None]
             c["k"] = jnp.where(valid, jax.random.normal(kk, c["k"].shape), 0).astype(c["k"].dtype)
             c["v"] = jnp.where(valid, jax.random.normal(kv, c["v"].shape), 0).astype(c["v"].dtype)
-        c["positions"] = jnp.where(jnp.arange(cfg.cache_len) < P, jnp.arange(cfg.cache_len),
-                                   0)[None].astype(jnp.int32)
-        c["end_index"] = jnp.full((1,), P, jnp.int32)
-    token = jax.random.randint(k3, (1, 1), 1, V, jnp.int32)
-    position = jnp.full((1,), P, jnp.int32)
+        c["positions"] = jnp.broadcast_to(
+            jnp.where(jnp.arange(cfg.cache_len) < P, jnp.arange(cfg.cache_len), 0)[None],
+            (cfg.batch, cfg.cache_len)).astype(jnp.int32)
+        c["end_index"] = jnp.full((cfg.batch,), P, jnp.int32)
+    token = jax.random.randint(k3, (cfg.batch, 1), 1, V, jnp.int32)
+    position = jnp.full((cfg.batch,), P, jnp.int32)
     ps = input_specs(cfg)["vision_encoder"][0].shape
     patches = jax.random.uniform(k4, ps, jnp.float32)          # pixels in [0, 1]
     return {"prefill": (tokens,), "decode_step": (token, position, cache),
@@ -116,7 +125,7 @@ def _phase_fns(cfg: Config):
     }
 
 
-_CAPTURE = ("__call__", "encode", "decode", "encode_vision")
+_CAPTURE = ("__call__", "encode", "decode", "encode_vision", "encode_images")
 
 
 def intermediates(cfg: Config, variables, *inputs, phase: str | None = None) -> dict:
@@ -128,7 +137,8 @@ def intermediates(cfg: Config, variables, *inputs, phase: str | None = None) -> 
     with net.patched():
         if phase == "prefill":
             (tokens,) = inputs
-            cache = cfg.tcfg.init_cache(batch_size=1, dtype=cfg.dtype, cache_length=tokens.shape[1])
+            cache = cfg.tcfg.init_cache(batch_size=tokens.shape[0], dtype=cfg.dtype,
+                                        cache_length=tokens.shape[1])
             _, st = text.apply({"params": variables["text"]}, tokens, cache=cache,
                                return_last_only=True, capture_intermediates=flt,
                                mutable=["intermediates"])
@@ -141,11 +151,9 @@ def intermediates(cfg: Config, variables, *inputs, phase: str | None = None) -> 
                                mutable=["intermediates"])
         else:                                     # vision_encoder
             patches, xy = inputs
-            vi = net._transformer.PreprocessedVisionInput(
-                patches=patches, positions_xy=xy,
-                soft_token_counts=(cfg.tcfg.vision_encoder.num_mm_tokens_per_image,))
-            _, st = tower.apply({"params": variables["vision"]}, vi, method="_encode_vision",
-                                capture_intermediates=flt, mutable=["intermediates"])
+            _, st = tower.apply({"params": variables["vision"]}, patches, xy,
+                                method="encode_images", capture_intermediates=flt,
+                                mutable=["intermediates"])
     flat = {}
     for path, v in jax.tree_util.tree_flatten_with_path(
             st["intermediates"], is_leaf=lambda t: isinstance(t, tuple))[0]:
@@ -168,25 +176,31 @@ def build(cfg: Config) -> ModelSpec:
     fns, ins = _phase_fns(cfg), input_specs(cfg)
     phases = [
         Phase("prefill", fns["prefill"], ins["prefill"], trip_count=1, param_keys=("text",),
+              shapes=("B, P",),
               note=f"prompt of {cfg.prompt_len} tokens; static KV cache of prompt length "
                    "(library prefill slices the cache to the padded prompt)"),
         Phase("decode_step", fns["decode_step"], ins["decode_step"], trip_count=cfg.decode_steps,
-              param_keys=("text",),
+              param_keys=("text",), shapes=("B, _", "B", _cache_shapes(cfg)),
               note=f"one token at runtime int32 position; static cache of {cfg.cache_len} slots"),
         Phase("vision_encoder", fns["vision_encoder"], ins["vision_encoder"], trip_count=1,
-              param_keys=("vision",),
-              note=f"one image, {cfg.image_grid_hw[0]}x{cfg.image_grid_hw[1]} patches of "
+              param_keys=("vision",), shapes=("N, _, _", "N, _, _"),
+              note=f"{cfg.num_images} image(s), each padded to the library's max_patches = "
+                   f"{cfg.image_grid_hw[0]}x{cfg.image_grid_hw[1]} patches of "
                    f"{cfg.tcfg.vision_encoder.patch_size}px -> "
-                   f"{cfg.tcfg.vision_encoder.num_mm_tokens_per_image} soft tokens"),
+                   f"{cfg.tcfg.vision_encoder.num_mm_tokens_per_image} soft tokens each"),
     ]
     return ModelSpec(
         name="gemma4",
         variant=(f"Gemma 4 26B-A4B (MoE 128 experts top-8 + shared MLP, 30 layers 5:1 "
-                 f"local/global), {cfg.name}, batch 1, official QAT Q4_0 GGUF on llama.cpp: "
+                 f"local/global), {cfg.name}, batch {cfg.batch}, official QAT Q4_0 GGUF on llama.cpp: "
                  "Q4_0 x Q8_0 int8 dots (attention, dense MLP, experts), Q6_K x Q8_K tied lm_head, "
                  f"router / attention BMMs {jnp.dtype(cfg.dtype).name}, vision float32"),
         phases=phases,
         param_specs=as_spec(variables),
+        symbols={"B": Sym("batch", 3, "sequences per text call"),
+                 "P": Sym("prompt_len", 20, "prompt tokens (prefill)"),
+                 "S": Sym("cache_len", 40, "static decode KV-cache capacity"),
+                 "N": Sym("num_images", 2, "images per vision_encoder call")},
         excluded=["offline weight conversion (QAT bf16 -> GGUF Q4_0 / Q6_K, llama-quantize)",
                   "tokenization / detokenization and chat template",
                   "sampling (greedy/top-k/top-p) and the decode loop itself (trip_count)",

@@ -26,7 +26,7 @@ from jax._src import source_info_util
 from jax._src.interpreters import partial_eval as pe
 from jax._src.lax.control_flow.loops import _stack as _scan_stack
 
-from models.spec import ModelSpec, Phase, as_spec
+from models.spec import ModelSpec, Phase, Sym, as_spec
 from models.alphafold2 import net
 from models.alphafold2.net import Config
 
@@ -142,6 +142,25 @@ def input_spec(cfg: Config):
     }
     to_spec = lambda d: {k: jax.ShapeDtypeStruct(s, t) for k, (s, t) in d.items()}
     return to_spec(batch), to_spec(prev)
+
+
+# Symbolic input shapes: N residues, S MSA cluster rows, E extra-MSA rows. The template
+# slots stay concrete: AlphaFold always feeds a fixed number of padded slots with a template_mask
+# (a padded capacity, decided with the user). The leading ensemble dim is 1 (AlphaFoldIteration
+# asserts it without ensembling).
+INPUT_SHAPES = (
+    {
+        "aatype": "_, N", "target_feat": "_, N, _", "residue_index": "_, N", "seq_mask": "_, N",
+        "msa_feat": "_, S, N, _", "msa_mask": "_, S, N",
+        "extra_msa": "_, E, N", "extra_has_deletion": "_, E, N",
+        "extra_deletion_value": "_, E, N", "extra_msa_mask": "_, E, N",
+        "template_aatype": "_, _, N", "template_all_atom_positions": "_, _, N, _, _",
+        "template_all_atom_masks": "_, _, N, _", "template_mask": None,
+        "template_pseudo_beta": "_, _, N, _", "template_pseudo_beta_mask": "_, _, N",
+        "residx_atom37_to_atom14": "_, N, _", "atom37_atom_exists": "_, N, _",
+    },
+    {"prev_pos": "N, _, _", "prev_msa_first_row": "N, _", "prev_pair": "N, N, _"},
+)
 
 
 def _backbone(rng: np.random.Generator, n: int, ideal: bool = False) -> np.ndarray:
@@ -284,7 +303,8 @@ def with_seq_length(batch, cfg: Config):
         which is dropped when compute_loss=False. Derived from aatype exactly as
         the data pipeline's make_atom14_masks does."""
     b = dict(batch)
-    b["seq_length"] = jnp.full((cfg.num_ensemble,), cfg.num_res, jnp.int32)
+    ensemble, num_res = batch["aatype"].shape          # (from the inputs: N is a symbol)
+    b["seq_length"] = jnp.full((ensemble,), num_res, jnp.int32)
     b["atom14_atom_exists"] = jnp.asarray(_atom_tables()[2])[batch["aatype"]]
     return b
 
@@ -352,8 +372,8 @@ def _eval(jaxpr, consts, args):
                 eqn.ctx.manager:
             if eqn.primitive is jax_core.eval_jaxpr_p:
                 outs = _eval(p["call_jaxpr"], p["call_jaxpr"].consts, invals)
-            elif eqn.primitive.name == "scan" and (p["unroll"] is True
-                                                   or p["unroll"] >= p["length"]):
+            elif eqn.primitive.name == "scan" and not jax.export.is_symbolic_dim(
+                    p["length"]) and (p["unroll"] is True or p["unroll"] >= p["length"]):
                 # == jax's _scan_impl with unroll == length (straight-line).
                 cs, carry, xs = map(list, p["ft_in"].update(invals).unpack())
                 body, ys = p["jaxpr"], []
@@ -515,9 +535,13 @@ def build(cfg: Config) -> ModelSpec:
                  f"num_ensemble={cfg.num_ensemble}, Evoformer x{e.evoformer_num_block}, "
                  f"extra-MSA x{e.extra_msa_stack_num_block}"),
         phases=[Phase(PHASE, forward, (batch, prev), trip_count=cfg.num_recycle + 1,
+                      shapes=INPUT_SHAPES,
                       note="one recycling iteration (AlphaFoldIteration); modules.AlphaFold "
                            "runs it num_recycle + 1 times, feeding prev_* back")],
         param_specs=as_spec(params),
+        symbols={"N": Sym("num_res", 24, "residues (sequence length)"),
+                 "S": Sym("num_msa", 10, "MSA cluster rows (without the template rows)"),
+                 "E": Sym("num_extra_msa", 14, "extra-MSA rows")},
         excluded=[
             "data pipeline: HMMER/HHblits/template search, TF feature processing "
             "(MSA clustering, masking, cropping, make_atom14_masks)",

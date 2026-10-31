@@ -1,0 +1,48 @@
+{
+ "concrete_input_axes": [
+  {
+   "axis": 2,
+   "path": "[1]",
+   "size": 4
+  }
+ ],
+ "constraints": [
+  "S >= 2"
+ ],
+ "model": "toy",
+ "phase": "forward_b1",
+ "schema": "cc.export.symbols/1",
+ "shapes": [
+  "B, S, _"
+ ],
+ "symbols": {
+  "B": {
+   "alt": 3,
+   "doc": "",
+   "field": "batch",
+   "inputs": [
+    {
+     "axis": 0,
+     "expr": "B",
+     "path": "[1]"
+    }
+   ],
+   "value": 2
+  },
+  "S": {
+   "alt": 12,
+   "doc": "",
+   "field": "seq",
+   "inputs": [
+    {
+     "axis": 1,
+     "expr": "S",
+     "path": "[1]"
+    }
+   ],
+   "value": 8
+  }
+ },
+ "trip_count": 1,
+ "trip_count_expr": null
+}

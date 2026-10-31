@@ -73,9 +73,18 @@ class Config:
     # FFT size of the Hyena long convolutions (None: 2 * prompt_len, as vortex). Any size
     # >= 2 * L gives the same linear convolution up to rounding; fixing it to an FFT
     # capacity lets the prompt length L can be symbolic (StableHLO's fft takes a static
-    # length).
+    # length). Resolved at construction, so it stays fixed when prompt_len changes.
     fft_size: int | None = None
+    # KV-cache capacity (None: Generator.generate's `tot_length = prompt + num_tokens`),
+    # resolved at construction like fft_size: its own size, not recomputed from prompt_len.
+    max_seqlen: int | None = None
     dtype: str = "bfloat16"
+
+    def __post_init__(self):
+        if self.fft_size is None:
+            object.__setattr__(self, "fft_size", 2 * self.prompt_len)
+        if self.max_seqlen is None:
+            object.__setattr__(self, "max_seqlen", self.prompt_len + self.n_tokens)
 
     @property
     def jdtype(self):
@@ -87,12 +96,7 @@ class Config:
 
     @property
     def fft_len(self) -> int:
-        return 2 * self.prompt_len if self.fft_size is None else self.fft_size
-
-    @property
-    def max_seqlen(self) -> int:
-        """KV-cache capacity: Generator.generate's `tot_length = prompt + num_tokens`."""
-        return self.prompt_len + self.n_tokens
+        return self.fft_size
 
     def kind(self, i: int) -> str:
         """Block type of layer i: "hcs" / "hcm" / "hcl" / "attn" (KeyError if unlisted)."""
@@ -415,15 +419,17 @@ class MHA(nn.Module):
     cfg: Config
 
     @nn.compact
-    def __call__(self, x, offset=None, kv_cache=None):
+    def __call__(self, x, offset, kv_cache):
+        """prefill: offset None and `kv_cache` the fresh zero cache of capacity max_seqlen
+        (vortex allocates it in InferenceParams; here it is an input, so its capacity is an
+        input size); decode: runtime int32 offset and the cache."""
         c = self.cfg
         B, T, _ = x.shape
         H, hd = c.num_attention_heads, c.head_dim
         qkv = dense(c, 3 * c.hidden_size, False, "Wqkv")(x)
         qkv = qkv.reshape(B, T, 3, H, hd)                           # (three h d)
-        if kv_cache is None:        # prefill: seqlen_offset 0, fresh cache of max_seqlen
+        if offset is None:          # prefill: seqlen_offset 0, fresh (zero) cache
             qkv = LinearlyScaledRotaryEmbedding(c, name="rotary_emb")(qkv, 0)
-            kv_cache = jnp.zeros((B, c.max_seqlen, 2, H, hd), qkv.dtype)
             kv_cache = lax.dynamic_update_slice(kv_cache, qkv[:, :, 1:], (0, 0, 0, 0, 0))
             kv = kv_cache[:, :T]                                    # kv_cache[:, :sequence_end]
             n_keys = T
@@ -448,7 +454,7 @@ class AttentionBlock(nn.Module):
     def __call__(self, u, offset=None, state=None):
         c = self.cfg
         out, kv_cache = MHA(c, name="inner_mha_cls")(
-            RMSNorm(c, name="pre_norm")(u), offset, None if state is None else state["kv_cache"])
+            RMSNorm(c, name="pre_norm")(u), offset, state["kv_cache"])
         u = out + u
         u = ParallelGatedMLP(c, self.layer_idx, name="mlp")(RMSNorm(c, name="post_norm")(u)) + u
         return u, {"kv_cache": kv_cache}
@@ -471,12 +477,13 @@ class StripedHyena(nn.Module):
         self.unembed = TiedUnembed(name="unembed")
 
     def __call__(self, input_ids, offset=None, state=None):
-        """prefill: (ids [B, L]) -> (logits [B, L, V], states);
+        """prefill: (ids [B, L], None, {attention block: {"kv_cache": zero cache}})
+        -> (logits [B, L, V], states);
         decode: (ids [B, 1], offset int32, states) -> (logits [B, 1, V], states)."""
         x = self.embedding_layer(input_ids)
         new_state = {}
         for i, block in enumerate(self.blocks):
             name = f"blocks_{i}"
-            x, new_state[name] = block(x, offset, None if state is None else state[name])
+            x, new_state[name] = block(x, offset, state.get(name))
         x = self.norm(x)
         return self.unembed(x, self.embedding_layer.embedding), new_state

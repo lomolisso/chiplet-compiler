@@ -1,7 +1,9 @@
 //! The pass contract (spec §3.1). A pass reads only its declared inputs, writes only into its own
 //! `build/.<name>/`, and is a pure function of (inputs, config section, models, tool versions, version).
 
-use cc_core::{ArtifactKind, CoreError, PassResources, PassSection, VerifyReport};
+use std::collections::BTreeMap;
+
+use cc_core::{ArtifactKind, CoreError, LoadedConfig, PassResources, PassSection, VerifyReport};
 
 use crate::context::PassContext;
 use crate::error::PassError;
@@ -42,6 +44,18 @@ pub trait Pass: Send + Sync {
 
     fn tools(&self) -> &[ToolSpec] {
         &[]
+    }
+
+    /// Content hashes of inputs that are not artifacts, e.g. the source trees a pass reads (`models/`, a
+    /// Python package, a lock file, a container image tag), as `name → hash`. They enter the cache
+    /// key next to the tool versions (under `source:<name>`) and are recorded in the manifest, so editing
+    /// such a source reruns the pass.
+    fn fingerprints(
+        &self,
+        _config: &LoadedConfig,
+        _section: &PassSection,
+    ) -> Result<BTreeMap<String, String>, CoreError> {
+        Ok(BTreeMap::new())
     }
 
     /// Whether outputs depend on the model set (`--models`). Passes that do not (e.g. a primitive

@@ -54,13 +54,20 @@ F16 = jnp.float16
 @dataclass(frozen=True)
 class Config:
     batch: int = 1
-    image: int = 640
+    # Input height / width in units of the max stride (32): the P5 features are upsampled
+    # and concatenated with P4 / P3, so the image is a multiple of it (Ultralytics'
+    # check_imgsz rounds imgsz up to one). 20 -> 640x640.
+    grid: int = 20
     nc: int = 80
     reg_max: int = 16
     scale: str = "l"            # C3k2 uses C3k blocks for scales m/l/x (parse_model)
     depth: float = 1.0          # yolo11.yaml scales["l"] = [1.00, 1.00, 512]
     width: float = 1.0
     max_channels: int = 512
+
+    @property
+    def image(self) -> int:
+        return self.grid * MAX_STRIDE
 
 
 # ultralytics/cfg/models/11/yolo11.yaml: backbone + head, [from, repeats, module, args]
@@ -90,6 +97,20 @@ LAYERS = (
     (-1, 2, "C3k2", (1024, True)),          # 22 (P5/32-large)
     ((16, 19, 22), 1, "Detect", ("nc",)),   # Detect(P3, P4, P5)
 )
+
+
+def layer_strides() -> list:
+    """Output stride of every LAYERS row (Detect: its inputs' strides), from the conv strides
+    and upsampling factors."""
+    st: list = []
+    for f, _, m, args in LAYERS:
+        ins = [st[-1] if j == -1 else st[j] for j in ((f,) if isinstance(f, int) else f)] if st else [1]
+        st.append(ins[0] * args[2] if m == "Conv" else ins[0] // args[1] if m == "Upsample"
+                  else tuple(ins) if m == "Detect" else ins[0])
+    return st
+
+
+MAX_STRIDE = max(layer_strides()[-1])       # 32 (P5)
 
 
 def autopad(k: int, p: int | None = None) -> int:

@@ -18,18 +18,27 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from models.spec import ModelSpec, Phase, as_spec
+from models.spec import ModelSpec, Phase, Sym, as_spec
 from models.centerpoint import rulebook
-from models.centerpoint.net import CenterPoint, Config, capacities, layouts, level_shapes
+from models.centerpoint.net import (CenterPoint, Config, LevelCapacities, capacities, down_layouts,
+                                    layouts, level_bounds, level_shapes)
+
+
+def pinned(cfg: Config) -> Config:
+    """`cfg` with the level capacities and pair-buffer layouts fixed to their derived values
+    (worst-case bounds for max_voxels), so that they are independent sizes of the export."""
+    return dataclasses.replace(cfg, level_capacities=LevelCapacities(*level_bounds(cfg)[1:]),
+                               layouts=tuple(down_layouts(cfg)))
+
 
 CONFIGS = {
-    "full": Config(),
+    "full": pinned(Config()),
     # Same weights, depth and width (the unmodified OpenPCDet constructors); only the
     # extents shrink: a 12 x 12 m range (grid 160 x 160 x 40, BEV 20 x 20) and 2000
     # voxel slots of which 1500 are valid, clustered so that every rulebook has
     # real neighbours, grid-boundary voxels and padding.
-    "reduced": dataclasses.replace(Config(), point_cloud_range=(-6.0, -6.0, -5.0, 6.0, 6.0, 3.0),
-                                   max_voxels=2000, n_valid=1500, sample="clustered"),
+    "reduced": pinned(dataclasses.replace(Config(), point_cloud_range=(-6.0, -6.0, -5.0, 6.0, 6.0, 3.0),
+                                          max_voxels=2000, n_valid=1500, sample="clustered")),
 }
 
 
@@ -40,6 +49,16 @@ def rb_spec(cfg: Config) -> dict:
     for l, (key, ks, _, _) in enumerate(cfg.down):
         out[key] = i32(math.prod(ks), b[l] if lay[l] == "in" else b[l + 1])
     out["bev_coords"] = i32(b[-1], 3)
+    return out
+
+
+def rb_shapes(cfg: Config) -> dict:
+    """Symbolic shapes of the rulebook inputs (rb_spec): level l's capacity is symbol N<l>."""
+    lay = layouts(cfg)
+    out = {key: f"_, N{l + 1}" for l, key in enumerate(cfg.subm_keys)}
+    for l, (key, _, _, _) in enumerate(cfg.down):
+        out[key] = f"_, N{l + 1 if lay[l] == 'in' else l + 2}"
+    out["bev_coords"] = f"N{len(cfg.down) + 1}, _"
     return out
 
 
@@ -222,6 +241,7 @@ def build(cfg: Config) -> ModelSpec:
                  f"libspconv INT8 sparse convs (per-channel W, per-tensor A, shared-scale QuantAdd; "
                  f"conv_input + first block fp16, extra_conv fp16 out) + TensorRT INT8 RPN / head"),
         phases=[Phase("forward", forward, input_spec(cfg), trip_count=1,
+                      shapes=("N1, _, _", "N1", rb_shapes(cfg)),
                       note=(f"one CenterPoint forward on one voxelized sample: MeanVFE, "
                             f"VoxelResBackBone8x on padded voxel levels {b} (worst-case bounds "
                             f"for {cfg.max_voxels} input voxels, grids {shapes}), "
@@ -229,6 +249,13 @@ def build(cfg: Config) -> ModelSpec:
                             f"BaseBEVBackbone, CenterHead; output: 6 head dicts "
                             f"(center, center_z, dim, rot, vel, hm), NHWC"))],
         param_specs=as_spec(variables),
+        symbols={"N1": Sym("max_voxels", 1800, "padded voxel slots (level-1 sparse capacity)"),
+                 "N2": Sym("level_capacities.n2", 14000, "level-2 sparse capacity (padded voxels)"),
+                 "N3": Sym("level_capacities.n3", 12000, "level-3 sparse capacity (padded voxels)"),
+                 "N4": Sym("level_capacities.n4", 1500, "level-4 sparse capacity (padded voxels)"),
+                 "N5": Sym("level_capacities.n5", 700, "level-5 sparse capacity (padded voxels)")},
+        # a level cannot hold more active voxels than its grid has cells
+        constraints=tuple(f"N{l + 1} <= {math.prod(s)}" for l, s in enumerate(shapes)),
         excluded=[
             "point loading and 10-sweep aggregation (nuScenes infos, time-lag channel) (host)",
             "mask_points_and_boxes_outside_range, shuffle_points (host)",

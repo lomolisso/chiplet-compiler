@@ -1,0 +1,424 @@
+{
+  "$defs": {
+    "Allow": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      ],
+      "description": "Allowed signatures: `{signature: why}` or a plain list."
+    },
+    "Audit": {
+      "additionalProperties": false,
+      "description": "A recipe's audit (`models/<key>/recipe.py`), as data.",
+      "properties": {
+        "allow": {
+          "$ref": "#/$defs/Allow"
+        },
+        "counts": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "type": "object"
+          },
+          "default": {},
+          "description": "`counts[config][phase][signature]` = exact op count.",
+          "type": "object"
+        },
+        "params": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "Parameter storage dtypes that must occur.",
+          "type": "object"
+        },
+        "phases": {
+          "additionalProperties": {
+            "$ref": "#/$defs/PhaseAudit"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "require": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "allow"
+      ],
+      "type": "object"
+    },
+    "Coverage": {
+      "additionalProperties": false,
+      "description": "Fractions of the executed non-structural ops (call sites expanded) inside a composite / a leaf one.",
+      "properties": {
+        "anon": {
+          "description": "Ops outside every composite (flagged `anon`; the `components` pass groups them into `anon:<hash>` components).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "anon_by_op": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "any": {
+          "format": "double",
+          "type": "number"
+        },
+        "by_name": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "in_composite": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "in_leaf_composite": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "instances": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "leaf": {
+          "format": "double",
+          "type": "number"
+        },
+        "leaf_instances": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ops": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ops",
+        "in_composite",
+        "in_leaf_composite",
+        "anon",
+        "any",
+        "leaf",
+        "instances",
+        "leaf_instances",
+        "by_name",
+        "anon_by_op"
+      ],
+      "type": "object"
+    },
+    "PhaseAudit": {
+      "additionalProperties": false,
+      "properties": {
+        "allow": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Allow"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "require": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "PhaseRecord": {
+      "additionalProperties": false,
+      "description": "One phase in `export.json`. When the export failed, only `trip_count`, `size_variant_of`, `error` and\n`traceback` are present.",
+      "properties": {
+        "census": {
+          "additionalProperties": {
+            "$ref": "#/$defs/SigSummary"
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "checks": {
+          "additionalProperties": true,
+          "default": {},
+          "description": "The exporter's own checks: `{name: {\"ok\": bool, ...evidence}}`.",
+          "type": "object"
+        },
+        "coverage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Coverage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "files": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "hash": {
+          "description": "Canonical hash of the module JSON (provenance excluded).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "roots": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "seconds": {
+          "default": 0.0,
+          "format": "double",
+          "type": "number"
+        },
+        "size_variant_of": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "traceback": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "trip_count": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "trip_count"
+      ],
+      "type": "object"
+    },
+    "RecipeFacts": {
+      "additionalProperties": false,
+      "properties": {
+        "audit": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Audit"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "param_dtypes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "param_dtypes"
+      ],
+      "type": "object"
+    },
+    "SigSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "flops": {
+          "description": "`null` when a dim is symbolic.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "count"
+      ],
+      "type": "object"
+    },
+    "SymbolDecl": {
+      "additionalProperties": false,
+      "description": "A declared symbol: the config field holding its value, that value, and the perturbed `alt`.",
+      "properties": {
+        "alt": {
+          "description": "A number (a size, or e.g. a grid resolution the sizes derive from)."
+        },
+        "doc": {
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
+        },
+        "inputs": {
+          "description": "Where the symbol appears among the phase's inputs (`symbols.json` only).",
+          "items": {
+            "$ref": "#/$defs/SymbolSite"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "value": true
+      },
+      "required": [
+        "field",
+        "value",
+        "alt",
+        "doc"
+      ],
+      "type": "object"
+    },
+    "SymbolSite": {
+      "additionalProperties": false,
+      "properties": {
+        "axis": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "expr": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "axis",
+        "expr"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`out/export/<model>/export.json`.",
+  "properties": {
+    "checks": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "config": {
+      "type": "string"
+    },
+    "constraints": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "exclude": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "model": {
+      "type": "string"
+    },
+    "phases": {
+      "additionalProperties": {
+        "$ref": "#/$defs/PhaseRecord"
+      },
+      "type": "object"
+    },
+    "recipe": {
+      "$ref": "#/$defs/RecipeFacts"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "symbols": {
+      "additionalProperties": {
+        "$ref": "#/$defs/SymbolDecl"
+      },
+      "type": "object"
+    },
+    "versions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema",
+    "model",
+    "config",
+    "versions",
+    "symbols",
+    "constraints",
+    "exclude",
+    "phases",
+    "checks",
+    "recipe"
+  ],
+  "title": "ModelFile",
+  "type": "object"
+}

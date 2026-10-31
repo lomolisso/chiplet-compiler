@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use cc_core::config::{PathsConfig, TestingConfig};
+use cc_core::config::{ModelConfigKind, PathsConfig, TestingConfig};
 use cc_core::runner::{BoundRunner, Caps, Runners, ToolLog};
 use cc_core::{
     ArtifactKind, CancelToken, CoreError, KindDir, LoadedConfig, PassDir, PassResources, PassSection,
@@ -58,6 +58,17 @@ impl PassContext {
 
     pub fn testing(&self) -> &TestingConfig {
         &self.config.config.testing
+    }
+
+    /// `models.config`: which entry of the ports' `CONFIGS` the run uses (part of the cache key of
+    /// model-dependent passes).
+    pub fn model_config(&self) -> ModelConfigKind {
+        self.config.config.models.config
+    }
+
+    /// The repository root (where `config.toml` lives).
+    pub fn repo_root(&self) -> &Path {
+        &self.config.root
     }
 
     pub fn paths(&self) -> &PathsConfig {

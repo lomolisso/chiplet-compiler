@@ -38,18 +38,28 @@ encoder layer `encoder_L_ih` (weight_ih, weight_ih_scale, bias_ih, input_scale) 
 
 from __future__ import annotations
 
+import dataclasses
+
 import jax
 import jax.numpy as jnp
 
-from models.spec import ModelSpec, Phase, as_spec
+from models.spec import ModelSpec, Phase, Sym, as_spec
 from models.rnnt.net import RNNT, AudioPreprocessing, Config, LSTMLayer, StackTime
 
+
+def _with_frames(cfg: Config) -> Config:
+    """`cfg` with the encoder frame counts (the `T` / `Te` symbols' fields) filled in from
+    n_samples: T = get_seq_len(n_samples), Te = ceil(T / stack_time_factor)."""
+    T = cfg.feat_frames
+    return dataclasses.replace(cfg, frames=T, post_frames=-(-T // cfg.encoder_stack_time_factor))
+
+
 CONFIGS = {
-    "full": Config(),
+    "full": _with_frames(Config()),
     # Same preprocessing (features fixed by the toml), short utterance with an odd
     # feature-frame count (35, exercises StackTime's zero padding), small widths.
-    "reduced": Config(encoder_n_hidden=64, pred_n_hidden=32, joint_n_hidden=48,
-                      n_samples=16500, n_symbols=12),
+    "reduced": _with_frames(Config(encoder_n_hidden=64, pred_n_hidden=32, joint_n_hidden=48,
+                                   n_samples=16500, n_symbols=12)),
 }
 
 
@@ -339,6 +349,18 @@ def trip_count_exprs(cfg: Config) -> dict[str, str]:
     return exprs
 
 
+def shapes(cfg: Config) -> dict:
+    """Symbolic input shapes: B utterances, N samples, T feature frames, Te post-StackTime
+    frames (their own symbol: ceil(T / 2) is not a linear size). Widths stay concrete."""
+    out = {"preprocess": ("B, N", "B"), "encoder_stack_time": ("T, B, _", "B"),
+           "prediction_sos": (), "prediction_step": ("B, _", "_, B, _", "_, B, _"),
+           "joint": ("B, _, _", "B, _, _")}
+    for name, _, _ in enc_layers(cfg):
+        out[f"encoder_{name}_in_proj"] = ("T, B, _" if name.startswith("pre") else "Te, B, _",)
+        out[f"encoder_{name}_step"] = ("B, _",) * 3
+    return out
+
+
 def build(cfg: Config) -> ModelSpec:
     variables = jax.eval_shape(lambda: init_variables(cfg, jax.random.key(0)))
     spec, trips, exprs = input_spec(cfg), trip_counts(cfg), trip_count_exprs(cfg)
@@ -372,7 +394,7 @@ def build(cfg: Config) -> ModelSpec:
             f"gates, cell update), {steps} steps; the host feeds xw[t] and stacks h")
     keys = param_keys(cfg)
     phases = [Phase(ph, phase_fn(cfg, ph), spec[ph], trip_count=trips[ph], note=notes[ph],
-                    param_keys=keys[ph], trip_count_expr=exprs.get(ph))
+                    param_keys=keys[ph], trip_count_expr=exprs.get(ph), shapes=shapes(cfg)[ph])
               for ph in phase_names(cfg)]
     return ModelSpec(
         name="rnnt",
@@ -385,6 +407,13 @@ def build(cfg: Config) -> ModelSpec:
                  "network / joint / gate math, fp32 preprocessing"),
         phases=phases,
         param_specs=as_spec(variables),
+        symbols={"B": Sym("batch", 2, "utterances per call (the MLPerf reference SUT issues one; "
+                                     "the greedy decoder decodes one utterance at a time)"),
+                 "N": Sym("n_samples", 20000, "waveform samples (16 kHz)"),
+                 "T": Sym("frames", 29, "feature frames (pre-rnn encoder length)"),
+                 "Te": Sym("post_frames", 13, "encoder frames after StackTime (post-rnn length)")},
+        # torch.stft(center=True) reflect-pads n_fft // 2 samples on each side
+        constraints=(f"N >= {cfg.n_fft // 2 + 1}",),
         excluded=[
             "WAV decode and resampling into the in-memory QSL (dataset loading, untimed)",
             "feature.permute(2, 0, 1) between preprocess and encoder (layout glue in "

@@ -63,6 +63,49 @@ pub fn hash_file(path: &Path) -> Result<String> {
     Ok(hasher.finalize().to_hex().to_string())
 }
 
+/// Content hash of a source tree: blake3 over the sorted `(relative path, file hash)` pairs of every
+/// regular file under `root` whose name ends with one of `suffixes` (all files if empty). Directories
+/// named `__pycache__` or starting with `.` are skipped. A missing `root` hashes as empty.
+pub fn hash_tree(root: &Path, suffixes: &[&str]) -> Result<String> {
+    fn walk(dir: &Path, base: &Path, suffixes: &[&str], out: &mut Vec<(String, String)>) -> Result<()> {
+        for entry in std::fs::read_dir(dir).at(dir)? {
+            let path = entry.at(dir)?.path();
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            if path.is_dir() {
+                if name != "__pycache__" && !name.starts_with('.') {
+                    walk(&path, base, suffixes, out)?;
+                }
+            } else if path.is_file() && (suffixes.is_empty() || suffixes.iter().any(|s| name.ends_with(s))) {
+                let rel = path
+                    .strip_prefix(base)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .into_owned();
+                out.push((rel, hash_file(&path)?));
+            }
+        }
+        Ok(())
+    }
+    let mut files = Vec::new();
+    if root.is_dir() {
+        walk(root, root, suffixes, &mut files)?;
+    } else if root.is_file() {
+        files.push((String::new(), hash_file(root)?));
+    }
+    files.sort();
+    let mut h = blake3::Hasher::new();
+    for (rel, hash) in &files {
+        h.update(rel.as_bytes());
+        h.update(&[0]);
+        h.update(hash.as_bytes());
+        h.update(&[0]);
+    }
+    Ok(h.finalize().to_hex().to_string())
+}
+
 /// Write via a temporary sibling and rename, so readers never see a half-written file. No fsync: the
 /// rename gives readers atomicity, and an fsync per artifact costs ~100 ms on the NFS home directory.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {

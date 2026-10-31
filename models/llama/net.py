@@ -223,6 +223,7 @@ class LLaMARotaryEmbedding(nn.Module):
 class Attention(nn.Module):
     """GQA attention over an FP8 KV cache with FP8 QK^T / PV (see the module docstring)."""
     cfg: Config
+    decode: bool = False            # XQA decode kernel (one token) vs context FMHA (prefill)
 
     def update_kv_caches(self, key, value, kv_cache, cache_index, k_scale, v_scale):
         # quantized: FP8 KV cache, per-layer static k_scale / v_scale
@@ -252,8 +253,10 @@ class Attention(nn.Module):
     def apply_attention_dot(self, query, key, value, q_positions, k_scale, v_scale):
         """query bf16, key / value FP8 (cache). Returns the fp32 attention output."""
         # quantized: FP8 attention. Prefill (FP8 context FMHA) quantizes Q with the KV
-        # scale; decode (XQA sm90, one query token) casts Q to FP8 unscaled.
-        q_scale = k_scale if query.shape[1] > 1 else jnp.float32(1.0)
+        # scale; decode (XQA sm90, one query token) casts Q to FP8 unscaled. The kernel is
+        # chosen by the phase (`decode`), never by the token count: the graph of each phase
+        # must not depend on input sizes (symbolic export, another change).
+        q_scale = jnp.float32(1.0) if self.decode else k_scale
         attn_weights = self.qk_product(q.quantize(query, q_scale, "fp8"), key)
         attn_weights = attn_weights * (q_scale * k_scale * self.cfg.head_dim ** -0.5)
         mask = self.generate_attention_mask(q_positions, key.shape[1])
@@ -289,13 +292,14 @@ class Attention(nn.Module):
 
 class LlamaDecoderLayer(nn.Module):
     cfg: Config
+    decode: bool = False
 
     @nn.compact
     def __call__(self, inputs, decoder_positions, kv_cache, cache_index):
         c = self.cfg
         lnx = RMSNorm(c.normalization_layer_epsilon, c.dtype,
                       name="pre_self_attention_layer_norm")(inputs)
-        attention_lnx, kv_cache = Attention(c, name="self_attention")(
+        attention_lnx, kv_cache = Attention(c, self.decode, name="self_attention")(
             lnx, decoder_positions, kv_cache, cache_index)
         intermediate_inputs = inputs + attention_lnx
         hidden_states = RMSNorm(c.normalization_layer_epsilon, c.dtype,
@@ -311,6 +315,7 @@ class LlamaDecoderLayer(nn.Module):
 
 class Decoder(nn.Module):
     cfg: Config
+    decode: bool = False
 
     @nn.compact
     def __call__(self, y, decoder_positions, kv_caches, cache_index):
@@ -318,7 +323,7 @@ class Decoder(nn.Module):
         new_caches = {}
         for lyr in range(c.num_decoder_layers):
             name = f"layers_{lyr}"
-            y, new_caches[name] = LlamaDecoderLayer(c, name=name)(
+            y, new_caches[name] = LlamaDecoderLayer(c, self.decode, name=name)(
                 y, decoder_positions, kv_caches[name], cache_index)
         y = RMSNorm(c.normalization_layer_epsilon, c.dtype, name="decoder_norm")(y)
         # Only the last position's logits are needed for sampling (HF generate's
@@ -331,6 +336,7 @@ class Decoder(nn.Module):
 
 class Transformer(nn.Module):
     cfg: Config
+    decode: bool = False            # decode_step phase (one token per call)
 
     @nn.compact
     def __call__(self, tokens, kv_caches, cache_index):
@@ -339,4 +345,4 @@ class Transformer(nn.Module):
         y = Embed(c.vocab_size, c.emb_dim, c.dtype, name="token_embedder")(tokens)
         positions = cache_index + jnp.arange(tokens.shape[1], dtype=jnp.int32)
         positions = jnp.broadcast_to(positions[jnp.newaxis, :], tokens.shape)
-        return Decoder(c, name="decoder")(y, positions, kv_caches, cache_index)
+        return Decoder(c, self.decode, name="decoder")(y, positions, kv_caches, cache_index)

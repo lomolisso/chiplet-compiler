@@ -183,6 +183,8 @@ version = "0.2.0"
 dependencies = [
  "cc-core",
  "cc-pipeline",
+ "rayon",
+ "schemars",
  "serde",
  "serde_json",
  "thiserror",

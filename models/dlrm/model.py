@@ -7,7 +7,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from models.spec import ModelSpec, Phase
+from models.spec import ModelSpec, Phase, Sym
 from models.dlrm import net
 from models.dlrm.net import Config
 
@@ -91,7 +91,9 @@ def build(cfg: Config) -> ModelSpec:
         note = ("single network invocation (one CTR prediction batch)" if name == "forward"
                 else f"same network as 'forward' at batch {batch} (batch variant, "
                      "not an extra invocation)")
-        phases.append(Phase(name, make_fn(), input_spec(cfg, batch), trip_count=1, note=note))
+        phases.append(Phase(name, make_fn(), input_spec(cfg, batch), trip_count=1, note=note,
+                            shapes=("B, _", "B, _"),
+                            size_variant_of=None if name == "forward" else "forward"))
     n_tab = len(cfg.vocab_sizes)
     return ModelSpec(
         name="dlrm",
@@ -102,6 +104,10 @@ def build(cfg: Config) -> ModelSpec:
                  "activations, fp32 pooling / crossnet elementwise / sigmoid"),
         phases=phases,
         param_specs=param_specs(cfg),
+        # dense [B, 13] and 26 x [B, hot_i]: the multi-hot sizes are fixed by the MLPerf
+        # multi-hot Criteo dataset, so only the batch is a symbol (the batch variant binds B
+        # to batch_variant).
+        symbols={"B": Sym("batch", 5, "samples per call")},
         excluded=["Criteo preprocessing: log(x+1) of dense features, id hashing/modulo "
                   "(dataset side)",
                   "reshape of the CTR output to [B] and LoadGen accuracy/AUC postprocessing"],

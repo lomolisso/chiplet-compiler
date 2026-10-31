@@ -39,7 +39,9 @@ monkeypatches for the static graph (none of them for quantization):
     every `layer_stack` (Evoformer 48, extra-MSA 4, template pair stack 2)
     and the per-template `sharded_map` (shard size 1) lower to straight-line
     code with the canonical stacked parameters sliced per layer. The structure
-    module's 8 iterations are already a Python loop in folding.py.
+    module's 8 iterations are already a Python loop in folding.py. A scan whose
+    length is symbolic (the template map in the symbolic export, T templates)
+    stays a loop.
   * API / dtype shims applied to patched model AND reference alike:
     `_JnpCompat` (jnp.clip a_min/a_max keywords removed in JAX 0.12),
     `_stable_softmax` (fp64 dispatch for an fp64 config), `_x32_tables`
@@ -199,8 +201,28 @@ _orig_scan = hk.scan
 
 
 def _scan_unrolled(f, init, xs, length=None, reverse=False, unroll=1):
-    del unroll
+    """Unroll fully when the trip count is a constant (layer stacks); a scan whose length
+    is an input size (the per-template sharded_map over T templates) keeps its unroll,
+    so the graph does not depend on that size."""
+    n = length if length is not None else jax.tree.leaves(xs)[0].shape[0]
+    if jax.export.is_symbolic_dim(n):
+        return _scan_symbolic(f, init, xs, n, reverse)
     return _orig_scan(f, init, xs, length=length, reverse=reverse, unroll=True)
+
+
+def _scan_symbolic(f, init, xs, n, reverse):
+    """hk.scan over a symbolic length n (lax.scan needs a constant length): the same
+    sequential loop as an hk.fori_loop over i in [0, n), x_i = xs[i]. Only scans without
+    stacked outputs occur here (sharded_apply's scan_iteration returns ys = ())."""
+    def body(i, carry):
+        j = n - 1 - i if reverse else i
+        x = jax.tree.map(lambda v: jax.lax.dynamic_index_in_dim(v, j, keepdims=False), xs)
+        carry, y = f(carry, x)
+        if jax.tree.leaves(y):
+            raise NotImplementedError("symbolic-length hk.scan with stacked outputs")
+        return carry
+
+    return hk.fori_loop(0, n, body, init), ()
 
 
 @contextlib.contextmanager

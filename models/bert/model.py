@@ -7,7 +7,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from models.spec import ModelSpec, Phase, as_spec
+from models.spec import ModelSpec, Phase, Sym, as_spec
 from models.bert.net import BertForQuestionAnswering, Config
 
 # MLPerf NVIDIA INT8 engine: INT8 GEMMs / attention, fp32 LayerNorm / softmax / GELU math.
@@ -74,9 +74,13 @@ def build(cfg: Config) -> ModelSpec:
                  f"{cfg.hidden_size}, seq {cfg.seq_len}, batch {cfg.batch}, INT8 W8A8 incl. "
                  "attention (TensorRT, MLPerf NVIDIA): per-row weights, per-tensor static "
                  "activations, INT8 residual stream, fp32 LayerNorm / softmax / tanh-GELU"),
-        phases=[Phase("forward", forward, input_spec(cfg),
+        phases=[Phase("forward", forward, input_spec(cfg), shapes=("B, S",) * 3,
                       note="one encoder pass -> (start_logits, end_logits) in fp16")],
         param_specs=as_spec(variables),
+        symbols={"B": Sym("batch", 3, "sequences per call"),
+                 "S": Sym("seq_len", 48, "tokens per sequence")},
+        # learned position embeddings bound the sequence length
+        constraints=(f"S <= {cfg.max_position_embeddings}",),
         excluded=["WordPiece tokenization / SQuAD feature construction (doc-stride windows)",
                   "start/end span decoding (top-k, n-best, max answer length) (postprocessing)"],
     )

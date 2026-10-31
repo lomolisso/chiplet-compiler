@@ -105,6 +105,12 @@ class Config:
     # scenario (video predictor): video length, one object (batch 1)
     num_frames: int = 67
     batch: int = 1
+    # Memory-bank sizes of the steady-state `memory_attention` phase (spatial memories,
+    # object pointers), if not the full bank of the scenario (num_maskmem, min(num_frames,
+    # max_obj_ptrs_in_encoder)): their own symbols, as the bank fills frame by frame (the
+    # warm-up phases are size variants of the steady state).
+    bank_mems: int | None = None
+    bank_ptrs: int | None = None
 
     @property
     def feat_size(self) -> int:          # stride-16 feature map side (64 at 1024^2)
@@ -955,13 +961,14 @@ class SAM2MemoryConditioning(nn.Module):
     """SAM2Base._prepare_memory_conditioned_features on a non-conditioning frame (tracking
     forward in time, one conditioning frame, memory_temporal_stride_for_eval=1).
 
-    Memory bank (static sizes): maskmem_features[0] is the conditioning frame (t_pos 0),
-    maskmem_features[i >= 1] the frame `n_mem - i` frames back (t_pos = num_maskmem -
-    (n_mem - i)); obj_ptrs[0] is the conditioning frame's pointer (temporal offset =
-    frame_idx, signed), obj_ptrs[j >= 1] the pointer of the frame j frames back."""
+    Memory bank (sizes from the inputs: n_mem = maskmem_features.shape[0] spatial memories,
+    n_ptr = obj_ptrs.shape[0] pointers): maskmem_features[0] is the conditioning frame
+    (t_pos 0), maskmem_features[i >= 1] the frame `n_mem - i` frames back (t_pos =
+    num_maskmem - (n_mem - i)); obj_ptrs[0] is the conditioning frame's pointer (temporal
+    offset = frame_idx, signed), obj_ptrs[j >= 1] the pointer of the frame j frames back.
+    The per-memory loops of the reference are written over the bank axis (one gather of
+    maskmem_tpos_enc, one reshape), so the graph does not depend on the bank sizes."""
     cfg: Config
-    n_mem: int
-    n_ptr: int
 
     def setup(self):
         c = self.cfg
@@ -972,29 +979,33 @@ class SAM2MemoryConditioning(nn.Module):
     def __call__(self, vision_feat, vision_pos, maskmem_features, maskmem_pos_enc, obj_ptrs, frame_idx):
         c = self.cfg
         b, C, h, w = vision_feat.shape
+        n_mem, n_ptr, M = maskmem_features.shape[0], obj_ptrs.shape[0], c.mem_dim
         flat = lambda x: x.reshape(x.shape[0], x.shape[1], -1).transpose(2, 0, 1)   # BCHW -> (HW)BC
         curr, curr_pos = flat(vision_feat), flat(vision_pos)
-        to_cat_memory, to_cat_pos = [], []
-        for i in range(self.n_mem):
-            t_pos = 0 if i == 0 else c.num_maskmem - (self.n_mem - i)
-            # the memory bank is stored fp16 (phase inputs) and attended in fp16
-            to_cat_memory.append(flat(maskmem_features[i]))
-            to_cat_pos.append((flat(maskmem_pos_enc)
-                               + self.maskmem_tpos_enc[c.num_maskmem - t_pos - 1]).astype(F16))
+        # spatial memories: memory i's (HW)BC tokens, i = 0..n_mem-1, concatenated; the memory
+        # bank is stored fp16 (phase inputs) and attended in fp16
+        memory = maskmem_features.reshape(n_mem, b, M, h * w).transpose(0, 3, 1, 2)
+        memory = memory.reshape(n_mem * h * w, b, M)
+        # maskmem_tpos_enc[num_maskmem - t_pos - 1]: num_maskmem - 1 for i = 0 (t_pos 0),
+        # n_mem - 1 - i for i >= 1
+        i = jnp.arange(n_mem, dtype=jnp.int32)
+        tpos_idx = jnp.where(i == 0, c.num_maskmem - 1, i[::-1])
+        tpos = jnp.take(self.maskmem_tpos_enc, tpos_idx, axis=0)                 # [n_mem, 1, 1, M]
+        mem_pos = (flat(maskmem_pos_enc)[None] + tpos).astype(F16)                # [n_mem, HW, B, M]
+        mem_pos = mem_pos.reshape(n_mem * h * w, b, M)
         # object pointers with a projected temporal sine encoding
         max_obj_ptrs = min(c.num_frames, c.max_obj_ptrs_in_encoder)
-        pos = jnp.concatenate([frame_idx.reshape(1), jnp.arange(1, self.n_ptr, dtype=jnp.int32)])
+        j = jnp.arange(n_ptr, dtype=jnp.int32)
+        pos = jnp.where(j == 0, frame_idx, j)                   # [frame_idx, 1, 2, ..., n_ptr - 1]
         obj_pos = get_1d_sine_pe(pos.astype(F32) / (max_obj_ptrs - 1), dim=C)     # fp32
         obj_pos = self.obj_ptr_tpos_proj(obj_pos)                                    # int8 -> fp16
-        obj_pos = jnp.broadcast_to(obj_pos[:, None], (self.n_ptr, b, c.mem_dim))
+        obj_pos = jnp.broadcast_to(obj_pos[:, None], (n_ptr, b, M))
         # mem_dim < C: split each pointer into C // mem_dim tokens
-        ptrs = obj_ptrs.reshape(-1, b, C // c.mem_dim, c.mem_dim).transpose(0, 2, 1, 3)
-        ptrs = ptrs.reshape(-1, b, c.mem_dim)
-        obj_pos = jnp.repeat(obj_pos, C // c.mem_dim, axis=0)
-        to_cat_memory.append(ptrs)
-        to_cat_pos.append(obj_pos)
-        memory = jnp.concatenate(to_cat_memory, axis=0)
-        memory_pos = jnp.concatenate(to_cat_pos, axis=0)
+        ptrs = obj_ptrs.reshape(n_ptr, b, C // M, M).transpose(0, 2, 1, 3)
+        ptrs = ptrs.reshape(n_ptr * (C // M), b, M)
+        obj_pos = jnp.repeat(obj_pos, C // M, axis=0)
+        memory = jnp.concatenate([memory, ptrs], axis=0)
+        memory_pos = jnp.concatenate([mem_pos, obj_pos], axis=0)
         out = self.memory_attention(curr, memory, curr_pos, memory_pos, num_obj_ptr_tokens=ptrs.shape[0])
         return out.transpose(1, 2, 0).reshape(b, C, h, w)
 

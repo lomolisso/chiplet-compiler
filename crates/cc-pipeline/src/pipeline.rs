@@ -318,22 +318,30 @@ impl Pipeline {
             });
         }
         let log = ToolLog::new("pipeline", self.store.pipeline_dir().join("logs"));
-        let tools = self
+        let mut tools = self
             .versions
             .resolve(pass.tools(), &self.runners, &log)
             .map_err(|e| e.to_string())?;
+        for (k, v) in pass
+            .fingerprints(&self.config, &section)
+            .map_err(|e| e.to_string())?
+        {
+            tools.insert(format!("source:{k}"), v);
+        }
         let models = if pass.model_dependent() {
             models.to_vec()
         } else {
             Vec::new()
         };
         let config_json = section.options_json();
+        let model_config = self.config.config.models.config.as_str();
         let key = cc_core::cache::cache_key(&cc_core::cache::CacheKeyInput {
             pass: name,
             pass_version: pass.version(),
             inputs: inputs.iter().map(|r| (r.kind.clone(), r.hash.clone())).collect(),
             config: &config_json,
             models: &models,
+            model_config: pass.model_dependent().then_some(model_config),
             tools: &tools,
         });
         Ok(Prepared {

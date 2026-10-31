@@ -54,6 +54,15 @@ HEAD_OUT = {"center": 2, "center_z": 1, "dim": 3, "rot": 2, "vel": 2}
 
 
 @dataclass(frozen=True)
+class LevelCapacities:
+    """Padded voxel capacities of sparse levels 2..5 (level 1 = Config.max_voxels)."""
+    n2: int
+    n3: int
+    n4: int
+    n5: int
+
+
+@dataclass(frozen=True)
 class Config:
     # cbgs_voxel0075_res3d_centerpoint.yaml DATA_CONFIG (test mode)
     point_cloud_range: tuple[float, ...] = (-54.0, -54.0, -5.0, 54.0, 54.0, 3.0)
@@ -86,10 +95,11 @@ class Config:
     num_hm_conv: int = 2
     head_num_conv: int = 2
     n_valid: int | None = None                  # valid voxels in example inputs (None: all)
-    # Padded voxel capacity of levels 1..5 and the pair-buffer layout of each strided layer,
-    # if not derived from max_voxels (level_bounds / down_layouts). Set them to
-    # symbols / fixed layouts for symbolic export: the derivation loops over the grid in Python.
-    level_capacities: tuple | None = None
+    # Padded voxel capacity of levels 2..5 (level 1 = max_voxels) and the pair-buffer layout
+    # of each strided layer, if not derived from max_voxels (level_bounds / down_layouts).
+    # Pinned for symbolic export (model.pinned): the capacities are independent input sizes
+    # (symbols) and the layouts must not follow them (the derivation branches on the bounds).
+    level_capacities: LevelCapacities | None = None
     layouts: tuple[str, ...] | None = None
     sample: str = "saturated"                   # example-input generator (model.py)
 
@@ -158,7 +168,10 @@ def down_layouts(cfg: Config) -> list[str]:
 
 def capacities(cfg: Config) -> list:
     """Padded voxel capacity per level: `Config.level_capacities`, else `level_bounds`."""
-    return list(cfg.level_capacities) if cfg.level_capacities is not None else level_bounds(cfg)
+    lc = cfg.level_capacities
+    if lc is None:
+        return level_bounds(cfg)
+    return [cfg.max_voxels, lc.n2, lc.n3, lc.n4, lc.n5]
 
 
 def layouts(cfg: Config) -> list[str]:

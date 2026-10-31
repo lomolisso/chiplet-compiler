@@ -5,7 +5,7 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from models.spec import ModelSpec, Phase, as_spec
+from models.spec import ModelSpec, Phase, Sym, as_spec
 from models.resnet50.net import Config, ResNet50
 
 CONFIGS = {"full": Config(), "reduced": Config(batch=2)}
@@ -47,8 +47,12 @@ def build(cfg: Config) -> ModelSpec:
         name="resnet50",
         variant=(f"ResNet-50 v1.5, {cfg.image}^2, batch {cfg.batch}, INT8 W8A8 (TensorRT, MLPerf "
                  "NVIDIA): per-channel weights, per-tensor static activations, BN folded"),
-        phases=[Phase("forward", forward, input_spec(cfg))],
+        phases=[Phase("forward", forward, input_spec(cfg), shapes=("B, H, W, _",))],
         param_specs=as_spec(variables),
+        symbols={"B": Sym("batch", 3, "images per call"),
+                 "H": Sym("image", 192, "image height"),
+                 "W": Sym("image", 192, "image width")},
+        constraints=("H >= 32", "W >= 32"),
         excluded=["image decode / resize / normalization / INT8 quantization (preprocessing)",
                   "argmax / top-k (postprocessing; softmax removed as in MLPerf NVIDIA)"],
     )

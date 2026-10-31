@@ -25,7 +25,7 @@ from jax._src import source_info_util
 from jax._src.interpreters import partial_eval as pe
 from jax._src.lax.control_flow.loops import _stack as _scan_stack
 
-from models.spec import ModelSpec, Phase, as_spec
+from models.spec import ModelSpec, Phase, Sym, as_spec
 from models.graphcast import net
 from models.graphcast.net import Config
 
@@ -117,6 +117,24 @@ def input_spec(cfg: Config):
                  for k in keys} for s, keys in stats_keys().items()}
     graph = as_spec(graph_inputs(cfg))
     return inputs, forcings, stats, graph
+
+
+def input_shapes(cfg: Config):
+    """`Phase.shapes` of `input_spec`. Symbols: the batch B and everything that depends on
+    the input grid (GraphCast builds its grid nodes and grid2mesh / mesh2grid graphs from
+    the inputs' coordinates, `GraphCast._maybe_init`): H lat x W lon points, G = H*W grid
+    nodes, Eg grid2mesh and Em mesh2grid edges. Concrete: the 2-step input window and the
+    1 forcing step, the 13 levels, the statistics, feature widths, and the multi-mesh
+    (mesh nodes / edges are fixed by ModelConfig.mesh_size)."""
+    names = {"batch": "B", "lat": "H", "lon": "W"}
+    spec = lambda k: ", ".join(names.get(d, "_") for d in net.var_dims(k))
+    t = net.TASK
+    graph = {"grid2mesh": {"senders": "Eg", "receivers": "Eg", "edge_features": "Eg, _",
+                           "grid_node_features": "G, _", "mesh_node_features": None},
+             "mesh": None,
+             "mesh2grid": {"senders": "Em", "receivers": "Em", "edge_features": "Em, _"}}
+    return ({k: spec(k) for k in t.input_variables},
+            {k: spec(k) for k in t.forcing_variables}, None, graph)
 
 
 def synthetic_inputs(cfg: Config, seed: int):
@@ -369,10 +387,22 @@ def build(cfg: Config) -> ModelSpec:
                  f"{g['mesh']['senders'].shape[0]}/{g['mesh2grid']['senders'].shape[0]}, "
                  f"batch {cfg.batch}"),
         phases=[Phase(PHASE, make_forward(cfg), inputs, trip_count=cfg.rollout_steps,
+                      shapes=input_shapes(cfg),
                       note="one 6 h autoregressive step (rollout.chunked_prediction "
                            "chunk of 1); runs rollout_steps times, the predictions "
                            "shifted into the 2-step input window between calls")],
         param_specs=as_spec(params),
+        # The grid sizes are all functions of the grid spacing `resolution` (the alt build
+        # re-derives the grid and both grid graphs at 4 deg).
+        symbols={"B": Sym("batch", 2, "forecasts (initial conditions) per call"),
+                 "H": Sym("resolution", 4.0, "latitude points (180 / resolution + 1)"),
+                 "W": Sym("resolution", 4.0, "longitude points (360 / resolution)"),
+                 "G": Sym("resolution", 4.0, "grid nodes (H * W)"),
+                 "Eg": Sym("resolution", 4.0, "grid2mesh edges (radius query, grid x mesh)"),
+                 "Em": Sym("resolution", 4.0, "mesh2grid edges (3 per grid node: its "
+                                              "containing mesh triangle)")},
+        # The flattened grid ([B, T, H, W] -> [H*W, B, C]) meets the grid node features [G, 3].
+        constraints=("H*W == G",),
         excluded=[
             "data pipeline: ERA5/HRES loading, data_utils.extract_inputs_targets_forcings, "
             "year/day progress features (data_utils.add_derived_vars) and TOA incident solar "

@@ -4,8 +4,9 @@ Quantization: the official vortex + Transformer Engine path (FP8 E4M3 W8A8, per-
 delayed scales, on the 27 Hyena input projections only; see net.py).
 
 Two phases, matching vortex `Generator.generate` with cached generation:
-  prefill      tokens [1, 8192] -> logits [1, 8192, 512] + per-layer inference state
-               (featurizer/inner FIR states, HCL modal states, KV caches of capacity 8692)
+  prefill      tokens [1, 8192] + the zero KV caches (capacity 8692) -> logits [1, 8192, 512]
+               + per-layer inference state (featurizer/inner FIR states, HCL modal states,
+               KV caches)
   decode_step  token [1, 1] at runtime offset + states -> logits [1, 1, 512] + states
 """
 
@@ -14,7 +15,7 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from models.spec import ModelSpec, Phase, as_spec
+from models.spec import ModelSpec, Phase, Sym, as_spec
 from models.evo2.net import Config, StripedHyena
 
 F32 = jnp.float32
@@ -55,17 +56,43 @@ def state_specs(cfg: Config) -> dict:
     return out
 
 
+def kv_specs(cfg: Config) -> dict:
+    """prefill's state input: the attention blocks' fresh KV caches (vortex InferenceParams
+    allocates them zeroed, capacity max_seqlen)."""
+    return {k: v for k, v in state_specs(cfg).items() if "kv_cache" in v}
+
+
+def state_shapes(cfg: Config) -> dict:
+    """Symbolic shape spec of the decode state: batch B on every leaf, capacity S on the KV
+    caches (FIR / IIR state lengths are filter lengths and the modal state size)."""
+    by_leaf = {"kv_cache": "B, S, _, _, _", "fir_state": "B, _, _", "iir_state": "B, _, _",
+               "fir_inner_state": "B, _, _"}
+    return {b: {k: by_leaf[k] for k in st} for b, st in state_specs(cfg).items()}
+
+
 def input_specs(cfg: Config) -> dict:
     i32 = jnp.int32
     return {
-        "prefill": (jax.ShapeDtypeStruct((cfg.batch, cfg.prompt_len), i32),),
+        "prefill": (jax.ShapeDtypeStruct((cfg.batch, cfg.prompt_len), i32), kv_specs(cfg)),
         "decode_step": (jax.ShapeDtypeStruct((cfg.batch, 1), i32),
                         jax.ShapeDtypeStruct((), i32), state_specs(cfg)),
     }
 
 
+def _zeros(tree):
+    return jax.tree.map(lambda s: jnp.zeros(s.shape, s.dtype), tree)
+
+
+def _call_args(inputs) -> tuple:
+    """StripedHyena(input_ids, offset, state) arguments of a phase's inputs."""
+    if len(inputs) == 2:                 # prefill: (ids, zero KV caches)
+        return inputs[0], None, inputs[1]
+    return inputs                        # decode: (ids, offset, state)
+
+
 def init_variables(cfg: Config, rng):
-    return StripedHyena(cfg).init(rng, jnp.zeros((cfg.batch, cfg.prompt_len), jnp.int32))
+    return StripedHyena(cfg).init(rng, jnp.zeros((cfg.batch, cfg.prompt_len), jnp.int32), None,
+                                  _zeros(kv_specs(cfg)))
 
 
 def decode_offset(cfg: Config) -> int:
@@ -83,14 +110,14 @@ def example_inputs(cfg: Config, rng):
                                          for k, s in zip(keys, leaves)])
     return {
         "prefill": (jax.random.randint(k_tok, (cfg.batch, cfg.prompt_len), 0, cfg.vocab_size,
-                                       jnp.int32),),
+                                       jnp.int32), _zeros(kv_specs(cfg))),
         "decode_step": (jax.random.randint(k_dec, (cfg.batch, 1), 0, cfg.vocab_size, jnp.int32),
                         jnp.int32(decode_offset(cfg)), state),
     }
 
 
 def intermediates(cfg: Config, variables, *inputs) -> dict:
-    _, st = StripedHyena(cfg).apply(variables, *inputs, capture_intermediates=True,
+    _, st = StripedHyena(cfg).apply(variables, *_call_args(inputs), capture_intermediates=True,
                                     mutable=["intermediates"])
     flat = {}
     for path, v in jax.tree_util.tree_flatten_with_path(
@@ -106,8 +133,8 @@ def intermediates(cfg: Config, variables, *inputs) -> dict:
 def build(cfg: Config) -> ModelSpec:
     module = StripedHyena(cfg)
 
-    def prefill(variables, input_ids):
-        return module.apply(variables, input_ids)
+    def prefill(variables, input_ids, kv_caches):
+        return module.apply(variables, input_ids, None, kv_caches)
 
     def decode_step(variables, input_ids, offset, state):
         return module.apply(variables, input_ids, offset, state)
@@ -127,18 +154,27 @@ def build(cfg: Config) -> ModelSpec:
                  f"W8A8 Hyena input projections (vortex + Transformer Engine, per-tensor "
                  f"delayed scaling), rest bf16 / fp32 filters"),
         phases=[
-            Phase("prefill", prefill, specs["prefill"],
+            Phase("prefill", prefill, specs["prefill"], shapes=("B, P", "B, S, _, _, _"),
                   note="vortex parallel_forward with inference params: featurizer + HCS "
-                       "depthwise convs, HCM/HCL FFT convolutions, HCL modal-FFT state "
-                       "prefill, causal MHA writing a fresh KV cache -> logits + all states"),
+                       "depthwise convs, HCM/HCL FFT convolutions (FFT size "
+                       f"{cfg.fft_len}), HCL modal-FFT state prefill, causal MHA writing the "
+                       "fresh (zero, input) KV cache -> logits + all states"),
             Phase("decode_step", decode_step, specs["decode_step"],
-                  trip_count=cfg.n_tokens - 1,
+                  trip_count=cfg.n_tokens - 1, shapes=("B, _", "", state_shapes(cfg)),
                   note="one token at a runtime int32 offset: step_fir (featurizer, HCS, "
                        "HCM), step_iir (HCL modal recurrence), MHA with dynamic_update_slice "
                        "cache write over the static capacity (valid-key mask). Trip count = "
                        "n_tokens - 1 (the first token comes from the prefill logits)."),
         ],
         param_specs=as_spec(variables),
+        symbols={"B": Sym("batch", 3, "sequences per call"),
+                 "P": Sym("prompt_len", 144, "prompt tokens (prefill)"),
+                 "S": Sym("max_seqlen", 180, "static KV-cache capacity")},
+        # P >= hcm_filter_length: prefill leaves full (steady-state) FIR states, the shapes the
+        # decode step takes (vortex slices u[..., -(len - 1):], shorter for shorter prompts);
+        # 2P <= fft_size: the fixed-size FFTs compute the linear (not circular) convolution.
+        constraints=("S >= P", f"P >= {cfg.hcm_filter_length}",
+                     f"2*P <= {cfg.fft_len}"),
         excluded=["CharLevelTokenizer tokenization / detokenization (pre/postprocessing)",
                   "sampling (top-k / top-p / temperature over last-position logits) and the "
                   "Generator.generate loop (decode_step trip_count records it)",

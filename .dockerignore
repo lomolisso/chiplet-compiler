@@ -1,6 +1,8 @@
-# The toolchain image needs only docker/ and third_party/ (docker/Dockerfile COPY lines).
+# The toolchain image needs only docker/, third_party/ and the Python lock (docker/Dockerfile COPY lines).
 *
 !docker/
 !third_party/
+!pyproject.toml
+!uv.lock
 **/.git
 third_party/allo/mlir/build

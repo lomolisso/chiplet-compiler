@@ -212,7 +212,7 @@ class _VisionOnlyEmbedder(_modules.Embedder):
 
 
 class Gemma4VisionTower(_gemma4.Gemma4_26B_A4B):
-    """Owns only the vision parameters; runs library `_encode_vision`."""
+    """Owns only the vision parameters; runs library `_encode_vision` (`encode_images`)."""
 
     text_only: bool = False
 
@@ -221,6 +221,24 @@ class Gemma4VisionTower(_gemma4.Gemma4_26B_A4B):
             vocab_size=self.config.num_embed, embed_dim=self.config.embed_dim,
             vision_proj_dim=self.config.vision_encoder.d_model)
         self.vision_encoder = self.config.vision_encoder
+
+    def encode_images(self, patches, positions_xy):
+        """Library `Transformer._encode_vision` on N images of `max_patches` padded patches
+        each ([N, L, P], [N, L, 2]; library `patchify_and_pad` layout), with its per-image
+        Python loop written over the image axis: image i keeps the first `soft_token_counts[i]`
+        (= num_mm_tokens_per_image, library `_encode_vision` via the sampler) valid pooled
+        tokens (`jnp.nonzero(mask[i], size=...)`), in image order. A loop over
+        `range(n_images)` needs N as a Python int; this form keeps N an input size."""
+        n_tok = self.config.vision_encoder.num_mm_tokens_per_image
+        embeddings, mask = self.vision_encoder(patches, positions_xy)[0]
+        if mask is not None:
+            valid = jax.vmap(lambda m: jnp.nonzero(m, size=n_tok)[0])(mask)      # [N, n_tok]
+            real_tokens = jnp.take_along_axis(embeddings, valid[..., None], axis=1)
+        else:
+            real_tokens = embeddings[:, :n_tok]
+        all_tokens = real_tokens.reshape(-1, real_tokens.shape[-1])
+        all_tokens = self.embedder.encode_vision(all_tokens[None, None, :, :])
+        return all_tokens[:, 0, :, :]
 
 
 def vision_tower(config: _config.TransformerConfig) -> Gemma4VisionTower:
@@ -260,12 +278,6 @@ def decode_step(model, params, token, position, cache):
 
 def vision_encode(tower, params, patches, positions_xy):
     """Library `Transformer._encode_vision`: encoder + pooling + standardize +
-    projection into the text embedding space. Returns [1, n_img*tokens, D]."""
-    n_tok = tower.config.vision_encoder.num_mm_tokens_per_image
-    n_img = patches.shape[0]
-    vi = _transformer.PreprocessedVisionInput(
-        patches=patches.reshape(1, -1, patches.shape[-1]),
-        positions_xy=positions_xy.reshape(1, -1, 2),
-        soft_token_counts=(n_tok,) * n_img)
+    projection into the text embedding space. [N, L, P], [N, L, 2] -> [1, N*tokens, D]."""
     with patched():
-        return tower.apply({"params": params}, vi, method="_encode_vision")
+        return tower.apply({"params": params}, patches, positions_xy, method="encode_images")

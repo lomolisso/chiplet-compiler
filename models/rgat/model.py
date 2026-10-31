@@ -3,9 +3,13 @@
 Inputs of the single `forward` phase are the host-sampled, padded MFG:
   feat   : {ntype: f8E4M3FN[n_src(layer 0, ntype), in_feats]}   gathered node features,
            stored FP8 E4M3 with the fixed scale net.FEAT_SCALE = 1.0 (MLPerf NVIDIA)
-  blocks : per layer (input first) {etype: {"src","dst": i32[E], "mask": bool[E]}}
-with every size the static bound from `net.mfg_bounds`. Padded edges have
-mask=False (src=dst=0); padded node rows are zero.
+  blocks : per layer (input first) {etype: {"src","dst": i32[E], "mask": bool[E]},
+                                     "dst_nodes": {ntype: i32[n_dst]}}
+with every size the padded capacity `net.mfg_capacity` (default: the static worst-case
+bound of `net.mfg_bounds`). Padded edges have mask=False (src=dst=0); padded node rows are
+zero. `dst_nodes` holds the block's dst node ids (DGL block.dstnodes[t].data[NID]; here the
+block-local ids, the src prefix): the network reads only its length,
+block.number_of_dst_nodes(t). Every node / edge count is a symbol of the export.
 """
 
 from __future__ import annotations
@@ -15,15 +19,16 @@ import jax.numpy as jnp
 import numpy as np
 
 from models import quant as q
-from models.spec import ModelSpec, Phase, as_spec
+from models.spec import ModelSpec, Phase, Sym, as_spec
 from models.rgat.net import (CANONICAL_ETYPES, FEAT_SCALE, NTYPES, PREDICT, Config, RGAT_DGL,
-                             live_etypes, mfg_bounds)
+                             edge_symbol, live_etypes, mfg_capacity, mfg_structure,
+                             node_symbol, with_mfg_bounds)
 
 CONFIGS = {
-    "full": Config(),
+    "full": with_mfg_bounds(Config()),
     # every block / relation / node type kept; narrow features, small fanouts, batch 2
-    "reduced": Config(batch=2, in_feats=32, h_feats=32, n_heads=4, num_classes=10,
-                      fanouts=(2, 3, 4)),
+    "reduced": with_mfg_bounds(Config(batch=2, in_feats=32, h_feats=32, n_heads=4,
+                                      num_classes=10, fanouts=(2, 3, 4))),
 }
 ETYPES = tuple(r for _, r, _ in CANONICAL_ETYPES)
 
@@ -33,14 +38,50 @@ def live(cfg: Config, layer: int) -> list[str]:
 
 
 def input_spec(cfg: Config):
-    b = mfg_bounds(cfg)
+    b = mfg_capacity(cfg)
     feat = {t: jax.ShapeDtypeStruct((b[0]["n_src"][t], cfg.in_feats), q.FP8)
             for t in NTYPES}
-    blocks = tuple({r: {"src": jax.ShapeDtypeStruct((bl["n_edges"][r],), jnp.int32),
-                        "dst": jax.ShapeDtypeStruct((bl["n_edges"][r],), jnp.int32),
-                        "mask": jax.ShapeDtypeStruct((bl["n_edges"][r],), jnp.bool_)}
-                    for r in live(cfg, l)} for l, bl in enumerate(b))
+    blocks = tuple({**{r: {"src": jax.ShapeDtypeStruct((bl["n_edges"][r],), jnp.int32),
+                           "dst": jax.ShapeDtypeStruct((bl["n_edges"][r],), jnp.int32),
+                           "mask": jax.ShapeDtypeStruct((bl["n_edges"][r],), jnp.bool_)}
+                       for r in live(cfg, l)},
+                    "dst_nodes": {t: jax.ShapeDtypeStruct((n,), jnp.int32)
+                                  for t, n in bl["n_dst"].items() if n > 0}}
+                   for l, bl in enumerate(b))
     return feat, blocks
+
+
+def input_shapes(cfg: Config):
+    """`Phase.shapes` of `input_spec`: every node / edge count is a symbol."""
+    L = len(cfg.fanouts)
+    nodes, edges = mfg_structure(L)
+    feat = {t: f"{node_symbol(0, t, L)}, _" for t in NTYPES}
+    blocks = tuple({**{r: edge_symbol(l, r) for r in edges[l]},
+                    "dst_nodes": {t: node_symbol(l + 1, t, L) for t in nodes[l + 1]}}
+                   for l in range(L))
+    return feat, blocks
+
+
+def mfg_symbols(cfg: Config):
+    """(symbols, constraints): the seeds B, the node count of every node set and the edge
+    count of every block relation; dst nodes are a prefix of the src nodes."""
+    L = len(cfg.fanouts)
+    nodes, edges = mfg_structure(L)
+    syms = {"B": Sym("batch", 3 if cfg.batch != 3 else 4, "seed 'paper' nodes per call")}
+    for k in range(L):
+        for t in nodes[k]:
+            n = node_symbol(k, t, L)
+            syms[n] = Sym(f"mfg.{n}", getattr(cfg.mfg, n) + 3,
+                          f"'{t}' nodes (padded) in the src set of block {k}"
+                          + (f" (dst set of block {k - 1})" if k else ""))
+    for l in range(L):
+        for r in edges[l]:
+            e = edge_symbol(l, r)
+            syms[e] = Sym(f"mfg.{e}", getattr(cfg.mfg, e) + 3,
+                          f"'{r}' edges (padded) of block {l}")
+    cons = tuple(f"{node_symbol(k + 1, t, L)} <= {node_symbol(k, t, L)}"
+                 for k in range(L) for t in nodes[k + 1])
+    return syms, cons
 
 
 # ----------------------------------------------------------------------------
@@ -89,7 +130,7 @@ def saturated_mfg(cfg: Config, seed: int):
 
 def pad_mfg(cfg: Config, feat, blocks):
     """(features per type, [{etype: (src, dst)}] per layer) -> padded network inputs."""
-    b = mfg_bounds(cfg)
+    b = mfg_capacity(cfg)
     pf = {}
     for t in NTYPES:
         x = np.zeros((b[0]["n_src"][t], cfg.in_feats), np.float32)
@@ -110,6 +151,8 @@ def pad_mfg(cfg: Config, feat, blocks):
             ps, pd, pm = (np.zeros(E, np.int32), np.zeros(E, np.int32), np.zeros(E, bool))
             ps[:src.size], pd[:src.size], pm[:src.size] = src, dst, True
             out[r] = {"src": ps, "dst": pd, "mask": pm}
+        out["dst_nodes"] = {t: np.arange(n, dtype=np.int32)
+                            for t, n in b[l]["n_dst"].items() if n > 0}
         pb.append(out)
     return pf, tuple(pb)
 
@@ -175,12 +218,15 @@ def intermediates(cfg: Config, variables, feat, blocks) -> dict:
 
 
 def build(cfg: Config) -> ModelSpec:
+    if cfg.mfg is None:
+        cfg = with_mfg_bounds(cfg)
     module = RGAT_DGL(cfg)
 
     def forward(variables, feat, blocks):
         return module.apply(variables, feat, blocks)
 
     variables = jax.eval_shape(lambda: init_variables(cfg, jax.random.key(0)))
+    symbols, constraints = mfg_symbols(cfg)
     return ModelSpec(
         name="rgat",
         variant=(f"MLPerf R-GAT (IGBH), 3x HeteroGraphConv/GATConv {cfg.in_feats}->"
@@ -188,9 +234,11 @@ def build(cfg: Config) -> ModelSpec:
                  f"fanouts {list(cfg.fanouts)}, {cfg.batch} seed paper node(s), padded worst-case "
                  "MFG; FP8 E4M3 node features (MLPerf NVIDIA, scale 1.0), FP8 W8A8 fc / "
                  "classifier (GPU fallback), fp16 elsewhere"),
-        phases=[Phase("forward", forward, input_spec(cfg),
+        phases=[Phase("forward", forward, input_spec(cfg), shapes=input_shapes(cfg),
                       note="one RGAT_DGL.forward on the sampled blocks")],
         param_specs=as_spec(variables),
+        symbols=symbols,
+        constraints=constraints,
         excluded=["IGBH neighbour sampling (PyGSampler, fanouts [5,10,15]) and MFG/block "
                   "construction with node dedup (host side)",
                   "feature fetch: features[ntype][block[0].srcdata[NID]] (host gather of the "

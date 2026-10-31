@@ -9,5 +9,7 @@ pub fn registry() -> Vec<Box<dyn Pass>> {
         Box::new(crate::hello_a::HelloA),
         Box::new(crate::hello_b::HelloB),
         Box::new(crate::hello_c::HelloC),
+        // another change
+        Box::new(crate::export::Export),
     ]
 }

@@ -47,6 +47,7 @@ coarse over the +-54 m range (the fallback has no carve-out evidence for it).
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 
 import flax.linen as nn
@@ -55,6 +56,41 @@ import jax.numpy as jnp
 from jax import lax
 
 from models import quant as q
+
+
+@dataclass(frozen=True)
+class Levels:
+    """One size per U-Net level 0..4, indexable like a tuple; a dataclass so that every
+    level's size can be a symbol's Config field (e.g. "capacity.l2")."""
+    l0: int
+    l1: int
+    l2: int
+    l3: int
+    l4: int
+
+    def _t(self) -> tuple:
+        return tuple(getattr(self, f.name) for f in dataclasses.fields(self))
+
+    def __getitem__(self, s):
+        return self._t()[s]
+
+    def __iter__(self):
+        return iter(self._t())
+
+    def __len__(self) -> int:
+        return 5
+
+
+class Capacity(Levels):
+    """Static point slots C_s per level (worst-case bound on n_s)."""
+
+
+class PatchSize(Levels):
+    """Attention patch size K_s per level."""
+
+
+class PatchCount(Levels):
+    """Attention patch count P_s per level."""
 
 
 @dataclass(frozen=True)
@@ -76,11 +112,12 @@ class Config:
     cpe_kernel: int = 3
     grid_size: float = 0.05
     # static point slots per U-Net level (worst-case bound on n_s)
-    capacity: tuple[int, ...] = (34720,) * 5
-    # Patch size K_s and patch count P_s per level, if not derived from the capacity:
-    # P_s as its own symbol (min / ceil of a symbolic capacity is not a size).
-    patch_sizes: tuple[int, ...] | None = None
-    patch_counts: tuple | None = None
+    capacity: Capacity = Capacity(*(34720,) * 5)
+    # Patch size K_s and patch count P_s per level, if not derived from the capacity
+    # (model.pinned): independent sizes of the export (min / ceil of a symbolic capacity
+    # is not a size).
+    patch_sizes: PatchSize | None = None
+    patch_counts: PatchCount | None = None
 
     @property
     def num_stages(self) -> int:
@@ -216,14 +253,14 @@ class SerializedAttention(nn.Module):
 
     @nn.compact
     def __call__(self, x, order, inverse, mask):
-        """order: serialized_order[slot][pad] [P*K]; inverse:
+        """order: serialized_order[slot][pad] [P, K]; inverse:
         unpad[serialized_inverse[slot]] [capacity]; mask: valid keys [P, K]
         (P patches of K points: the sizes come from the mask's shape)."""
         H, C = self.num_heads, self.channels
         P, K = mask.shape
         scale = (C // H) ** -0.5
         qkv = _dense(3 * C, "qkv")(x)                   # fp16
-        qkv = _take(qkv, order)                         # [P*K, 3C]
+        qkv = _take(qkv, order.reshape(P * K))          # [P*K, 3C]
         qkv = qkv.reshape(P, K, 3, H, C // H).transpose(2, 0, 3, 1, 4)
         qh, kh, vh = qkv[0], qkv[1], qkv[2]             # [P, H, K, C/H]
         # fp16 operands, fp32 accumulation and softmax (flash-attention numerics)

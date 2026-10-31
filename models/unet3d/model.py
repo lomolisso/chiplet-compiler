@@ -5,13 +5,13 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from models.spec import ModelSpec, Phase, as_spec
+from models.spec import ModelSpec, Phase, Sym, as_spec
 from models.unet3d.net import Config, Unet3D
 
 # The reference hard-codes filters [32, 64, 128, 256, 320], so "reduced" keeps
 # every width (and every block) and only shrinks the ROI: 64^3 still leaves a
 # 2^3 bottleneck for the instance norms.
-CONFIGS = {"full": Config(), "reduced": Config(roi=64)}
+CONFIGS = {"full": Config(), "reduced": Config(grid=2)}
 
 
 def input_spec(cfg: Config):
@@ -47,6 +47,7 @@ def build(cfg: Config) -> ModelSpec:
         return module.apply(variables, x)
 
     variables = jax.eval_shape(lambda: init_variables(cfg, jax.random.key(0)))
+    s = cfg.stride
     return ModelSpec(
         name="unet3d",
         variant=(f"MLPerf 3D U-Net KiTS19, one {cfg.roi}^3 sliding-window ROI, batch {cfg.batch}, "
@@ -56,8 +57,14 @@ def build(cfg: Config) -> ModelSpec:
                       note=("one network call on one 128^3 ROI; the host-side sliding window "
                             "calls it prod_i((D_i - 128) // 64 + 1) times per case (overlap 0.5), "
                             "e.g. 3*4*4 = 48 for a 256x320x320 preprocessed volume; MLPerf does "
-                            "not document a typical count, so trip_count is recorded as 1"))],
+                            "not document a typical count, so trip_count is recorded as 1"),
+                      # the ROI is a whole number of stride-32 cells per axis (Config.grid)
+                      shapes=(f"B, {s}*D, {s}*H, {s}*W, _",))],
         param_specs=as_spec(variables),
+        symbols={"B": Sym("batch", 3, "ROIs per call"),
+                 "D": Sym("grid", 3, f"ROI depth / {s} (stride-{s} cells)"),
+                 "H": Sym("grid", 3, f"ROI height / {s} (stride-{s} cells)"),
+                 "W": Sym("grid", 3, f"ROI width / {s} (stride-{s} cells)")},
         excluded=[
             "KiTS19 preprocessing: resample to 1.6x1.2x1.2 mm, clip [-79, 304], "
             "normalize (x-101)/76.9, pad to >=128 and to a multiple of 64 (preprocess.py), "

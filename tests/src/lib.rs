@@ -246,6 +246,82 @@ impl ToolRunner for RecordingRunner {
     }
 }
 
+/// Replays the another change exporter without Python: `python -m cc_export ... --model <m> --out <dir>` copies
+/// `tests/fixtures/export/<m>/` to `<dir>`; `python -m cc_export.facts <dir>` prints `facts` (by default
+/// `tests/fixtures/export/facts.json`). Records every invocation and its caps.
+#[derive(Debug)]
+pub struct ExportReplay {
+    pub facts: Mutex<String>,
+    pub calls: Mutex<Vec<(Invocation, Caps)>>,
+}
+
+impl Default for ExportReplay {
+    fn default() -> Self {
+        let facts = std::fs::read_to_string(repo_root().join("tests/fixtures/export/facts.json")).unwrap();
+        Self {
+            facts: Mutex::new(facts),
+            calls: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+fn copy_dir(src: &Path, dst: &Path) {
+    std::fs::create_dir_all(dst).unwrap();
+    for e in std::fs::read_dir(src).unwrap() {
+        let p = e.unwrap().path();
+        let to = dst.join(p.file_name().unwrap());
+        if p.is_dir() {
+            copy_dir(&p, &to);
+        } else {
+            std::fs::copy(&p, &to).unwrap();
+        }
+    }
+}
+
+impl ToolRunner for ExportReplay {
+    fn name(&self) -> &'static str {
+        "export-replay"
+    }
+    fn run(
+        &self,
+        inv: &Invocation,
+        caps: &Caps,
+        log: &ToolLog,
+        _cancel: &CancelToken,
+    ) -> cc_core::Result<ToolOutcome> {
+        self.calls.lock().unwrap().push((inv.clone(), *caps));
+        let files = log.next(&inv.tool)?;
+        let arg = |flag: &str| {
+            inv.args
+                .iter()
+                .position(|a| a == flag)
+                .map(|i| inv.args[i + 1].clone())
+        };
+        let stdout = if inv.args.iter().any(|a| a == "cc_export.facts") {
+            self.facts.lock().unwrap().clone()
+        } else {
+            let model = arg("--model").unwrap();
+            let out = PathBuf::from(arg("--out").unwrap());
+            copy_dir(&repo_root().join("tests/fixtures/export").join(&model), &out);
+            String::new()
+        };
+        std::fs::write(&files.stdout, stdout).unwrap();
+        std::fs::write(&files.stderr, "").unwrap();
+        Ok(ToolOutcome {
+            runner: "export-replay".into(),
+            tool: inv.tool.clone(),
+            argv: vec![inv.program.clone()],
+            exit_code: Some(0),
+            signal: None,
+            killed: None,
+            duration_ms: 0,
+            peak_rss_bytes: None,
+            stdout: files.stdout,
+            stderr: files.stderr,
+        })
+    }
+}
+
 /// Runners whose Docker slot records instead of running.
 pub fn recording_runners(cfg: &LoadedConfig) -> (Runners, Arc<RecordingRunner>) {
     let rec = Arc::new(RecordingRunner::default());

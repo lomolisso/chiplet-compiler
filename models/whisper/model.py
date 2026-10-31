@@ -5,9 +5,9 @@ embeddings / tied LM head, everything else and the K/V caches fp16); network in 
 Three phases, each one network invocation (the greedy decode loop is not traced):
 
 * `encoder`          log-mel [1, 128, 3000] -> encoder states [1, 1500, 1280]          x1
-* `decoder_prefill`  the 4 forced prompt tokens + encoder states -> logits, a static
-                     self-attention KV cache (capacity 448) filled at positions 0..3,
-                     and the cross-attention K/V of every layer                       x1
+* `decoder_prefill`  the 4 forced prompt tokens + encoder states + the zero static
+                     self-attention KV cache (capacity 448) -> logits, the cache filled
+                     at positions 0..3, and the cross-attention K/V of every layer    x1
 * `decoder_step`     one token at a runtime int32 position + both caches -> logits and
                      the updated self-attention cache                                 x199
 
@@ -22,7 +22,7 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from models.spec import ModelSpec, Phase, as_spec
+from models.spec import ModelSpec, Phase, Sym, as_spec
 from models.whisper.net import Config, FlaxWhisperForConditionalGenerationModule as Whisper
 
 # CTranslate2 int8_float16: non-quantized layers, activations and K/V caches in fp16
@@ -32,7 +32,7 @@ CONFIGS = {
     "reduced": Config(num_mel_bins=16, d_model=64, encoder_layers=2, decoder_layers=2,
                       encoder_attention_heads=4, decoder_attention_heads=4, encoder_ffn_dim=256,
                       decoder_ffn_dim=256, vocab_size=512, max_source_positions=64,
-                      max_target_positions=32, dtype="float16"),
+                      max_target_positions=32, max_length=32, dtype="float16"),
 }
 
 CROSS_KV = ("k_proj", "v_proj")
@@ -52,12 +52,13 @@ def input_spec(cfg: Config) -> dict:
     B, L = cfg.batch, cfg.decoder_layers
     H, D = _dims(cfg)
     S = jax.ShapeDtypeStruct
-    self_kv = tuple(S((B, cfg.max_target_positions, H, D), dt) for _ in range(L))
+    self_kv = tuple(S((B, cfg.max_length, H, D), dt) for _ in range(L))
     cross_kv = tuple(S((B, cfg.max_source_positions, H, D), dt) for _ in range(L))
     return {
         "encoder": (S((B, cfg.num_mel_bins, 2 * cfg.max_source_positions), dt),),
         "decoder_prefill": (S((B, cfg.prompt_len), jnp.int32),
-                            S((B, cfg.max_source_positions, cfg.d_model), dt)),
+                            S((B, cfg.max_source_positions, cfg.d_model), dt),
+                            self_kv, self_kv),
         "decoder_step": (S((B, 1), jnp.int32), S((), jnp.int32),
                          self_kv, self_kv, cross_kv, cross_kv),
     }
@@ -91,7 +92,7 @@ def init_variables(cfg: Config, rng):
     x = jnp.zeros(input_spec(cfg)["encoder"][0].shape, input_spec(cfg)["encoder"][0].dtype)
     (enc,), v1 = m.apply({}, x, method=Whisper.encode, rngs={"params": r1}, mutable=["params"])
     ids = jnp.zeros((cfg.batch, cfg.prompt_len), jnp.int32)
-    _, v2 = m.apply({"cache": _zero_cache(cfg)}, ids, _prompt_positions(cfg), enc,
+    _, v2 = m.apply({"cache": _zero_cache(cfg)}, ids, _prompt_positions(ids), enc,
                     method=Whisper.decode, rngs={"params": r2}, mutable=["params", "cache"])
     return _split_params(_merge(v1["params"], v2["params"]))
 
@@ -110,16 +111,20 @@ def _cache(self_k, self_v, index, cross_k=None, cross_v=None) -> dict:
     return {"model": {"decoder": {"layers": layers}}}
 
 
-def _zero_cache(cfg: Config) -> dict:
-    """HF Flax `init_cache`: zero self-attention cache of capacity max_target_positions."""
+def _zero_self_kv(cfg: Config) -> tuple:
+    """HF Flax `init_cache`: zero self-attention K (= V) caches of capacity max_length."""
     s = input_spec(cfg)["decoder_step"][2][0]
-    z = tuple(jnp.zeros(s.shape, s.dtype) for _ in range(cfg.decoder_layers))
+    return tuple(jnp.zeros(s.shape, s.dtype) for _ in range(cfg.decoder_layers))
+
+
+def _zero_cache(cfg: Config) -> dict:
+    z = _zero_self_kv(cfg)
     return _cache(z, z, jnp.array(0, jnp.int32))
 
 
-def _prompt_positions(cfg: Config):
-    return jnp.broadcast_to(jnp.arange(cfg.prompt_len, dtype=jnp.int32)[None],
-                            (cfg.batch, cfg.prompt_len))
+def _prompt_positions(ids):
+    """Positions 0..P-1 of the prompt `ids` [B, P] (from its shape: B and P are symbolic)."""
+    return jnp.broadcast_to(jnp.arange(ids.shape[1], dtype=jnp.int32)[None], ids.shape)
 
 
 def _unpack(cache: dict, cfg: Config, cross: bool):
@@ -151,10 +156,13 @@ def _run(cfg: Config, phase: str, p: dict, *inputs, capture: bool = False):
         (h,) = m.apply(variables, x, method=Whisper.encode)
         return h, None
     if phase == "decoder_prefill":
-        ids, enc = inputs
+        # the zero self-attention cache is an input (HF Flax `init_cache` runs outside the
+        # network), so its capacity S is an input dim, as in the step
+        ids, enc, self_k, self_v = inputs
         dec = _merge(p["decoder"], p["decoder_cross_kv"])
-        variables = {"params": {"model": {"decoder": dec}}, "cache": _zero_cache(cfg)}
-        logits, st = m.apply(variables, ids, _prompt_positions(cfg), enc, method=Whisper.decode,
+        variables = {"params": {"model": {"decoder": dec}},
+                     "cache": _cache(self_k, self_v, jnp.array(0, jnp.int32))}
+        logits, st = m.apply(variables, ids, _prompt_positions(ids), enc, method=Whisper.decode,
                              mutable=["cache"] + extra, **kw)
         return (logits, *_unpack(st["cache"], cfg, cross=True)), st.get("intermediates")
     if phase == "decoder_step":
@@ -185,7 +193,8 @@ def example_inputs(cfg: Config, rng):
     st = spec["decoder_step"]
     return {
         "encoder": (rnd(spec["encoder"][0]),),
-        "decoder_prefill": (ids, rnd(spec["decoder_prefill"][1])),
+        "decoder_prefill": (ids, rnd(spec["decoder_prefill"][1]), _zero_self_kv(cfg),
+                            _zero_self_kv(cfg)),
         "decoder_step": (tok((cfg.batch, 1)), pos,
                          tuple(rnd(s) for s in st[2]), tuple(rnd(s) for s in st[3]),
                          tuple(rnd(s) for s in st[4]), tuple(rnd(s) for s in st[5])),
@@ -193,7 +202,7 @@ def example_inputs(cfg: Config, rng):
 
 
 def _phase_of(inputs) -> str:
-    return {1: "encoder", 2: "decoder_prefill", 6: "decoder_step"}[len(inputs)]
+    return {1: "encoder", 4: "decoder_prefill", 6: "decoder_step"}[len(inputs)]
 
 
 def _first_array(v):
@@ -226,16 +235,19 @@ def build(cfg: Config) -> ModelSpec:
     n_step = cfg.max_new_tokens - 1
     phases = [
         Phase("encoder", phase_fn(cfg, "encoder"), spec["encoder"], trip_count=1,
-              param_keys=("encoder",),
+              param_keys=("encoder",), shapes=("B, _, _",),
               note="log-mel [B, n_mels, 3000] -> encoder hidden states [B, 1500, d_model]"),
         Phase("decoder_prefill", phase_fn(cfg, "decoder_prefill"), spec["decoder_prefill"],
               trip_count=1, param_keys=("decoder", "decoder_cross_kv"),
+              shapes=("B, P", "B, _, _", "B, S, _, _", "B, S, _, _"),
               note=(f"{cfg.prompt_len} forced prompt tokens (<|startoftranscript|><|en|>"
-                    "<|transcribe|><|notimestamps|>) + encoder states -> (logits, self K cache, "
-                    f"self V cache [capacity {cfg.max_target_positions}], cross K, cross V); "
+                    "<|transcribe|><|notimestamps|>) + encoder states + zero self K / V caches "
+                    f"[capacity {cfg.max_length}] -> (logits, self K cache, self V cache, cross K, "
+                    "cross V); "
                     "its last-position argmax is generated token 1")),
         Phase("decoder_step", phase_fn(cfg, "decoder_step"), spec["decoder_step"],
               trip_count=n_step, param_keys=("decoder",),
+              shapes=("B, _", "", "B, S, _, _", "B, S, _, _", "B, _, _, _", "B, _, _, _"),
               note=(f"one token at runtime int32 position + caches -> (logits, self K, self V); "
                     f"MLPerf max_tokens={cfg.max_new_tokens} (greedy, temperature 0) -> at most "
                     f"{n_step} steps after prefill (EOS ends earlier)")),
@@ -249,6 +261,11 @@ def build(cfg: Config) -> ModelSpec:
                  "attention / LayerNorm / K/V caches"),
         phases=phases,
         param_specs=as_spec(variables),
+        symbols={"B": Sym("batch", 3, "audio clips per call"),
+                 "P": Sym("prompt_len", 6, "forced decoder prompt tokens (prefill)"),
+                 "S": Sym("max_length", 24, "static self-attention KV-cache capacity")},
+        # the causal mask and the learned decoder position table have max_target_positions rows
+        constraints=("S >= P", f"S <= {cfg.max_target_positions}"),
         excluded=["audio load / resample / zero-pad to 30 s and log-mel spectrogram "
                   "(WhisperFeatureExtractor; preprocessing)",
                   "greedy argmax / EOS check / token feedback of the decode loop (outer loop)",

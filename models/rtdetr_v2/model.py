@@ -10,15 +10,15 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from models.spec import ModelSpec, Phase, as_spec
+from models.spec import ModelSpec, Phase, Sym, as_spec
 from models.rtdetr_v2.net import Config, RTDetrV2ForObjectDetection
 
 # full: PekingU/rtdetr_v2_r50vd config.json (== rtdetrv2_r50vd_6x_coco.yml), 640x640, batch 1.
-# reduced: same block types at small widths. 448x448 keeps the invalid-anchor border
+# reduced: same block types at small widths. 448x448 (grid 14) keeps the invalid-anchor border
 # of level 0 (56x56: centre 0.5/56 < 0.01), so the valid_mask / finfo.max path runs.
 CONFIGS = {
     "full": Config(),
-    "reduced": Config(image=448, embedding_size=32, hidden_sizes=(64, 128, 256, 512),
+    "reduced": Config(grid=14, embedding_size=32, hidden_sizes=(64, 128, 256, 512),
                       depths=(2, 1, 2, 2), encoder_hidden_dim=64, encoder_layers=2,
                       encoder_ffn_dim=128, encoder_attention_heads=4, d_model=64,
                       num_queries=60, decoder_layers=3, decoder_ffn_dim=128,
@@ -61,6 +61,9 @@ def build(cfg: Config) -> ModelSpec:
 
     variables = jax.eval_shape(lambda: init_variables(cfg, jax.random.key(0)))
     S = sum(h * w for h, w in cfg.spatial_shapes())
+    m = cfg.max_stride
+    # tokens per stride-m cell over all levels (S = cells * H * W); top-k needs S >= Q
+    cells = sum((m // s) ** 2 for s in cfg.feat_strides)
     return ModelSpec(
         name="rtdetr_v2",
         variant=(f"RT-DETRv2-R50 (PekingU/rtdetr_v2_r50vd), {cfg.image}^2, batch {cfg.batch}, "
@@ -72,8 +75,15 @@ def build(cfg: Config) -> ModelSpec:
                       note=(f"backbone + hybrid encoder + query selection (top-{cfg.num_queries} "
                             f"of {S} tokens) + {cfg.decoder_layers}-layer deformable decoder -> "
                             "logits (B, Q, 80) and pred_boxes (B, Q, 4) cxcywh in [0, 1], plus "
-                            "the other eval-mode output tensors (net.OUTPUT_NAMES)"))],
+                            "the other eval-mode output tensors (net.OUTPUT_NAMES)"),
+                      # the image is a whole number of stride-32 cells (Config.grid)
+                      shapes=(f"B, {m}*H, {m}*W, _",))],
         param_specs=as_spec(variables),
+        symbols={"B": Sym("batch", 3, "images per call"),
+                 "H": Sym("grid", 11, f"image height / {m} (rows of stride-{m} cells)"),
+                 "W": Sym("grid", 11, f"image width / {m} (columns of stride-{m} cells)")},
+        # query selection takes the top num_queries of the S encoder tokens
+        constraints=(f"{cells}*H*W >= {cfg.num_queries}",),
         excluded=["image decode, resize to 640x640 (bilinear), rescale 1/255 "
                   "(RTDetrImageProcessor; do_normalize=False) (preprocessing)",
                   "post_process_object_detection: sigmoid, top-300 over Q x 80 scores, "

@@ -1,0 +1,224 @@
+{
+ "checks": {
+  "size_variants": {
+   "ok": true,
+   "pairs": [
+    {
+     "of": "forward",
+     "ok": true,
+     "phase": "forward_b1"
+    }
+   ]
+  },
+  "symbols_used": {
+   "ok": true,
+   "unused": []
+  }
+ },
+ "config": "reduced",
+ "constraints": [
+  "S >= 2"
+ ],
+ "exclude": [],
+ "model": "toy",
+ "phases": {
+  "forward": {
+   "census": {
+    "dot_general f32xf32->f32": {
+     "count": 7,
+     "flops": null
+    }
+   },
+   "checks": {
+    "census_crosscheck": {
+     "ok": true,
+     "verify_hlo": {
+      "dot_general f32xf32->f32": {
+       "count": 7,
+       "flops": null
+      }
+     }
+    },
+    "decompositions": {
+     "missing": [],
+     "ok": true
+    },
+    "interception": {
+     "failures": [],
+     "ok": true
+    },
+    "invariance": {
+     "changed_inputs": [],
+     "hash": "blake2b:10f141c652fddf454753e5981be5d6899116966cfb2be94db452cab0bcdd07ac",
+     "ok": true,
+     "perturbed_hash": "blake2b:10f141c652fddf454753e5981be5d6899116966cfb2be94db452cab0bcdd07ac"
+    },
+    "mlir_verifier": {
+     "ok": true
+    },
+    "roundtrip": {
+     "ok": true
+    },
+    "symbols_declared": {
+     "ok": true,
+     "undeclared": []
+    },
+    "symbols_in_inputs": {
+     "absent": [],
+     "ok": true
+    }
+   },
+   "coverage": {
+    "anon": 15,
+    "anon_by_op": {
+     "stablehlo.add": 2,
+     "stablehlo.compare": 3,
+     "stablehlo.constant": 3,
+     "stablehlo.convert": 2,
+     "stablehlo.custom_call": 3,
+     "stablehlo.get_dimension_size": 2
+    },
+    "any": 0.8648648648648649,
+    "by_name": {
+     "cc.flax.Block": 2,
+     "cc.flax.Dense": 5
+    },
+    "in_composite": 96,
+    "in_leaf_composite": 40,
+    "instances": 7,
+    "leaf": 0.36036036036036034,
+    "leaf_instances": 5,
+    "ops": 111
+   },
+   "files": {
+    "census.json": 1687,
+    "exported.bin": 9480,
+    "graph.json": 90266,
+    "module.mlir": 27579,
+    "symbols.json": 604
+   },
+   "hash": "blake2b:10f141c652fddf454753e5981be5d6899116966cfb2be94db452cab0bcdd07ac",
+   "roots": [],
+   "seconds": 1.58,
+   "size_variant_of": null,
+   "trip_count": 1
+  },
+  "forward_b1": {
+   "census": {
+    "dot_general f32xf32->f32": {
+     "count": 7,
+     "flops": null
+    }
+   },
+   "checks": {
+    "census_crosscheck": {
+     "ok": true,
+     "verify_hlo": {
+      "dot_general f32xf32->f32": {
+       "count": 7,
+       "flops": null
+      }
+     }
+    },
+    "decompositions": {
+     "missing": [],
+     "ok": true
+    },
+    "interception": {
+     "failures": [],
+     "ok": true
+    },
+    "invariance": {
+     "changed_inputs": [],
+     "hash": "blake2b:10f141c652fddf454753e5981be5d6899116966cfb2be94db452cab0bcdd07ac",
+     "ok": true,
+     "perturbed_hash": "blake2b:10f141c652fddf454753e5981be5d6899116966cfb2be94db452cab0bcdd07ac"
+    },
+    "mlir_verifier": {
+     "ok": true
+    },
+    "roundtrip": {
+     "ok": true
+    },
+    "symbols_declared": {
+     "ok": true,
+     "undeclared": []
+    },
+    "symbols_in_inputs": {
+     "absent": [],
+     "ok": true
+    }
+   },
+   "coverage": {
+    "anon": 15,
+    "anon_by_op": {
+     "stablehlo.add": 2,
+     "stablehlo.compare": 3,
+     "stablehlo.constant": 3,
+     "stablehlo.convert": 2,
+     "stablehlo.custom_call": 3,
+     "stablehlo.get_dimension_size": 2
+    },
+    "any": 0.8648648648648649,
+    "by_name": {
+     "cc.flax.Block": 2,
+     "cc.flax.Dense": 5
+    },
+    "in_composite": 96,
+    "in_leaf_composite": 40,
+    "instances": 7,
+    "leaf": 0.36036036036036034,
+    "leaf_instances": 5,
+    "ops": 111
+   },
+   "files": {
+    "census.json": 1690,
+    "exported.bin": 9484,
+    "graph.json": 90278,
+    "module.mlir": 27582,
+    "symbols.json": 607
+   },
+   "hash": "blake2b:10f141c652fddf454753e5981be5d6899116966cfb2be94db452cab0bcdd07ac",
+   "roots": [],
+   "seconds": 0.34,
+   "size_variant_of": "forward",
+   "trip_count": 1
+  }
+ },
+ "recipe": {
+  "audit": {
+   "allow": {
+    "dot_general f32xf32->f32": "toy dense layers and attention"
+   },
+   "require": [
+    "dot_general f32xf32->f32"
+   ]
+  },
+  "param_dtypes": [
+   "float32"
+  ]
+ },
+ "schema": "cc.export.model/1",
+ "symbols": {
+  "B": {
+   "alt": 3,
+   "doc": "",
+   "field": "batch",
+   "value": 2
+  },
+  "S": {
+   "alt": 12,
+   "doc": "",
+   "field": "seq",
+   "value": 8
+  }
+ },
+ "versions": {
+  "dm-haiku": "0.0.17",
+  "flax": "0.12.10",
+  "jax": "0.12.0",
+  "jaxlib": "0.12.0",
+  "keras": "3.15.1",
+  "numpy": "2.5.4"
+ }
+}

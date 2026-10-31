@@ -315,7 +315,11 @@ class Mamba2Mixer(nn.Module):
             out = conv1d(hs_new, padding=0)[:, :, -seq_len:]
             hidden_states_B_C = nn.silu(out).astype(hidden_states_B_C.dtype)
         else:          # cache.update_conv_state (prefill: keep last K inputs) + causal_conv1d_fn
-            new_conv_state = hidden_states_B_C[:, :, -c.conv_kernel:]
+            # HF: F.pad(x, (K - L, 0)): crops to the last K inputs (L >= K) or zero-pads on the
+            # left (L < K); lax.pad with the same (possibly negative) low padding, so the state is
+            # [b, C, K] for every (symbolic) L, not [b, C, min(L, K)].
+            new_conv_state = lax.pad(hidden_states_B_C, jnp.zeros((), hidden_states_B_C.dtype),
+                                     [(0, 0, 0), (0, 0, 0), (c.conv_kernel - seq_len, 0, 0)])
             out = conv1d(hidden_states_B_C.astype(pd), padding=c.conv_kernel - 1)[:, :, :seq_len]
             hidden_states_B_C = nn.silu(out).astype(hidden_states_B_C.dtype)
             hidden_states_B_C = hidden_states_B_C[:, :, -seq_len:]

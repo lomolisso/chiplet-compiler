@@ -11,13 +11,14 @@ key via `Phase.param_keys`.
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
-from models.spec import ModelSpec, Phase, as_spec
+from models.spec import ModelSpec, Phase, Sym, as_spec
 from models.sdxl import net
 from models.sdxl.net import (CLIP_G, CLIP_L, CLIPTextConfig, FlaxAutoencoderKL,
                              FlaxCLIPTextModelWithProjectionModule, FlaxCLIPTextModule,
@@ -39,14 +40,31 @@ class Config:
     # Per-module activation comparison granularity: every module (reduced) or
     # block-level modules only (full size; keeps memory bounded).
     coarse_activations: bool = False
+    # UNet batch, if not the CFG batch 2 x batch: its own symbol (unet_step has no input
+    # whose batch is `batch` itself).
+    unet_batch: int | None = None
+    # CLIP prompt tokens: both tokenizers pad to model_max_length 77 (= max_position_embeddings)
+    clip_tokens: int = 77
+    # unet_step's latent side in units of the UNet's total downsampling factor
+    # (unet_factor), if not latent / unet_factor: its own symbols, so that the stride-2
+    # down path and the 2x up path provably meet at the skip concatenations.
+    unet_grid: int | None = None
 
     @property
     def cfg_batch(self) -> int:  # classifier-free guidance doubles the UNet batch
-        return 2 * self.batch
+        return 2 * self.batch if self.unet_batch is None else self.unet_batch
 
     @property
     def seq(self) -> int:
-        return self.clip_l.max_position_embeddings
+        return self.clip_tokens
+
+    @property
+    def unet_factor(self) -> int:  # 2x downsample between consecutive down blocks
+        return 2 ** (len(self.unet.block_out_channels) - 1)
+
+    @property
+    def unet_latent(self) -> int:
+        return self.latent if self.unet_grid is None else self.unet_factor * self.unet_grid
 
 
 REDUCED = Config(
@@ -61,7 +79,13 @@ REDUCED = Config(
     latent=16,
 )
 
-CONFIGS = {"full": Config(coarse_activations=True), "reduced": REDUCED}
+def _with_sizes(cfg: Config) -> Config:
+    """`cfg` with the UNet (CFG) batch and grid (the `BU` / `HU`, `WU` symbols' fields) filled in."""
+    assert cfg.latent % cfg.unet_factor == 0, (cfg.latent, cfg.unet_factor)
+    return dataclasses.replace(cfg, unet_batch=2 * cfg.batch, unet_grid=cfg.latent // cfg.unet_factor)
+
+
+CONFIGS = {"full": _with_sizes(Config(coarse_activations=True)), "reduced": _with_sizes(REDUCED)}
 
 
 def _modules(cfg: Config) -> dict:
@@ -83,7 +107,7 @@ def input_specs(cfg: Config) -> dict:
     return {
         "text_encoder_l": ids,
         "text_encoder_g": ids,
-        "unet_step": (S((B, cfg.unet.in_channels, L, L), dt),            # latent_model_input
+        "unet_step": (S((B, cfg.unet.in_channels, cfg.unet_latent, cfg.unet_latent), dt),  # latent_model_input
                       S((), dt),                                        # timestep t
                       S((B, cfg.seq, cfg.unet.cross_attention_dim), dt),  # prompt_embeds
                       S((B, text_embeds_dim), dt),                      # added_cond text_embeds
@@ -180,19 +204,20 @@ def build(cfg: Config) -> ModelSpec:
     specs = input_specs(cfg)
     phases = [
         Phase("text_encoder_l", _phase_fn(cfg, "text_encoder_l"), specs["text_encoder_l"],
-              trip_count=2, param_keys=("text_encoder_l",),
+              trip_count=2, param_keys=("text_encoder_l",), shapes=("B, S",),
               note="CLIPTextModel; prompt + negative prompt = 2 calls/image. "
                    "Outputs (hidden_states[-2], pooler_output)."),
         Phase("text_encoder_g", _phase_fn(cfg, "text_encoder_g"), specs["text_encoder_g"],
-              trip_count=2, param_keys=("text_encoder_g",),
+              trip_count=2, param_keys=("text_encoder_g",), shapes=("B, S",),
               note="CLIPTextModelWithProjection; prompt + negative prompt = 2 calls/image. "
                    "Outputs (hidden_states[-2], text_embeds)."),
         Phase("unet_step", _phase_fn(cfg, "unet"), specs["unet_step"], trip_count=cfg.steps,
               param_keys=("unet",),
+              shapes=(f"BU, _, {cfg.unet_factor}*HU, {cfg.unet_factor}*WU", "", "BU, S, _", "BU, _", "BU, _"),
               note="One UNet call on the CFG batch (uncond, cond); returns noise_pred. "
                    "CFG combine + Euler update are host scheduler math (excluded)."),
         Phase("vae_decode", _phase_fn(cfg, "vae"), specs["vae_decode"], trip_count=1,
-              param_keys=("vae",), note="AutoencoderKL.decode(latents / scaling_factor).sample"),
+              param_keys=("vae",), shapes=("B, _, H, W",), note="AutoencoderKL.decode(latents / scaling_factor).sample"),
     ]
     return ModelSpec(
         name="sdxl",
@@ -201,6 +226,16 @@ def build(cfg: Config) -> ModelSpec:
                 f"(W8A8 + FP8 MHA), INT8 VAE convs (fp32/fp16 decoder)",
         phases=phases,
         param_specs=as_spec(variables),
+        symbols={"B": Sym("batch", 2, "images per call (prompts x images per prompt)"),
+                 "BU": Sym("unet_batch", 6, "UNet batch: the CFG batch (uncond, cond) x images"),
+                 "S": Sym("clip_tokens", 40, "CLIP prompt tokens (the tokenizers pad to 77)"),
+                 "H": Sym("latent", 12, "latent height (image height / 8)"),
+                 "W": Sym("latent", 12, "latent width (image width / 8)"),
+                 "HU": Sym("unet_grid", 3, f"unet_step latent height / {cfg.unet_factor} (the UNet's "
+                                           "downsampling factor)"),
+                 "WU": Sym("unet_grid", 3, f"unet_step latent width / {cfg.unet_factor}")},
+        # CLIP's learned position tables; the CFG batch is (uncond, cond) pairs
+        constraints=(f"S <= {cfg.clip_l.max_position_embeddings}", "mod(BU, 2) == 0"),
         excluded=[
             "CLIP tokenization (both tokenizers; host)",
             "prompt-embedding concat [L(768) | G(1280)] -> 2048, negative/positive stacking, "

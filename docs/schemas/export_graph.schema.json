@@ -1,0 +1,1150 @@
+{
+  "$defs": {
+    "Attr": {
+      "description": "A typed MLIR attribute.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "int",
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/IntValue"
+            }
+          },
+          "required": [
+            "kind",
+            "value",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "float",
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/FloatValue"
+            }
+          },
+          "required": [
+            "kind",
+            "value",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "bool",
+              "type": "string"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "str",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "symbol",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "ints",
+              "type": "string"
+            },
+            "value": {
+              "items": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "bools",
+              "type": "string"
+            },
+            "value": {
+              "items": {
+                "type": "boolean"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Dense elements: the values when at most 1024 elements numpy can view, else a content digest.",
+          "properties": {
+            "digest": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "const": "dense",
+              "type": "string"
+            },
+            "splat": {
+              "type": "boolean"
+            },
+            "type": {
+              "$ref": "#/$defs/Type"
+            },
+            "values": {
+              "items": true,
+              "type": [
+                "array",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "type",
+            "splat"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "array",
+              "type": "string"
+            },
+            "value": {
+              "items": {
+                "$ref": "#/$defs/Attr"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "dict",
+              "type": "string"
+            },
+            "value": {
+              "additionalProperties": {
+                "$ref": "#/$defs/Attr"
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "type",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/Type"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "unit",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A StableHLO enum attribute (`comparison_direction`, `precision`, ...).",
+          "properties": {
+            "enum": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "enum",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "enum",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "dot_dimension_numbers",
+              "type": "string"
+            },
+            "lhs_batching_dimensions": {
+              "items": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "lhs_contracting_dimensions": {
+              "items": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "rhs_batching_dimensions": {
+              "items": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "rhs_contracting_dimensions": {
+              "items": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "lhs_batching_dimensions",
+            "rhs_batching_dimensions",
+            "lhs_contracting_dimensions",
+            "rhs_contracting_dimensions"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "input_batch_dimension": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "input_feature_dimension": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "input_spatial_dimensions": {
+              "items": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "kernel_input_feature_dimension": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "kernel_output_feature_dimension": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "kernel_spatial_dimensions": {
+              "items": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "conv_dimension_numbers",
+              "type": "string"
+            },
+            "output_batch_dimension": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "output_feature_dimension": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "output_spatial_dimensions": {
+              "items": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "input_batch_dimension",
+            "input_feature_dimension",
+            "input_spatial_dimensions",
+            "kernel_input_feature_dimension",
+            "kernel_output_feature_dimension",
+            "kernel_spatial_dimensions",
+            "output_batch_dimension",
+            "output_feature_dimension",
+            "output_spatial_dimensions"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "collapsed_slice_dims": {
+              "items": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "index_vector_dim": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "kind": {
+              "const": "gather_dimension_numbers",
+              "type": "string"
+            },
+            "offset_dims": {
+              "items": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "operand_batching_dims": {
+              "items": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "start_index_map": {
+              "items": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "start_indices_batching_dims": {
+              "items": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "offset_dims",
+            "collapsed_slice_dims",
+            "operand_batching_dims",
+            "start_indices_batching_dims",
+            "start_index_map",
+            "index_vector_dim"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "index_vector_dim": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "input_batching_dims": {
+              "items": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "inserted_window_dims": {
+              "items": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "scatter_dimension_numbers",
+              "type": "string"
+            },
+            "scatter_indices_batching_dims": {
+              "items": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "scattered_dims_to_operand_dims": {
+              "items": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "update_window_dims": {
+              "items": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "update_window_dims",
+            "inserted_window_dims",
+            "input_batching_dims",
+            "scatter_indices_batching_dims",
+            "scattered_dims_to_operand_dims",
+            "index_vector_dim"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No structured form: the printed attribute.",
+          "properties": {
+            "kind": {
+              "const": "opaque",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Block": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "items": {
+            "$ref": "#/$defs/Value"
+          },
+          "type": "array"
+        },
+        "id": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ops": {
+          "items": {
+            "$ref": "#/$defs/Op"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "args",
+        "ops"
+      ],
+      "type": "object"
+    },
+    "CompositeInstance": {
+      "additionalProperties": false,
+      "description": "One composite call in the expansion from the entry function (a component instance).",
+      "properties": {
+        "decomposition": {
+          "type": "string"
+        },
+        "func": {
+          "description": "Function holding the op.",
+          "type": "string"
+        },
+        "instance": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "leaf": {
+          "description": "No composite inside.",
+          "type": "boolean"
+        },
+        "name": {
+          "description": "`cc.<framework>.<Class>[.<method>]`.",
+          "type": "string"
+        },
+        "op": {
+          "description": "Id of the `stablehlo.composite` op.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "own_ops": {
+          "description": "Non-structural ops whose innermost enclosing composite is this one.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "parent": {
+          "description": "Enclosing instance (`null` at the top).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "path": {
+          "description": "Module path (provenance).",
+          "type": "string"
+        },
+        "version": {
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "instance",
+        "op",
+        "func",
+        "name",
+        "path",
+        "decomposition",
+        "version",
+        "leaf",
+        "own_ops"
+      ],
+      "type": "object"
+    },
+    "Coverage": {
+      "additionalProperties": false,
+      "description": "Fractions of the executed non-structural ops (call sites expanded) inside a composite / a leaf one.",
+      "properties": {
+        "anon": {
+          "description": "Ops outside every composite (flagged `anon`; the `components` pass groups them into `anon:<hash>` components).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "anon_by_op": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "any": {
+          "format": "double",
+          "type": "number"
+        },
+        "by_name": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "in_composite": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "in_leaf_composite": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "instances": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "leaf": {
+          "format": "double",
+          "type": "number"
+        },
+        "leaf_instances": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ops": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ops",
+        "in_composite",
+        "in_leaf_composite",
+        "anon",
+        "any",
+        "leaf",
+        "instances",
+        "leaf_instances",
+        "by_name",
+        "anon_by_op"
+      ],
+      "type": "object"
+    },
+    "Dim": {
+      "anyOf": [
+        {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "string"
+        }
+      ],
+      "description": "A dimension of an input: concrete, or a symbolic expression over the model's symbols."
+    },
+    "FloatValue": {
+      "anyOf": [
+        {
+          "format": "double",
+          "type": "number"
+        },
+        {
+          "type": "string"
+        }
+      ],
+      "description": "A float attribute value; non-finite values are strings (`\"inf\"`, `\"-inf\"`, `\"nan\"`)."
+    },
+    "Func": {
+      "additionalProperties": false,
+      "properties": {
+        "arg_attrs": {
+          "description": "Per argument; dimension variables carry `jax.global_constant = \"<symbol>\"`.",
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/$defs/Attr"
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "attributes": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Attr"
+          },
+          "type": "object"
+        },
+        "body": {
+          "$ref": "#/$defs/Region"
+        },
+        "name": {
+          "type": "string"
+        },
+        "res_attrs": {
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/$defs/Attr"
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "type": {
+          "$ref": "#/$defs/FuncType"
+        },
+        "visibility": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "visibility",
+        "type",
+        "arg_attrs",
+        "res_attrs",
+        "attributes",
+        "body"
+      ],
+      "type": "object"
+    },
+    "FuncType": {
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "items": {
+            "$ref": "#/$defs/Type"
+          },
+          "type": "array"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/$defs/Type"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "inputs",
+        "results"
+      ],
+      "type": "object"
+    },
+    "Input": {
+      "additionalProperties": false,
+      "description": "One flattened argument of the phase function `fn(params, *inputs)`.",
+      "properties": {
+        "dtype": {
+          "type": "string"
+        },
+        "flat_index": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "description": "`param` or `input`.",
+          "type": "string"
+        },
+        "main_arg": {
+          "description": "Index among `main`'s arguments; `null` when the export dropped the unused argument.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "path": {
+          "description": "Pytree key path (`[0]['params']['Dense_0']['kernel']` for parameters, `[1]` ... for inputs).",
+          "type": "string"
+        },
+        "shape": {
+          "items": {
+            "$ref": "#/$defs/Dim"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "flat_index",
+        "path",
+        "kind",
+        "shape",
+        "dtype"
+      ],
+      "type": "object"
+    },
+    "IntValue": {
+      "anyOf": [
+        {
+          "format": "int64",
+          "type": "integer"
+        },
+        {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      ],
+      "description": "An integer attribute value (unsigned 64-bit values above `i64::MAX` exist for `ui64`)."
+    },
+    "Interception": {
+      "additionalProperties": false,
+      "properties": {
+        "excluded": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "failures": {
+          "items": {
+            "$ref": "#/$defs/InterceptionFailure"
+          },
+          "type": "array"
+        },
+        "hoisted": {
+          "description": "Values of the enclosing trace turned into composite operands (closure conversion).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "wrapped": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "wrapped",
+        "hoisted",
+        "excluded",
+        "failures"
+      ],
+      "type": "object"
+    },
+    "InterceptionFailure": {
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "path",
+        "error"
+      ],
+      "type": "object"
+    },
+    "Module": {
+      "additionalProperties": false,
+      "properties": {
+        "attributes": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Attr"
+          },
+          "type": "object"
+        },
+        "funcs": {
+          "items": {
+            "$ref": "#/$defs/Func"
+          },
+          "type": "array"
+        },
+        "other_ops": {
+          "description": "Module-level ops other than `func.func` (none expected).",
+          "items": {
+            "$ref": "#/$defs/Op"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "attributes",
+        "funcs",
+        "other_ops"
+      ],
+      "type": "object"
+    },
+    "Op": {
+      "additionalProperties": false,
+      "description": "One op. `operands` are value ids; an operand's port is its position.",
+      "properties": {
+        "attributes": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Attr"
+          },
+          "type": "object"
+        },
+        "id": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "loc": {
+          "description": "Source location (provenance; repository-relative paths).",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "operands": {
+          "items": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "regions": {
+          "items": {
+            "$ref": "#/$defs/Region"
+          },
+          "type": "array"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/$defs/Value"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "operands",
+        "results",
+        "attributes",
+        "loc"
+      ],
+      "type": "object"
+    },
+    "Region": {
+      "additionalProperties": false,
+      "properties": {
+        "blocks": {
+          "items": {
+            "$ref": "#/$defs/Block"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "blocks"
+      ],
+      "type": "object"
+    },
+    "Type": {
+      "description": "A value type. `shape` entries are `null` for dynamic (`?`) dims; their symbolic expressions follow from\nthe dimension-variable arguments (`jax.global_constant`) and the explicit size computation.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "elem": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "tensor",
+              "type": "string"
+            },
+            "shape": {
+              "items": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "shape",
+            "elem"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "inputs": {
+              "items": {
+                "$ref": "#/$defs/Type"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "function",
+              "type": "string"
+            },
+            "results": {
+              "items": {
+                "$ref": "#/$defs/Type"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "inputs",
+            "results"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "other",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Value": {
+      "additionalProperties": false,
+      "description": "A defined value: a block argument or an op result.",
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/Type"
+        },
+        "v": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "v",
+        "type"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`out/export/<model>/<phase>/graph.json`.",
+  "properties": {
+    "composites": {
+      "items": {
+        "$ref": "#/$defs/CompositeInstance"
+      },
+      "type": "array"
+    },
+    "config": {
+      "type": "string"
+    },
+    "coverage": {
+      "$ref": "#/$defs/Coverage"
+    },
+    "entry": {
+      "type": "string"
+    },
+    "inputs": {
+      "items": {
+        "$ref": "#/$defs/Input"
+      },
+      "type": "array"
+    },
+    "interception": {
+      "$ref": "#/$defs/Interception"
+    },
+    "model": {
+      "type": "string"
+    },
+    "module": {
+      "$ref": "#/$defs/Module"
+    },
+    "phase": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "model",
+    "phase",
+    "config",
+    "entry",
+    "module",
+    "inputs",
+    "composites",
+    "coverage",
+    "interception"
+  ],
+  "title": "GraphFile",
+  "type": "object"
+}

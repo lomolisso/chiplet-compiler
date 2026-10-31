@@ -581,17 +581,18 @@ class Qwen3MoeDecoderLayer(nn.Module):
 
 
 def merge_mm_embeddings(text_embeddings, image_embeds, image_start):
-    """Place the image embeddings on their token span [image_start, image_start + n_img);
-    image_start is an int32 scalar from the host (the prompt layout)."""
-    return lax.dynamic_update_slice(text_embeddings, image_embeds[None].astype(text_embeddings.dtype),
+    """Place each sequence's image embeddings [b, n_img, D] on its token span
+    [image_start, image_start + n_img); image_start is an int32 scalar from the host
+    (the prompt layout, shared by the batch)."""
+    return lax.dynamic_update_slice(text_embeddings, image_embeds.astype(text_embeddings.dtype),
                                     (0, image_start, 0))
 
 
 def deepstack_process(hidden_states, visual_embeds, image_start):
-    """hidden[:, span] += visual_embeds on the image-token span."""
-    n = visual_embeds.shape[0]
+    """hidden[:, span] += visual_embeds [b, n_img, D] on the image-token span."""
+    n = visual_embeds.shape[1]
     span = lax.dynamic_slice_in_dim(hidden_states, image_start, n, axis=1)
-    return lax.dynamic_update_slice(hidden_states, span + visual_embeds[None].astype(span.dtype),
+    return lax.dynamic_update_slice(hidden_states, span + visual_embeds.astype(span.dtype),
                                     (0, image_start, 0))
 
 
@@ -620,8 +621,8 @@ class Transformer(nn.Module):
 
     tokens [b, t] int32; position_ids [3, b, t] int32 (host-computed M-RoPE ids);
     cache_index int32 scalar = cache slot of tokens[:, 0]; image_embeds
-    [n_img, D], deepstack_visual_embeds [n_ds, n_img, D] and image_start (int32 scalar,
-    first image-token position) are prefill only.
+    [b, n_img, D] (one image per sequence), deepstack_visual_embeds [n_ds, b, n_img, D]
+    and image_start (int32 scalar, first image-token position) are prefill only.
     """
     cfg: Config
 

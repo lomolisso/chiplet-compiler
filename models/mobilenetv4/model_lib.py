@@ -9,7 +9,7 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from models.spec import ModelSpec, Phase, as_spec
+from models.spec import ModelSpec, Phase, Sym, as_spec
 from models.mobilenetv4.net import Config, MobileNetV4
 
 
@@ -51,8 +51,12 @@ def build(cfg: Config) -> ModelSpec:
         variant=f"{cfg.timm_name or 'reduced ' + cfg.name} (timm 1.0.30), {cfg.image}^2, "
                 f"batch {cfg.batch}, TFLite full-integer INT8 (per-channel int8 weights, "
                 f"asymmetric int8 activations, int8 softmax, uint8 I/O)",
-        phases=[Phase("forward", forward, input_spec(cfg))],
+        phases=[Phase("forward", forward, input_spec(cfg), shapes=("B, H, W, _",))],
         param_specs=as_spec(variables),
+        symbols={"B": Sym("batch", 3, "images per call"),
+                 "H": Sym("image", 96, "image height"),
+                 "W": Sym("image", 96, "image width")},
+        constraints=("H >= 32", "W >= 32"),
         excluded=["image decode / resize / crop (preprocessing; mean-std normalization is "
                   "folded into the uint8 input's scale / zero point)",
                   "argmax / top-k over the uint8 probabilities (postprocessing; the softmax "

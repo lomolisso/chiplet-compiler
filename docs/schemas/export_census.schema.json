@@ -1,0 +1,139 @@
+{
+  "$defs": {
+    "CoreOp": {
+      "additionalProperties": false,
+      "properties": {
+        "flops": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "kind": {
+          "description": "`dot_general` or `convolution` (`dynamic_conv` counts as a convolution).",
+          "type": "string"
+        },
+        "lhs_shape": {
+          "items": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "op": {
+          "type": "string"
+        },
+        "out_shape": {
+          "items": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "rhs_shape": {
+          "items": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "sig": {
+          "description": "`<lhs elem>x<rhs elem>-><result elem>` (`verify/hlo.py`).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "op",
+        "sig",
+        "lhs_shape",
+        "rhs_shape",
+        "out_shape"
+      ],
+      "type": "object"
+    },
+    "SigSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "flops": {
+          "description": "`null` when a dim is symbolic.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "count"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`out/export/<model>/<phase>/census.json`: per executed op (calls and composites expanded).",
+  "properties": {
+    "executed": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Executed op-name multiset.",
+      "type": "object"
+    },
+    "model": {
+      "type": "string"
+    },
+    "ops": {
+      "items": {
+        "$ref": "#/$defs/CoreOp"
+      },
+      "type": "array"
+    },
+    "phase": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "summary": {
+      "additionalProperties": {
+        "$ref": "#/$defs/SigSummary"
+      },
+      "description": "`\"<kind> <sig>\"` → count and FLOPs.",
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema",
+    "model",
+    "phase",
+    "summary",
+    "ops",
+    "executed"
+  ],
+  "title": "CensusFile",
+  "type": "object"
+}

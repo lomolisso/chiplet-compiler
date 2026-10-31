@@ -139,6 +139,16 @@ pub enum ModelConfigKind {
     Reduced,
 }
 
+impl ModelConfigKind {
+    /// The key of the ports' `CONFIGS` dict.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Full => "full",
+            Self::Reduced => "reduced",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct ModelsConfig {

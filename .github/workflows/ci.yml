@@ -56,3 +56,8 @@ jobs:
           enable-cache: true
       - run: uv sync --locked
       - run: uv run --frozen python -m pytest verify/test_quant.py -q
+      # the exporter on toy Flax / Haiku / Keras ports (abstract tracing + tiny-size checks).
+      - run: uv run --frozen python -m pytest python/tests -q
+        env:
+          JAX_PLATFORMS: cpu
+          KERAS_BACKEND: jax

@@ -9,6 +9,8 @@ publish.workspace = true
 [dependencies]
 cc-core.workspace = true
 cc-pipeline.workspace = true
+rayon.workspace = true
+schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

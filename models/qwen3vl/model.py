@@ -9,8 +9,8 @@ router, embedding, lm_head, norms, KV cache and attention bf16). Phases (one net
                   feature maps [3, 196, 4096].                       trip_count 1
   prefill         1024 prompt tokens (fixed layout: text, <vision_start>, 196 image
                   tokens, <vision_end>, 5 text tokens) + host M-RoPE position ids +
-                  the vision outputs, static KV cache (capacity 1174) -> last-position
-                  logits + cache.                                     trip_count 1
+                  each sequence's vision outputs, static KV cache (capacity 1174) ->
+                  last-position logits + cache.                       trip_count 1
   decode_step     one token at a runtime cache slot + its runtime M-RoPE position
                   -> logits + cache.                                  trip_count 150
 """
@@ -21,7 +21,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from models.spec import ModelSpec, Phase, as_spec
+from models.spec import ModelSpec, Phase, Sym, as_spec
 from models.qwen3vl.net import (Config, TextConfig, Transformer, VisionConfig, VisionTower,
                                 vision_interpolation_table, vision_position_ids)
 
@@ -38,12 +38,12 @@ _REDUCED = Config(
     text=TextConfig(vocab_size=256, emb_dim=128, num_decoder_layers=3, num_query_heads=4,
                     num_kv_heads=2, head_dim=64, num_experts=8, num_experts_per_tok=2,
                     moe_mlp_dim=128, mrope_section=(12, 10, 10)),
-    image_size=(24, 24), max_prefill_predict_length=24, text_suffix_len=3, max_target_length=32,
+    image_size=(24, 24), image_tokens=9, max_prefill_predict_length=24, text_suffix_len=3, max_target_length=32,
     image_token_id=250, vision_start_token_id=252, vision_end_token_id=253, dtype="bfloat16")
 
 CONFIGS = {
     # Qwen/Qwen3-VL-235B-A22B-Instruct @710c1386 config.json (MLPerf-pinned revision).
-    "full": Config(),
+    "full": Config(image_tokens=196),          # 448x448 -> 28x28 patches -> 14x14 merged
     # Every block type (ViT blocks with/without DeepStack tap, post-shuffle and
     # final mergers, interpolated pos-embed 4x4 -> 6x6, 2-D RoPE; MoE decoder layers
     # with and without DeepStack injection, GQA, qk-norm, interleaved M-RoPE).
@@ -125,8 +125,9 @@ def input_specs(cfg: Config) -> dict:
                            jax.ShapeDtypeStruct((N, 4), jnp.float32)),   # and their weights
         "prefill": (jax.ShapeDtypeStruct((cfg.batch, P), i32),
                     jax.ShapeDtypeStruct((3, cfg.batch, P), i32),
-                    jax.ShapeDtypeStruct((n, D), _d(cfg)),
-                    jax.ShapeDtypeStruct((len(v.deepstack_visual_indexes), n, D), _d(cfg)),
+                    jax.ShapeDtypeStruct((cfg.batch, n, D), _d(cfg)),   # one image per sequence
+                    jax.ShapeDtypeStruct((len(v.deepstack_visual_indexes), cfg.batch, n, D),
+                                         _d(cfg)),
                     jax.ShapeDtypeStruct((), i32),                       # image_start
                     cache_spec(cfg)),
         "decode_step": (jax.ShapeDtypeStruct((cfg.batch, 1), i32),
@@ -251,18 +252,20 @@ def build(cfg: Config) -> ModelSpec:
                  "experts; vision, router, embedding, lm_head, KV cache, attention bf16"),
         phases=[
             Phase("vision_encoder", vision_fn(cfg), specs["vision_encoder"], trip_count=1,
-                  param_keys=("vision",),
+                  param_keys=("vision",), shapes=("4*I, _",) * 4,
                   note=f"ViT on one fixed {cfg.image_size[0]}x{cfg.image_size[1]} image: "
                        f"{cfg.num_patches} patches -> {n} merged tokens + "
                        f"{len(cfg.vision.deepstack_visual_indexes)} DeepStack maps"),
             Phase("prefill", prefill_fn(cfg), specs["prefill"], trip_count=1,
                   param_keys=("text",),
+                  shapes=("B, P", "_, B, P", "B, I, _", "_, B, I, _", "", "B, S, _, _"),
                   note=f"{P} prompt tokens; image tokens at [image_start, image_start + {n}) "
                        f"(host input; {cfg.image_start} in the example layout); DeepStack into layers 0.."
                        f"{len(cfg.vision.deepstack_visual_indexes) - 1}; writes cache slots "
                        f"0..{P - 1}; last-position logits"),
             Phase("decode_step", decode_fn(cfg), specs["decode_step"],
                   trip_count=MAX_OUTPUT_TOKENS, param_keys=("text",),
+                  shapes=("B, _", "", "_, B, _", "B, S, _, _"),
                   note="one token at a runtime int32 cache slot with runtime M-RoPE ids "
                        f"(slot + rope_delta); attends over all {S} slots with a causal/valid "
                        f"mask. Trip count = MLPerf max_new_tokens {MAX_OUTPUT_TOKENS} (the first "
@@ -270,6 +273,13 @@ def build(cfg: Config) -> ModelSpec:
                        "strictly needed)."),
         ],
         param_specs=as_spec(variables),
+        symbols={"B": Sym("batch", 3, "sequences per call"),
+                 "P": Sym("max_prefill_predict_length", 20, "prompt tokens (prefill)"),
+                 "S": Sym("max_target_length", 40, "static KV-cache capacity"),
+                 "I": Sym("image_tokens", 12, "merged visual tokens of one image "
+                                              "(spatial_merge_size**2 = 4 patches each)")},
+        # the prompt holds <vision_start>, the image span and <vision_end>
+        constraints=("S >= P", "P >= I + 2"),
         excluded=["image preprocessing (resize to the fixed size, normalize, patchify: "
                   "Qwen2VLImageProcessor) and the chat-template / tokenization / detokenization",
                   "host-side M-RoPE position-id computation (get_rope_index) -- passed as inputs",

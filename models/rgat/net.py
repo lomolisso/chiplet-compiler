@@ -11,9 +11,12 @@ and dropout (identity at eval) between layers; `Linear(h, classes)` on the
 Static-shape message-flow graphs (MFGs). Neighbour sampling (PyGSampler, fanouts
 [5, 10, 15] reversed: the seeds get 15) and node dedup run on the host and are
 not part of the graph. Each DGL block is given as padded per-relation COO edge
-lists (`src`, `dst`, `mask`) whose sizes are the worst-case bounds derived from
-the seed batch and fanouts (`mfg_bounds`); node arrays are padded at the end, so
-block l's dst nodes stay the prefix of its src nodes, exactly as in a DGL block.
+lists (`src`, `dst`, `mask`) plus its dst node ids per type (`dst_nodes`, whose
+length is block.number_of_dst_nodes(t)); the padded sizes default to the worst-case
+bounds derived from the seed batch and fanouts (`mfg_bounds`, overridable by
+`Config.mfg`), and the network reads every size from its inputs' shapes. Node arrays
+are padded at the end, so block l's dst nodes stay the prefix of its src nodes,
+exactly as in a DGL block.
 GAT attention uses the same edge-space formulation as DGL (u_add_v SDDMM, edge
 softmax = segment max / exp / segment sum / div, u_mul_e + sum SpMM) with
 static-`num_segments` segment ops; padded edges are masked out, so valid rows
@@ -37,7 +40,10 @@ Quantization (see models/rgat/recipe.py):
 
 from __future__ import annotations
 
+import dataclasses
+import functools
 from dataclasses import dataclass
+from typing import Any
 
 import flax.linen as nn
 import jax
@@ -78,6 +84,10 @@ class Config:
     fanouts: tuple[int, ...] = (5, 10, 15)   # backend_dgl.fan_out; sampled reversed
     gat_negative_slope: float = 0.2     # GATConv default
     act_negative_slope: float = 0.01    # F.leaky_relu default
+    # Padded MFG sizes (node / edge counts of the blocks, the export's symbols): an
+    # `mfg_sizes_class(len(fanouts))` instance, None = the worst-case `mfg_bounds`.
+    # The network reads every size from its inputs' shapes; this only sizes the inputs.
+    mfg: Any = None
 
 
 def mfg_bounds(cfg: Config):
@@ -121,6 +131,65 @@ def live_etypes(cfg: Config, layer: int) -> list[tuple[str, str, str]]:
     every relation in every layer; those 7 of 33 never influence any output."""
     n_dst = mfg_bounds(cfg)[layer]["n_dst"]
     return [e for e in CANONICAL_ETYPES if n_dst[e[2]] > 0]
+
+
+def mfg_structure(n_layers: int):
+    """(node types per node set, live relations per block) of an L-layer MFG: node set k
+    (k = 0..L) is the src nodes of block k (k < L) = the dst nodes of block k-1 (k > 0);
+    node set L is the seeds. Depends only on the relation graph, not on batch / fanouts."""
+    b = mfg_bounds(Config(batch=1, fanouts=(1,) * n_layers))
+    nodes = [[t for t in NTYPES if b[0]["n_src"][t] > 0]]
+    nodes += [[t for t in NTYPES if bl["n_dst"][t] > 0] for bl in b]
+    edges = [[r for _, r, d in CANONICAL_ETYPES if bl["n_dst"][d] > 0] for bl in b]
+    return nodes, edges
+
+
+def node_symbol(k: int, ntype: str, n_layers: int) -> str:
+    return "B" if k == n_layers else f"N{k}_{ntype}"     # node set L = the seeds (batch)
+
+
+def edge_symbol(layer: int, etype: str) -> str:
+    return f"E{layer}_{etype}"
+
+
+@functools.cache
+def mfg_sizes_class(n_layers: int) -> type:
+    """Frozen dataclass with one int field per MFG size except the seeds (`Config.batch`):
+    `N<k>_<ntype>` nodes of node set k, `E<l>_<etype>` edges of block l."""
+    nodes, edges = mfg_structure(n_layers)
+    names = [node_symbol(k, t, n_layers) for k in range(n_layers) for t in nodes[k]]
+    names += [edge_symbol(l, r) for l in range(n_layers) for r in edges[l]]
+    return dataclasses.make_dataclass(f"MFGSizes{n_layers}", [(n, int) for n in names],
+                                      frozen=True)
+
+
+def with_mfg_bounds(cfg: Config) -> Config:
+    """`cfg` with `mfg` set to the worst-case bounds of `mfg_bounds`."""
+    L = len(cfg.fanouts)
+    b = mfg_bounds(cfg)
+    nodes, edges = mfg_structure(L)
+    sizes = {node_symbol(k, t, L): b[k]["n_src"][t] for k in range(L) for t in nodes[k]}
+    sizes |= {edge_symbol(l, r): b[l]["n_edges"][r] for l in range(L) for r in edges[l]}
+    return dataclasses.replace(cfg, mfg=mfg_sizes_class(L)(**sizes))
+
+
+def mfg_capacity(cfg: Config):
+    """The padded block sizes (`mfg_bounds` layout): `cfg.mfg` if set, else the bounds."""
+    if cfg.mfg is None:
+        return mfg_bounds(cfg)
+    L = len(cfg.fanouts)
+    nodes, edges = mfg_structure(L)
+
+    def node_counts(k):
+        if k == L:
+            return {t: (cfg.batch if t == PREDICT else 0) for t in NTYPES}
+        return {t: getattr(cfg.mfg, node_symbol(k, t, L)) if t in nodes[k] else 0
+                for t in NTYPES}
+
+    return [{"n_src": node_counts(l), "n_dst": node_counts(l + 1),
+             "n_edges": {r: getattr(cfg.mfg, edge_symbol(l, r)) if r in edges[l] else 0
+                         for _, r, _ in CANONICAL_ETYPES}}
+            for l in range(L)]
 
 
 def _glorot(key, shape, dtype=DTYPE):
@@ -173,12 +242,16 @@ class HeteroGraphConv(nn.Module):
     @nn.compact
     def __call__(self, h, block, x_scale=None):
         c = self.cfg
-        n_dst = mfg_bounds(c)[self.layer]["n_dst"]
-        dst_inputs = {t: v[: n_dst[t]] for t, v in h.items() if n_dst[t] > 0}  # src prefix
+        # block.number_of_dst_nodes(t): the length of the block's dst node ids
+        n_dst = {t: v.shape[0] for t, v in block["dst_nodes"].items()}
+        dst_inputs = {t: v[: n_dst[t]] for t, v in h.items() if t in n_dst}  # src prefix
         outputs = {t: [] for t in NTYPES}
         # DGL also runs a GATConv for the relations into dst types that cannot occur
-        # in this block (on 0 dst nodes, result discarded); see live_etypes.
-        for s, r, d in live_etypes(c, self.layer):
+        # in this block (on 0 dst nodes, result discarded); the block carries only the
+        # relations of live_etypes.
+        for s, r, d in CANONICAL_ETYPES:
+            if r not in block:
+                continue
             mod = GATConv(c.h_feats // c.n_heads, c.n_heads, c.gat_negative_slope,
                           name=f"mods_{r}")
             outputs[d].append(mod(h[s], dst_inputs[d], block[r]["src"], block[r]["dst"],

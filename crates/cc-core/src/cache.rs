@@ -1,6 +1,6 @@
 //! Pass cache keys (spec §3.3): blake3 over the input artifact hashes, the pass's config section, the
-//! model set, the versions of the tools it calls and the pass version. A pass is a pure function of
-//! these, so equal keys mean equal outputs.
+//! model set and model config (`full`/`reduced`), the versions of the tools it calls and the pass
+//! version. A pass is a pure function of these, so equal keys mean equal outputs.
 
 use std::collections::BTreeMap;
 
@@ -18,6 +18,8 @@ pub struct CacheKeyInput<'a> {
     pub config: &'a serde_json::Value,
     /// Empty for passes that do not depend on the model set.
     pub models: &'a [String],
+    /// `models.config`; `None` for passes that do not depend on the model set.
+    pub model_config: Option<&'a str>,
     pub tools: &'a BTreeMap<String, String>,
 }
 
@@ -32,6 +34,7 @@ pub fn cache_key(input: &CacheKeyInput<'_>) -> String {
         "inputs": inputs,
         "config": input.config,
         "models": models,
+        "model_config": input.model_config,
         "tools": input.tools,
     });
     // Compact canonical JSON sorts every object key, so TOML key order cannot change the key.
@@ -52,8 +55,26 @@ mod tests {
             inputs,
             config: &v,
             models: &[],
+            model_config: None,
             tools: &BTreeMap::new(),
         })
+    }
+
+    #[test]
+    fn changes_with_model_config() {
+        let v = serde_json::json!({});
+        let k = |mc| {
+            cache_key(&CacheKeyInput {
+                pass: "p",
+                pass_version: 1,
+                inputs: vec![],
+                config: &v,
+                models: &["m".to_string()],
+                model_config: mc,
+                tools: &BTreeMap::new(),
+            })
+        };
+        assert_ne!(k(Some("full")), k(Some("reduced")));
     }
 
     #[test]

@@ -1,0 +1,29 @@
+# `export`
+
+1. **Purpose.** Every phase of every port in `models/` → StableHLO with explicit component boundaries (`stablehlo.composite "cc.<framework>.<Class>"`) and symbolic input sizes, plus the JSON the Rust passes read. The only pass whose work is Python: this module drives `python/cc_export` and checks its outputs independently.
+2. **Background.** Spec §2, §4.1, §5; `docs/context/tooling/jax_export.md`, `stablehlo.md`, `docker_resources.md`; `python/cc_export/README.md` (interception, symbolic shapes, the JSON format).
+3. **Outputs** (`out/export/<model>/`, JSON Schemas generated from `json.rs` into `docs/schemas/export_*.schema.json`):
+   - `export.json` (`ModelFile`): versions, declared symbols (field, value, perturbation), constraints, per phase the canonical graph hash, coverage, census summary, the exporter's own checks (invariance certificate included), file sizes; the recipe audit as data and the parameter dtypes.
+   - `<phase>/module.mlir`: StableHLO text (`Exported.mlir_module()`).
+   - `<phase>/exported.bin`: the serialized `jax.export.Exported` (tiny-size evaluation: `cc_export.evaluate.load`).
+   - `<phase>/graph.json` (`GraphFile`): functions → regions → blocks → ops (id, name, operand value ids, typed results, typed attributes, nested regions, location); the flattened inputs (pytree path, kind, `main` argument, symbolic shape); every composite instance (name, path, decomposition, parent, leaf); coverage; interception summary.
+   - `<phase>/symbols.json` (`SymbolsFile`): the phase's symbols and where they appear, the constraints (the sizes the hardware is valid for), every input axis left concrete.
+   - `<phase>/census.json` (`CensusFile`): every executed `dot_general` / convolution with `verify/hlo.py`'s signature, summary per signature, executed op multiset.
+   - `views/coverage.md`: per model, the share of ops inside composites / leaf composites.
+4. **Algorithm.** One process per model (`python -m cc_export --model <key> --config <models.config> --out <dir>`), `threads` of them in parallel on the pass's rayon pool, each capped at `memory_gb / threads` and one CPU; through the `DockerRunner` (repository mounted read-only at `/work/repo`, the kind directory read-write at `/work/out`, `/opt/cc/jax-venv/bin/python`) or the `HostRunner` (`uv run --frozen python`). Exit 3 means a phase failed to export (recorded in `export.json`, judged by `verify`); any other non-zero exit fails the pass. Inside the exporter, per phase: symbolic argument specs from `Phase.shapes` + `ModelSpec.symbols/constraints`; a discovery trace (`jax.eval_shape`) finds the phase root; `jax.export` under the Flax/Haiku/Keras interceptors; the module is walked with JAX's MLIR bindings into `graph.json`; the phase is re-exported from `build(cfg')` with every symbol's config field set to its `alt` (invariance).
+5. **Config** (`[passes.export]`): `runner = "docker" | "host"`, `exclude_classes = []` (classes never wrapped), `docker_python`, `host_python`. Resources: `threads = 4`, `memory_gb = 32` (8 GB per model), `timeout_min = 60`. `models.config` (`full` / `reduced`) selects the ports' `CONFIGS` entry and is part of the cache key.
+6. **Verification** (`verify.rs`, per model `<model>:<check>`):
+   - `exported`: every phase exported, at the run's `models.config`.
+   - `schema`: every JSON parses into the strict types.
+   - `mlir_verifier`: a fresh process (`python -m cc_export.facts`) re-parses each `module.mlir` and runs the MLIR verifier.
+   - `roundtrip`: the op-name multiset counted here from `graph.json` equals the one that process counted from `module.mlir`.
+   - `census`: recomputed here from `graph.json` (calls and composite decompositions expanded at every call site) equals `census.json`.
+   - `recipe_audit`: the census meets `models/<key>/recipe.py`'s audit (allow / require / per-phase / exact counts / parameter dtypes; `audit.rs`, the rules of `verify/dtype_audit.py`).
+   - `decompositions`: every composite decomposition and call target is a function of the module.
+   - `components`: no interception failure; the coverage recomputed here equals `graph.json`'s; every op is inside a composite or counted `anon`.
+   - `symbols`: the model declares input-dependent sizes; every symbol of every phase's shapes is declared and appears in some input; every declared symbol is used.
+   - `invariance`: the perturbed re-export gave the identical graph and no input shape changed (certificate: both hashes, the perturbation in `export.json`).
+   - `size_variants`: phases declared as size variants of another have its graph.
+   Every check has a negative test in `tests/smoke/export.rs` (a replayed real export of a toy port, `tests/fixtures/export/`).
+7. **Resources.** About 1–8 GB per model at `full` (abstract lowering), seconds per model at `reduced`. Cache key: besides the config section, the model set and `models.config`, the pass fingerprints its non-artifact inputs (`Pass::fingerprints`): the `models/` tree, `python/cc_export`, `verify/`, `uv.lock`, and the image tag when `runner = "docker"`; editing a port reruns the pass.
+8. **Limitations.** The invariance certificate is produced by the exporter (it needs the traced port); `verify` checks its consistency, not the trace itself. Composite attributes are hints (spec §4.3): later passes verify decompositions, never trust names. A dynamic dim's symbolic expression is not in the tensor type; it follows from the dimension-variable arguments (`jax.global_constant`) and the explicit size computation.

@@ -9,7 +9,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from models.spec import ModelSpec, Phase, as_spec
+from models.spec import ModelSpec, Phase, Sym, as_spec
 from models.wide_deep.net import Config, WideDeepModel
 
 
@@ -91,12 +91,17 @@ def build(cfg: Config) -> ModelSpec:
                  f"batch {cfg.batch} (eval phase batch {cfg.eval_batch}); recsys INT8 fallback: "
                  "W8A8 deep MLP (per-channel W, per-tensor static A), row-wise uint8 deep "
                  f"tables (fp16 scale + bias per row), {cfg.dtype} wide part, fp32 sigmoid"),
-        phases=[Phase("forward", forward, (input_spec(cfg, cfg.batch),),
+        phases=[Phase("forward", forward, (input_spec(cfg, cfg.batch),), shapes=("B, _",),
                       note="one inference call, batch 1"),
-                Phase("eval", forward, (input_spec(cfg, cfg.eval_batch),),
+                Phase("eval", forward, (input_spec(cfg, cfg.eval_batch),), shapes=("B, _",),
+                      size_variant_of="forward",
                       note=f"same network at NVIDIA's documented --eval_batch_size "
                            f"{cfg.eval_batch} (alternative to 'forward', not an extra step)")],
         param_specs=as_spec(variables),
+        # Every input is [B, 1] or [B, hotness]; hotness (the multi-hot list padding) is fixed
+        # by the Outbrain feature spec, so only the batch is a symbol ('eval' binds B to
+        # eval_batch).
+        symbols={"B": Sym("batch", 3, "examples per call")},
         excluded=[
             "NVTabular preprocessing: hash-bucketing / categorify of string ids into "
             "[0, cardinality) integer ids, multi-hot list padding with -1, numeric "

@@ -11,13 +11,14 @@ one key via `Phase.param_keys`.
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
-from models.spec import ModelSpec, Phase, as_spec
+from models.spec import ModelSpec, Phase, Sym, as_spec
 from models.flux import net
 from models.flux.net import (AutoencoderKL, CLIPTextConfig, CLIPTextModel, FluxConfig,
                              FluxTransformer2DModel, T5Config, T5EncoderModel, VAEConfig)
@@ -43,14 +44,32 @@ class Config:
     # Packed image-token count of transformer_step, if not (latent/2)^2: lets the denoiser
     # be exported with the token count as its own symbol (a square is not a linear shape).
     n_image_tokens: int | None = None
+    # Packed token grid (rows, cols) of vae_decode, if not (latent/2, latent/2): their own
+    # symbols (FluxPipeline takes any height / width, multiples of 16).
+    grid_h: int | None = None
+    grid_w: int | None = None
+    # CLIP prompt tokens: the tokenizer pads to model_max_length 77 (= max_position_embeddings)
+    clip_tokens: int = 77
 
     @property
     def clip_seq(self) -> int:
-        return self.clip.max_position_embeddings      # CLIP tokenizer pads to 77
+        return self.clip_tokens
 
     @property
     def image_tokens(self) -> int:
         return (self.latent // 2) ** 2 if self.n_image_tokens is None else self.n_image_tokens
+
+    @property
+    def grid(self) -> tuple[int, int]:
+        return (self.latent // 2 if self.grid_h is None else self.grid_h,
+                self.latent // 2 if self.grid_w is None else self.grid_w)
+
+
+def _with_sizes(cfg: Config) -> Config:
+    """`cfg` with the token counts of the square scenario (the `N` / `H` / `W` symbols'
+    fields) filled in."""
+    g = cfg.latent // 2
+    return dataclasses.replace(cfg, n_image_tokens=g * g, grid_h=g, grid_w=g)
 
 
 REDUCED = Config(
@@ -66,8 +85,8 @@ REDUCED = Config(
 )
 
 CONFIGS = {
-    "full": Config(),
-    "reduced": REDUCED,
+    "full": _with_sizes(Config()),
+    "reduced": _with_sizes(REDUCED),
 }
 
 
@@ -97,7 +116,7 @@ def input_specs(cfg: Config) -> dict:
                              S((T, 3), dt)),                            # text_ids
         # packed latents after step 4, as their (latent/2, latent/2) token grid (a contiguous
         # host-side reshape of [B, N, 4C], so that every axis is a linear size)
-        "vae_decode": (S((B, cfg.latent // 2, cfg.latent // 2, tr.in_channels), dt),),
+        "vae_decode": (S((B, *cfg.grid, tr.in_channels), dt),),
     }
 
 
@@ -188,20 +207,21 @@ def build(cfg: Config) -> ModelSpec:
     T, N = cfg.max_sequence_length, cfg.image_tokens
     phases = [
         Phase("clip_text_encoder", _phase_fn(cfg, "text_encoder"), specs["clip_text_encoder"],
-              trip_count=1, param_keys=("text_encoder",),
+              trip_count=1, param_keys=("text_encoder",), shapes=("B, L",),
               note="CLIPTextModel(input_ids).pooler_output -> pooled_prompt_embeds [1,768]"),
         Phase("t5_text_encoder", _phase_fn(cfg, "text_encoder_2"), specs["t5_text_encoder"],
-              trip_count=1, param_keys=("text_encoder_2",),
+              trip_count=1, param_keys=("text_encoder_2",), shapes=("B, T",),
               note=f"T5EncoderModel(input_ids)[0] -> prompt_embeds [1,{T},{cfg.t5.d_model}] "
                    "(no attention mask, as FluxPipeline)"),
         Phase("transformer_step", _phase_fn(cfg, "transformer"), specs["transformer_step"],
               trip_count=cfg.steps, param_keys=("transformer",),
+              shapes=("B, N, _", "B, T, _", "B, _", "B", "N, _", "T, _"),
               note=f"FluxTransformer2DModel on {N} packed image + {T} text tokens (incl. RoPE from "
                    "ids, timestep/text embedding); returns the velocity. No CFG (guidance_scale 0, "
                    "guidance_embeds=False). The flow-matching Euler update is host scheduler math "
                    "(excluded)."),
         Phase("vae_decode", _phase_fn(cfg, "vae"), specs["vae_decode"], trip_count=1,
-              param_keys=("vae",),
+              param_keys=("vae",), shapes=("B, H, W, _",),
               note="_unpack_latents, latents / 0.3611 + 0.1159, AutoencoderKL.decode(...).sample "
                    f"-> image [1,3,{8 * cfg.latent},{8 * cfg.latent}]"),
     ]
@@ -213,6 +233,14 @@ def build(cfg: Config) -> ModelSpec:
                 f"export), CLIP / T5 / VAE {cfg.dtype}",
         phases=phases,
         param_specs=as_spec(variables),
+        symbols={"B": Sym("batch", 2, "images per call (prompts x num_images_per_prompt)"),
+                 "L": Sym("clip_tokens", 40, "CLIP prompt tokens (the tokenizer pads to 77)"),
+                 "T": Sym("max_sequence_length", 12, "T5 prompt tokens (max_sequence_length)"),
+                 "N": Sym("n_image_tokens", 20, "packed image tokens: (height/16) x (width/16)"),
+                 "H": Sym("grid_h", 3, "packed latent token rows (height / 16)"),
+                 "W": Sym("grid_w", 5, "packed latent token columns (width / 16)")},
+        # CLIP's learned position table; FluxPipeline.check_inputs: max_sequence_length <= 512
+        constraints=(f"L <= {cfg.clip.max_position_embeddings}", "T <= 512"),
         excluded=[
             "CLIPTokenizer (77, padded with EOS) and T5TokenizerFast "
             f"(max_sequence_length {T}, padded with PAD) tokenization (host)",

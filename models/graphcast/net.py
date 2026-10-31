@@ -57,6 +57,8 @@ if GC_DIR not in sys.path:
     sys.path.insert(0, GC_DIR)
 
 import haiku as hk  # noqa: E402
+import jax  # noqa: E402
+import jax.numpy as jnp  # noqa: E402
 import numpy as np  # noqa: E402
 import xarray  # noqa: E402
 from graphcast import autoregressive  # noqa: E402
@@ -131,8 +133,10 @@ def var_shape(cfg: Config, name: str, n_time: int) -> tuple[int, ...]:
 
 
 def _coords(cfg: Config, times):
-    lat, lon = grid(cfg)
-    return {"lat": lat, "lon": lon, "level": np.array(TASK.pressure_levels),
+    """Coordinates of the Datasets. lat / lon carry none: the grid size is an input size (a
+    symbol of the export), and GraphCast reads the grid coordinates only to build its
+    graphs, which `static_graph` takes from the inputs instead."""
+    return {"level": np.array(TASK.pressure_levels),
             "time": np.asarray(times, "timedelta64[ns]")}
 
 
@@ -207,13 +211,19 @@ def make_fn(cfg: Config, stats: dict):
 # Static graph structure as inputs
 # ----------------------------------------------------------------------------
 
+def _count(n) -> np.ndarray | jax.Array:
+    """The library's `np.array([n])` node / edge counts; a symbolic count (an input size
+    in the export) becomes the equivalent jax array (numpy cannot hold it)."""
+    return jnp.asarray([n]) if jax.export.is_symbolic_dim(n) else np.array([n])
+
+
 def _bipartite(graph: dict, name: str, senders_set: str, receivers_set: str,
                n_nodes: dict, node_features: dict) -> typed_graph.TypedGraph:
     g = graph[name]
-    nodes = {k: typed_graph.NodeSet(n_node=np.array([n_nodes[k]]), features=node_features[k])
+    nodes = {k: typed_graph.NodeSet(n_node=_count(n_nodes[k]), features=node_features[k])
              for k in (senders_set, receivers_set)}
     edges = {typed_graph.EdgeSetKey(name, (senders_set, receivers_set)): typed_graph.EdgeSet(
-        n_edge=np.array([g["senders"].shape[0]]),
+        n_edge=_count(g["senders"].shape[0]),
         indices=typed_graph.EdgesIndices(senders=g["senders"], receivers=g["receivers"]),
         features=g["edge_features"])}
     return typed_graph.TypedGraph(
@@ -225,8 +235,10 @@ def _bipartite(graph: dict, name: str, senders_set: str, receivers_set: str,
 def static_graph(graph: dict):
     """GraphCast._maybe_init with the three graph structures from `graph`.
 
-    Mesh / grid properties (lat/lon of the nodes) are still initialized by the
-    library. The node features of the mesh graph and the mesh2grid graph are
+    Mesh properties (lat/lon of the mesh nodes) are still initialized by the library;
+    the grid properties come from the inputs' sizes (the Datasets carry no lat/lon
+    coordinates, see `_coords`): only the grid shape and node count are read once the
+    graphs are given. The node features of the mesh graph and the mesh2grid graph are
     replaced by latents before use in GraphCast._run_{mesh,mesh2grid}_gnn; they
     hold the same structural features as grid2mesh's (same lat/lon functions)."""
     orig = gc.GraphCast._maybe_init
@@ -234,7 +246,13 @@ def static_graph(graph: dict):
     def _maybe_init(self, sample_inputs):
         if not self._initialized:   # (as the library: build once per predictor)
             self._init_mesh_properties()
-            self._init_grid_properties(grid_lat=sample_inputs.lat, grid_lon=sample_inputs.lon)
+            # _init_grid_properties without coordinates: _grid_node_outputs_to_prediction
+            # reads only _grid_lat.shape[0] / _grid_lon.shape[0]; the grid node lat/lon
+            # feed only the graph builders replaced here.
+            n_lat, n_lon = sample_inputs.sizes["lat"], sample_inputs.sizes["lon"]
+            self._grid_lat = jax.ShapeDtypeStruct((n_lat,), np.float32)
+            self._grid_lon = jax.ShapeDtypeStruct((n_lon,), np.float32)
+            self._num_grid_nodes = graph["grid2mesh"]["grid_node_features"].shape[0]
             n_nodes = {"grid_nodes": self._num_grid_nodes, "mesh_nodes": self._num_mesh_nodes}
             feats = {"grid_nodes": graph["grid2mesh"]["grid_node_features"],
                      "mesh_nodes": graph["grid2mesh"]["mesh_node_features"]}

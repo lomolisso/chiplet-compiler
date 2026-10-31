@@ -15,7 +15,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from models.spec import ModelSpec, Phase, as_spec
+from models.spec import ModelSpec, Phase, Sym, as_spec
 from models.pointpainting.net import DeepLabV3Plus, PointPillarsCore, PPConfig, SegConfig
 
 
@@ -26,11 +26,22 @@ class Config:
     # Waymo camera images are fed at native resolution (ToTensor + Normalize,
     # no resize): FRONT / FRONT_LEFT / FRONT_RIGHT 1920x1280, SIDE_LEFT /
     # SIDE_RIGHT 1920x886.
-    image_front: tuple[int, int] = (1280, 1920)
-    image_side: tuple[int, int] = (886, 1920)
+    front_h: int = 1280
+    front_w: int = 1920
+    side_h: int = 886
+    side_w: int = 1920
+    batch: int = 1                      # camera images per segmenter call (MLPerf: 1)
     n_front: int = 3
     n_side: int = 2
     n_valid: int | None = None          # valid pillars in example inputs (None: all)
+
+    @property
+    def image_front(self) -> tuple[int, int]:
+        return (self.front_h, self.front_w)
+
+    @property
+    def image_side(self) -> tuple[int, int]:
+        return (self.side_h, self.side_w)
 
 
 CONFIGS = {
@@ -41,7 +52,7 @@ CONFIGS = {
     # and 512 pillar slots of which 400 are valid.
     "reduced": Config(pp=PPConfig(point_cloud_range=(-10.24, -10.24, -2.0, 10.24, 10.24, 4.0),
                                   max_voxels=512),
-                      image_front=(128, 192), image_side=(90, 192), n_valid=400),
+                      front_h=128, front_w=192, side_h=90, side_w=192, n_valid=400),
 }
 
 PHASE_COMPONENT = {"segmenter": "segmenter", "segmenter_side": "segmenter",
@@ -54,7 +65,7 @@ def _modules(cfg: Config):
 
 def input_specs(cfg: Config) -> dict:
     p = cfg.pp
-    img = lambda hw: (jax.ShapeDtypeStruct((1, *hw, 3), jnp.float32),)
+    img = lambda hw: (jax.ShapeDtypeStruct((cfg.batch, *hw, 3), jnp.float32),)
     return {
         "segmenter": img(cfg.image_front),
         "segmenter_side": img(cfg.image_side),
@@ -148,16 +159,17 @@ def build(cfg: Config) -> ModelSpec:
     p = cfg.pp
     phases = [
         Phase("segmenter", phase_fn("segmenter"), specs["segmenter"], trip_count=cfg.n_front,
-              param_keys=("segmenter",),
+              param_keys=("segmenter",), shapes=("B, H, W, _",),
               note=f"DeepLabV3+ R50 OS16 on one front camera image {cfg.image_front} (HxW, NHWC, "
                    "normalized fp32, quantized by conv1); 3 calls/frame (FRONT, FRONT_LEFT, "
                    "FRONT_RIGHT). Output: 19-class fp32 logits at input resolution."),
         Phase("segmenter_side", phase_fn("segmenter"), specs["segmenter_side"],
-              trip_count=cfg.n_side, param_keys=("segmenter",),
+              trip_count=cfg.n_side, param_keys=("segmenter",), shapes=("B, H, W, _",),
+              size_variant_of="segmenter",
               note=f"Same network on a side camera image {cfg.image_side}; 2 calls/frame "
                    "(SIDE_LEFT, SIDE_RIGHT)."),
         Phase("pointpillars", phase_fn("pointpillars"), specs["pointpillars"], trip_count=1,
-              param_keys=("pointpillars",),
+              param_keys=("pointpillars",), shapes=("P, _, _", "P, _", "P"),
               note=f"PointPillarsCore up to the head on {p.max_voxels} padded pillars x "
                    f"{p.max_num_points} points x {p.point_dim} (painted) features, pillar "
                    f"coords (x, y, z) and npoints (0 = padding slot); BEV canvas "
@@ -172,6 +184,11 @@ def build(cfg: Config) -> ModelSpec:
                 f"batch 1",
         phases=phases,
         param_specs=as_spec(variables),
+        symbols={"B": Sym("batch", 2, "camera images per segmenter call"),
+                 "H": Sym("front_h", 100, "camera image height (front 1280, side 886 at full)"),
+                 "W": Sym("front_w", 160, "camera image width"),
+                 "P": Sym("pp.max_voxels", 640, "padded pillar slots")},
+        constraints=("H >= 16", "W >= 16"),
         excluded=[
             "image decode + ToTensor + Normalize(ImageNet mean/std) (host preprocessing)",
             "Painter.get_score: softmax over the 19 logits and regrouping into 6 painting "

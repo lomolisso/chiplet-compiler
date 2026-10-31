@@ -214,6 +214,18 @@ RUN set -eu \
 # ---------------------------------------------------------------------------------------------
 # final
 # ---------------------------------------------------------------------------------------------
+# The project's locked JAX stack (pyproject.toml + uv.lock: jax, flax, haiku, keras, ...) for the export
+# pass, in its own venv: Allo's /opt/cc/venv pins its own numpy and MLIR bindings.
+FROM base AS jax
+LABEL chiplet-compiler.stage=jax
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ENV UV_PYTHON_DOWNLOADS=never UV_CACHE_DIR=/tmp/uv-cache UV_PROJECT_ENVIRONMENT=/opt/cc/jax-venv \
+    KERAS_BACKEND=jax
+COPY pyproject.toml uv.lock /src/jax/
+RUN cd /src/jax && uv sync --frozen --no-install-project --no-dev --python /usr/bin/python3.12 \
+ && /opt/cc/jax-venv/bin/python -c "import jax, flax, haiku, keras, flatbuffers; print('jax', jax.__version__)" \
+ && rm -rf /tmp/uv-cache
+
 FROM base AS final
 LABEL chiplet-compiler.stage=final
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -230,6 +242,7 @@ COPY --from=grami /opt/grami /opt/grami
 COPY --from=llvm-allo /opt/llvm-rt /opt/llvm-project/build
 COPY --from=llvm-allo /opt/allo /opt/allo
 COPY --from=llvm-allo /opt/cc/venv /opt/cc/venv
+COPY --from=jax /opt/cc/jax-venv /opt/cc/jax-venv
 COPY docker/cc-probe.py /opt/cc/bin/cc-probe
 COPY docker/selftest.sh /opt/cc/bin/cc-selftest
 # DockerRunner runs as the host uid with HOME=/tmp/home (docs/context/tooling/docker_resources.md §3).

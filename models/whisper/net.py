@@ -67,6 +67,9 @@ class Config:
     dtype: str = "float16"          # CTranslate2 int8_float16: float layers in fp16
     # MLPerf decode settings (not read by the network itself)
     batch: int = 1
+    # static self-attention KV-cache capacity (HF Flax `init_cache(batch_size, max_length)`;
+    # generation_config.json max_length = 448); at most max_target_positions
+    max_length: int = 448
     prompt_len: int = 4            # <|startoftranscript|><|en|><|transcribe|><|notimestamps|>
     max_new_tokens: int = 200      # vLLM SamplingParams(max_tokens=200, temperature=0)
 

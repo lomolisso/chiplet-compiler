@@ -16,7 +16,7 @@ import jax
 import jax.numpy as jnp
 
 from models.quant import FP8
-from models.spec import ModelSpec, Phase, as_spec
+from models.spec import ModelSpec, Phase, Sym, as_spec
 from models.llama.net import Config, Transformer
 
 # MLPerf Inference llama3.1-8b: SUT_VLLM.py sampling params "max_tokens": 128.
@@ -48,8 +48,8 @@ def input_specs(cfg: Config) -> dict:
     }
 
 
-def _apply(cfg: Config, variables, tokens, cache, cache_index, **kw):
-    return Transformer(cfg).apply(variables, tokens, cache, cache_index, **kw)
+def _apply(cfg: Config, variables, tokens, cache, cache_index, decode=False, **kw):
+    return Transformer(cfg, decode).apply(variables, tokens, cache, cache_index, **kw)
 
 
 def prefill_fn(cfg: Config):
@@ -60,7 +60,7 @@ def prefill_fn(cfg: Config):
 
 def decode_fn(cfg: Config):
     def decode_step(variables, token, position, cache):
-        return _apply(cfg, variables, token, cache, position)
+        return _apply(cfg, variables, token, cache, position, decode=True)
     return decode_step
 
 
@@ -96,8 +96,8 @@ def intermediates(cfg: Config, variables, *inputs) -> dict:
         pos = jnp.int32(0)
     else:
         tokens, pos, cache = inputs
-    _, state = _apply(cfg, variables, tokens, cache, pos, capture_intermediates=True,
-                      mutable=["intermediates"])
+    _, state = _apply(cfg, variables, tokens, cache, pos, decode=len(inputs) == 3,
+                      capture_intermediates=True, mutable=["intermediates"])
     flat = {}
     for path, v in jax.tree_util.tree_flatten_with_path(
             state["intermediates"], is_leaf=lambda t: isinstance(t, tuple))[0]:
@@ -121,16 +121,21 @@ def build(cfg: Config) -> ModelSpec:
                  f"static FP8 KV cache {cfg.max_target_length}"),
         phases=[
             Phase("prefill", prefill_fn(cfg), specs["prefill"], trip_count=1,
+                  shapes=("B, P", "B, S, _, _"),
                   note=f"{cfg.max_prefill_predict_length} prompt tokens at positions 0..; writes "
                        f"cache slots 0..{cfg.max_prefill_predict_length - 1}; last-position logits"),
             Phase("decode_step", decode_fn(cfg), specs["decode_step"],
-                  trip_count=MAX_OUTPUT_TOKENS,
+                  trip_count=MAX_OUTPUT_TOKENS, shapes=("B, _", "", "B, S, _, _"),
                   note="one token at a runtime int32 position; dynamic_update_slice cache write; "
                        f"attends over all {cfg.max_target_length} slots with a causal/valid mask. "
                        "Trip count = MLPerf max_tokens 128 (the first output token comes from "
                        "prefill, so at most 127 decode calls are strictly needed)."),
         ],
         param_specs=as_spec(variables),
+        symbols={"B": Sym("batch", 3, "sequences per call"),
+                 "P": Sym("max_prefill_predict_length", 12, "prompt tokens (prefill)"),
+                 "S": Sym("max_target_length", 40, "static KV-cache capacity")},
+        constraints=("S >= P",),
         excluded=["tokenization / detokenization (pre/postprocessing)",
                   "sampling (MLPerf: greedy argmax over logits) and the outer decode loop",
                   "TensorRT-LLM paged KV cache / in-flight batching scheduler",

@@ -34,16 +34,20 @@ REPORTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
 
 
 def audit(key: str, cfg_name: str = "reduced"):
-    rec = RECIPES[key]
-    aud = rec["audit"]
     mod = hlo.load(key)
     spec = mod.build(mod.CONFIGS[cfg_name])
     trips = {p.name: p.trip_count for p in spec.phases}
     texts = hlo.lower_phases(key, cfg_name)
-    per_phase, seen, errors = {}, set(), []
-    for ph, text in texts.items():
-        summ = hlo.summarize(hlo.census(text))
-        per_phase[ph] = summ
+    per_phase = {ph: hlo.summarize(hlo.census(text)) for ph, text in texts.items()}
+    have = {str(l.dtype) for l in jax.tree_util.tree_leaves(spec.param_specs)}
+    return per_phase, trips, check(RECIPES[key], per_phase, cfg_name, have)
+
+
+def check(rec: dict, per_phase: dict, cfg_name: str, param_dtypes: set[str]) -> list[str]:
+    """The recipe's audit over {phase: {signature: {"count", ...}}} (also used by cc_export, another change)."""
+    aud = rec["audit"]
+    seen, errors = set(), []
+    for ph, summ in per_phase.items():
         ph_aud = aud.get("phases", {}).get(ph, {})
         allow = ph_aud.get("allow", aud["allow"])
         for sig in summ:
@@ -62,13 +66,11 @@ def audit(key: str, cfg_name: str = "reduced"):
             errors.append(f"required {sig} not found")
     # Parameter storage dtypes (weight-only and storage-only recipes do not show in the
     # GEMM signatures): every dtype in audit["params"] must be stored by some parameter.
-    want = rec["audit"].get("params", {})
-    if want:
-        have = {str(l.dtype) for l in jax.tree_util.tree_leaves(spec.param_specs)}
-        for dt in want:
-            if dt not in have:
-                errors.append(f"no parameter stored as {dt} ({want[dt]})")
-    return per_phase, trips, errors
+    want = aud.get("params", {})
+    for dt in want:
+        if dt not in param_dtypes:
+            errors.append(f"no parameter stored as {dt} ({want[dt]})")
+    return errors
 
 
 def _histogram_md(results, cfg_name) -> str:

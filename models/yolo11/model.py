@@ -5,15 +5,15 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from models.spec import ModelSpec, Phase, as_spec
-from models.yolo11.net import Config, DetectionModel
+from models.spec import ModelSpec, Phase, Sym, as_spec
+from models.yolo11.net import MAX_STRIDE, Config, DetectionModel
 
 # full: yolo11l.yaml scale "l" = [depth 1.00, width 1.00, max_channels 512], 640x640.
 # reduced: same block types (C3k2 with C3k, SPPF, multi-head C2PSA, Detect + DFL),
 # depth 0.5 (one block per C3k2/C2PSA), width 0.25, 160x160 input.
 CONFIGS = {
     "full": Config(),
-    "reduced": Config(image=160, depth=0.5, width=0.25, max_channels=1024),
+    "reduced": Config(grid=5, depth=0.5, width=0.25, max_channels=1024),
 }
 
 
@@ -56,8 +56,13 @@ def build(cfg: Config) -> ModelSpec:
                  "fp32 sigmoid"),
         phases=[Phase("forward", forward, input_spec(cfg),
                       note="raw eval-mode Detect output (B, 4+nc, anchors): xywh boxes "
-                           "(pixels) + sigmoid class scores, before NMS")],
+                           "(pixels) + sigmoid class scores, before NMS",
+                      # the image is a whole number of stride-32 cells (Config.grid)
+                      shapes=(f"B, {MAX_STRIDE}*H, {MAX_STRIDE}*W, _",))],
         param_specs=as_spec(variables),
+        symbols={"B": Sym("batch", 3, "images per call"),
+                 "H": Sym("grid", 7, f"image height / {MAX_STRIDE} (rows of stride-{MAX_STRIDE} cells)"),
+                 "W": Sym("grid", 7, f"image width / {MAX_STRIDE} (columns of stride-{MAX_STRIDE} cells)")},
         excluded=["image decode, letterbox resize/pad to 640x640, BGR->RGB, /255 (preprocessing)",
                   "confidence filtering + NMS (non_max_suppression), box rescale to the "
                   "original image (postprocessing)"],

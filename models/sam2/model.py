@@ -32,18 +32,26 @@ import dataclasses
 import jax
 import jax.numpy as jnp
 
-from models.spec import ModelSpec, Phase, as_spec
+from models.spec import ModelSpec, Phase, Sym, as_spec
 from models.sam2 import net
 from models.sam2.net import Config
 
+
+def _with_bank(cfg: Config) -> Config:
+    """`cfg` with the steady-state bank sizes (the `NM` / `NP` symbols' fields) filled in."""
+    max_ptrs = min(cfg.num_frames, cfg.max_obj_ptrs_in_encoder)
+    return dataclasses.replace(cfg, bank_mems=min(cfg.num_frames, cfg.num_maskmem),
+                               bank_ptrs=max_ptrs)
+
+
 CONFIGS = {
-    "full": Config(),
+    "full": _with_bank(Config()),
     # Same structure (4 Hiera stages with q-pooling, windowed + global blocks, bicubic
     # window pos-embed 7 -> 64, FPN with top-down levels, 4-token object pointers,
     # 7 spatial memories, 16 pointers), small sizes.
-    "reduced": Config(embed_dim=16, num_heads=1, stages=(1, 2, 4, 2), global_att_blocks=(5, 6),
-                      window_spec=(8, 4, 8, 4), d_model=64, mem_attn_layers=2, mem_attn_ffn=128,
-                      mem_dim=16, image_size=256),
+    "reduced": _with_bank(Config(embed_dim=16, num_heads=1, stages=(1, 2, 4, 2),
+                                 global_att_blocks=(5, 6), window_spec=(8, 4, 8, 4), d_model=64,
+                                 mem_attn_layers=2, mem_attn_ffn=128, mem_dim=16, image_size=256)),
 }
 
 GROUPS = {"image_encoder": net.SAM2ImageEncoder, "cond_frame": net.SAM2CondFrame,
@@ -71,7 +79,9 @@ def memory_phases(cfg: Config) -> list[tuple[str, int, int, int, int]]:
     while bank_size(cfg, t) != full:
         out.append((f"memory_attention_f{t:02d}", t, 1) + bank_size(cfg, t))
         t += 1
-    out.append(("memory_attention", t, cfg.num_frames - t) + full)
+    steady = (full[0] if cfg.bank_mems is None else cfg.bank_mems,
+              full[1] if cfg.bank_ptrs is None else cfg.bank_ptrs)
+    out.append(("memory_attention", t, cfg.num_frames - t) + steady)
     return out
 
 
@@ -102,9 +112,6 @@ def input_specs(cfg: Config) -> dict:
 def _module(cfg: Config, group: str, phase: str | None = None):
     if group == "sam_heads":
         return net.SAM2Heads(cfg, num_points=1 if phase == "sam_heads_cond" else 0)
-    if group == "memory_conditioning":
-        _, _, _, n_mem, n_ptr = next(m for m in memory_phases(cfg) if m[0] == phase)
-        return net.SAM2MemoryConditioning(cfg, n_mem, n_ptr)
     if group == "memory_encoding":
         return net.SAM2MemoryEncoding(cfg, cond=phase == "memory_encoder_cond")
     return GROUPS[group](cfg)
@@ -215,8 +222,26 @@ def build(cfg: Config) -> ModelSpec:
     specs = input_specs(cfg)
     N = cfg.num_frames
     mph = memory_phases(cfg)
+    # Symbolic sizes: B tracked objects (every phase), NM / NP the memory-bank sizes. The frame
+    # size is SAM2Base.image_size (frames are resized to it; _forward_sam_heads asserts the
+    # stride-16 map is sam_image_embedding_size), the click count is 1 (_use_multimask: the
+    # multimask head serves 0..1 clicks), so those axes are architecture constants.
+    feat = "B, _, _, _"
+    shapes = {
+        "image_encoder": (feat,),
+        "sam_heads_cond": (feat, feat, feat, "B, _, _", "B, _"),
+        "memory_encoder_cond": (feat, feat, "B, _"),
+        "sam_heads": (feat, feat, feat),
+        "memory_encoder": (feat, feat, "B, _"),
+    }
+    for name, *_ in mph:
+        shapes[name] = (feat, feat, "NM, B, _, _, _", feat, "NP, B, _", "")
+    steady = mph[-1][0]
     ph = lambda name, trips, note: Phase(name, phase_fn(cfg, name), specs[name], trip_count=trips,
-                                         param_keys=phase_groups(name), note=note)
+                                         param_keys=phase_groups(name), note=note,
+                                         shapes=shapes[name],
+                                         size_variant_of=steady if name.startswith("memory_attention_f")
+                                         else None)
     phases = [
         ph("image_encoder", N, "SAM2Base.forward_image on one normalized frame: Hiera-L trunk, "
            "FPN neck (scalp 1), conv_s0/conv_s1 -> (backbone_fpn[0..2], vision_pos_enc[0..2]); "
@@ -253,6 +278,13 @@ def build(cfg: Config) -> ModelSpec:
                  "attention cores and norms fp16; fp16 memory bank)"),
         phases=phases,
         param_specs=as_spec(variables),
+        symbols={"B": Sym("batch", 2, "tracked objects (batched prompts) per call"),
+                 "NM": Sym("bank_mems", 4, "spatial memories in the bank (conditioning frame + "
+                                           "previous frames)"),
+                 "NP": Sym("bank_ptrs", 9, "object pointers in the bank (conditioning frame + "
+                                           "previous frames)")},
+        # maskmem_tpos_enc has num_maskmem rows; at most max_obj_ptrs_in_encoder pointers
+        constraints=(f"NM <= {cfg.num_maskmem}", f"NP <= {cfg.max_obj_ptrs_in_encoder}"),
         excluded=[
             "video decoding, resize to 1024^2 and ImageNet normalization (load_video_frames; host)",
             "click coordinate normalization to the 1024 grid (add_new_points_or_box; host)",

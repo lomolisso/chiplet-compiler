@@ -5,6 +5,10 @@ Nothing is executed: every phase is lowered with `jax.jit(fn).lower(...)` on
 `convolution` is reported with its operand element types, accumulator (result)
 type and FLOPs (2 * MACs), with calls to private functions expanded.
 
+Also reads modules from symbolic export with component composites: composite
+decompositions are expanded like calls, `dynamic_conv` counts as a convolution, and a
+dynamic (`?`) dim leaves the FLOPs unknown (None).
+
     python -m verify.hlo resnet50 [reduced|full]
 """
 
@@ -20,12 +24,12 @@ import jax
 
 _TENSOR = re.compile(r"tensor<([^>]*)>")
 _FUNC = re.compile(r"^\s*func\.func\s+(?:public\s+|private\s+)?@([\w.$-]+)")
-_CALL = re.compile(r"(?:func\.)?call\s+@([\w.$-]+)")
+_CALL = re.compile(r"(?:(?:func\.)?call\s+|decomposition = )@([\w.$-]+)")
 
 
 def _ttype(s: str):
     parts = s.split("x")
-    dims = [int(p) for p in parts[:-1]]
+    dims = [None if p == "?" else int(p) for p in parts[:-1]]
     return tuple(dims), parts[-1]
 
 
@@ -35,7 +39,7 @@ class Op:
     lhs: str            # element types
     rhs: str
     out: str
-    flops: int
+    flops: int | None   # None when a dim is dynamic
     lhs_shape: tuple
     rhs_shape: tuple
     out_shape: tuple
@@ -45,10 +49,14 @@ class Op:
         return f"{self.lhs}x{self.rhs}->{self.out}"
 
 
+def _mul(n, d):
+    return None if n is None or d is None else n * d
+
+
 def _parse_op(line: str) -> Op | None:
     if "stablehlo.dot_general" in line:
         kind = "dot_general"
-    elif "stablehlo.convolution" in line:
+    elif "stablehlo.convolution" in line or "stablehlo.dynamic_conv" in line:
         kind = "convolution"
     else:
         return None
@@ -57,20 +65,21 @@ def _parse_op(line: str) -> Op | None:
     (ls, lt), (rs, rt), (os_, ot) = ts[0], ts[1], ts[-1]
     out_n = 1
     for d in os_:
-        out_n *= d
+        out_n = _mul(out_n, d)
     if kind == "dot_general":
         m = re.search(r"contracting_dims = \[([\d, ]*)\] x", line)
         k = 1
         for i in (int(t) for t in m.group(1).split(",") if t.strip()):
-            k *= ls[i]
+            k = _mul(k, ls[i])
     else:
         m = re.search(r"x\[([^\]]*)\]->", line)
         labels = [t.strip() for t in m.group(1).split(",")]
         k = 1
         for lab, d in zip(labels, rs):
             if lab != "o":
-                k *= d
-    return Op(kind, lt, rt, ot, 2 * out_n * k, ls, rs, os_)
+                k = _mul(k, d)
+    flops = None if out_n is None or k is None else 2 * out_n * k
+    return Op(kind, lt, rt, ot, flops, ls, rs, os_)
 
 
 def census(text: str) -> list[Op]:
@@ -128,7 +137,7 @@ def summarize(ops: list[Op]) -> dict[str, dict]:
     for op in ops:
         a = agg[f"{op.kind} {op.sig}"]
         a["count"] += 1
-        a["flops"] += op.flops
+        a["flops"] = None if a["flops"] is None or op.flops is None else a["flops"] + op.flops
     return dict(sorted(agg.items()))
 
 

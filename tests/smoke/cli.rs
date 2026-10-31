@@ -37,7 +37,8 @@ fn run_status_verify_clean() {
     let env = env();
     let (code, out) = chipc(&env, &["status"]);
     assert_eq!(code, 0);
-    assert_eq!(out.matches("not run").count(), 3, "{out}");
+    // the toy targets: hello_a, hello_b, hello_c; `export` is registered but not a target here
+    assert_eq!(out.matches("not run").count(), 4, "{out}");
 
     let (code, out) = chipc(&env, &["run"]);
     assert_eq!(code, 0, "{out}");
@@ -48,7 +49,7 @@ fn run_status_verify_clean() {
     assert!(out.contains("ran 1, cache hits 2"), "{out}");
 
     let (_, out) = chipc(&env, &["status"]);
-    let rows: Vec<&str> = out.lines().skip(1).collect();
+    let rows: Vec<&str> = out.lines().skip(1).filter(|r| r.starts_with("hello_")).collect();
     assert_eq!(rows.len(), 3);
     assert!(
         rows.iter()

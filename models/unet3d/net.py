@@ -46,10 +46,21 @@ from models.unet3d import qops
 @dataclass(frozen=True)
 class Config:
     batch: int = 1
-    roi: int = 128                                   # ROI_SHAPE = [128, 128, 128]
+    # ROI edge in units of the network's total stride (`stride`, 32): the decoder concatenates
+    # each 2x upsampled level with its encoder skip, so every ROI dim is a multiple of it.
+    grid: int = 4                                    # ROI_SHAPE = [128, 128, 128]
     in_channels: int = 1
     n_class: int = 3
     filters: tuple[int, ...] = (32, 64, 128, 256, 320)
+
+    @property
+    def stride(self) -> int:
+        """Total downsampling: one stride-2 conv per encoder level and in the bottleneck."""
+        return 2 ** len(self.filters)
+
+    @property
+    def roi(self) -> int:
+        return self.grid * self.stride
 
 
 def conv_block(t, out_channels: int, name: str, stride: int = 1,

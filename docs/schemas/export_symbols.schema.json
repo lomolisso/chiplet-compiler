@@ -1,0 +1,143 @@
+{
+  "$defs": {
+    "ConcreteAxis": {
+      "additionalProperties": false,
+      "properties": {
+        "axis": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "type": "string"
+        },
+        "size": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "axis",
+        "size"
+      ],
+      "type": "object"
+    },
+    "SymbolDecl": {
+      "additionalProperties": false,
+      "description": "A declared symbol: the config field holding its value, that value, and the perturbed `alt`.",
+      "properties": {
+        "alt": {
+          "description": "A number (a size, or e.g. a grid resolution the sizes derive from)."
+        },
+        "doc": {
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
+        },
+        "inputs": {
+          "description": "Where the symbol appears among the phase's inputs (`symbols.json` only).",
+          "items": {
+            "$ref": "#/$defs/SymbolSite"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "value": true
+      },
+      "required": [
+        "field",
+        "value",
+        "alt",
+        "doc"
+      ],
+      "type": "object"
+    },
+    "SymbolSite": {
+      "additionalProperties": false,
+      "properties": {
+        "axis": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "expr": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "axis",
+        "expr"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`out/export/<model>/<phase>/symbols.json`.",
+  "properties": {
+    "concrete_input_axes": {
+      "description": "Every input axis left concrete (architecture dims).",
+      "items": {
+        "$ref": "#/$defs/ConcreteAxis"
+      },
+      "type": "array"
+    },
+    "constraints": {
+      "description": "The constraints of the symbolic scope (the sizes the hardware is valid for).",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "model": {
+      "type": "string"
+    },
+    "phase": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "shapes": {
+      "description": "`Phase.shapes` as declared by the port (a pytree prefix of the inputs)."
+    },
+    "symbols": {
+      "additionalProperties": {
+        "$ref": "#/$defs/SymbolDecl"
+      },
+      "type": "object"
+    },
+    "trip_count": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "trip_count_expr": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "schema",
+    "model",
+    "phase",
+    "shapes",
+    "symbols",
+    "constraints",
+    "concrete_input_axes",
+    "trip_count"
+  ],
+  "title": "SymbolsFile",
+  "type": "object"
+}

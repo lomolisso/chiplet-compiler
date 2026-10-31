@@ -108,6 +108,11 @@ impl DockerRunner {
 
 /// Peak memory of the container's cgroup: v1 `memory.max_usage_in_bytes` (this host) or v2 `memory.peak`.
 fn cgroup_peak(cid: &str) -> Option<u64> {
+    // Docker creates the cidfile before writing the id: an empty id would name the parent `docker`
+    // cgroup (every container's peak, verified 2026-10-30).
+    if cid.is_empty() || !cid.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
     let candidates = [
         format!("/sys/fs/cgroup/memory/docker/{cid}/memory.max_usage_in_bytes"),
         format!("/sys/fs/cgroup/memory/system.slice/docker-{cid}.scope/memory.max_usage_in_bytes"),
@@ -203,6 +208,12 @@ impl ToolRunner for DockerRunner {
 mod tests {
     use super::*;
     use crate::runner::Mount;
+
+    #[test]
+    fn peak_ignores_an_unwritten_cidfile() {
+        assert_eq!(cgroup_peak(""), None);
+        assert_eq!(cgroup_peak("../x"), None);
+    }
 
     #[test]
     fn args_carry_caps_mounts_and_user() {

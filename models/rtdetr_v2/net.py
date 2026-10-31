@@ -66,7 +66,9 @@ F16, F32 = jnp.float16, jnp.float32
 @dataclass(frozen=True)
 class Config:
     batch: int = 1
-    image: int = 640                 # square input, H = W
+    # Input height / width in units of the max feature stride (32): the encoder upsamples
+    # S5 / S4 2x and concatenates them with S4 / S3, so the image is a multiple of it.
+    grid: int = 20                   # 640x640 (square at the scenario; H and W are separate)
     num_channels: int = 3
     # backbone: RTDetrResNetConfig (ResNet-50-vd)
     embedding_size: int = 64
@@ -96,7 +98,17 @@ class Config:
     def num_levels(self) -> int:
         return len(self.feat_strides)
 
+    @property
+    def max_stride(self) -> int:
+        return max(self.feat_strides)
+
+    @property
+    def image(self) -> int:
+        return self.grid * self.max_stride
+
     def spatial_shapes(self) -> list[tuple[int, int]]:
+        """Feature map sizes at the scenario (descriptions only: the network reads them from
+        the feature maps)."""
         return [(self.image // s, self.image // s) for s in self.feat_strides]
 
 
@@ -359,22 +371,24 @@ class RTDetrV2EncoderLayer(nn.Module):
         return layer_norm(c.layer_norm_eps, "final_layer_norm")(x + h)
 
 
-def sine_position_embedding(height: int, width: int, dim: int, temperature: float) -> np.ndarray:
-    """build_2d_sinusoidal_position_embedding: [sin_h | cos_h | sin_w | cos_w], computed in
-    float64 and cast to float32 (a shape-derived constant), shape (1, H*W, dim)."""
+def sine_position_embedding(height, width, dim: int, temperature: float):
+    """build_2d_sinusoidal_position_embedding: [sin_h | cos_h | sin_w | cos_w], shape
+    (1, H*W, dim). Built in float32 from the map size in the graph, as HF does per call
+    (the size is an input size); the frequencies omega depend on `dim` only and are a
+    float32 constant (computed in float64)."""
     pos_dim = dim // 4
-    omega = 1.0 / temperature ** (np.arange(pos_dim, dtype=np.float64) / pos_dim)
-    grid_h, grid_w = np.meshgrid(np.arange(height, dtype=np.float64),
-                                 np.arange(width, dtype=np.float64), indexing="ij")
-    emb_h = np.outer(grid_h.reshape(-1), omega)
-    emb_w = np.outer(grid_w.reshape(-1), omega)
-    pe = np.concatenate([np.sin(emb_h), np.cos(emb_h), np.sin(emb_w), np.cos(emb_w)], axis=1)
-    return pe.astype(np.float32)[None]
+    omega = (1.0 / temperature ** (np.arange(pos_dim, dtype=np.float64) / pos_dim)).astype(np.float32)
+    grid_h, grid_w = jnp.meshgrid(jnp.arange(height, dtype=F32), jnp.arange(width, dtype=F32),
+                                  indexing="ij")
+    emb_h = grid_h.reshape(-1, 1) * omega
+    emb_w = grid_w.reshape(-1, 1) * omega
+    return jnp.concatenate([jnp.sin(emb_h), jnp.cos(emb_h), jnp.sin(emb_w), jnp.cos(emb_w)],
+                           axis=1)[None]
 
 
 class RTDetrV2AIFILayer(nn.Module):
     """eval_size = None, so the position embedding is built for the actual map size
-    (fp32 constant, added to the fp16 tokens in fp16)."""
+    (fp32, added to the fp16 tokens in fp16)."""
     cfg: Config
 
     @nn.compact
@@ -382,7 +396,7 @@ class RTDetrV2AIFILayer(nn.Module):
         c = self.cfg
         B, H, W, C = x.shape
         h = x.reshape(B, H * W, C)
-        pos = jnp.asarray(sine_position_embedding(H, W, C, c.positional_encoding_temperature)).astype(F16)
+        pos = sine_position_embedding(H, W, C, c.positional_encoding_temperature).astype(F16)
         for i in range(c.encoder_layers):
             h = RTDetrV2EncoderLayer(c, name=f"layers_{i}")(h, pos)
         return h.reshape(B, H, W, C)
@@ -489,7 +503,8 @@ class RTDetrV2MultiscaleDeformableAttention(nn.Module):
     cfg: Config
 
     @nn.compact
-    def __call__(self, hidden_states, pos, memory_q, memory_scale, reference_points):
+    def __call__(self, hidden_states, pos, memory_q, memory_scale, reference_points,
+                 spatial_shapes):
         c = self.cfg
         nH, L, P = c.decoder_attention_heads, c.num_levels, c.decoder_n_points
         D = c.d_model
@@ -510,7 +525,7 @@ class RTDetrV2MultiscaleDeformableAttention(nn.Module):
         offset = (offsets * n_points_scale[:, None] * reference_points[:, :, None, :, 2:]
                   * c.decoder_offset_scale)
         loc = reference_points[:, :, None, :, :2] + offset
-        out = multi_scale_deformable_attention_v2(value, c.spatial_shapes(), loc, aw, n_points_list)
+        out = multi_scale_deformable_attention_v2(value, spatial_shapes, loc, aw, n_points_list)
         return qdense(D, "output_proj")(out)
 
 
@@ -518,13 +533,14 @@ class RTDetrV2DecoderLayer(nn.Module):
     cfg: Config
 
     @nn.compact
-    def __call__(self, x, x_q, x_scale, pos, memory_q, memory_scale, reference_points):
+    def __call__(self, x, x_q, x_scale, pos, memory_q, memory_scale, reference_points,
+                 spatial_shapes):
         c = self.cfg
         h = RTDetrV2SelfAttention(c.d_model, c.decoder_attention_heads,
                                   name="self_attn")(x, pos, x_q, x_scale)
         x = layer_norm(c.layer_norm_eps, "self_attn_layer_norm")(x + h)
         h = RTDetrV2MultiscaleDeformableAttention(c, name="encoder_attn")(
-            x, pos, memory_q, memory_scale, reference_points)
+            x, pos, memory_q, memory_scale, reference_points, spatial_shapes)
         x = layer_norm(c.layer_norm_eps, "encoder_attn_layer_norm")(x + h)
         h = RTDetrV2MLP(c.d_model, c.decoder_ffn_dim, "relu", name="mlp")(x)
         return layer_norm(c.layer_norm_eps, "final_layer_norm")(x + h)
@@ -543,7 +559,8 @@ class RTDetrV2Decoder(nn.Module):
     cfg: Config
 
     @nn.compact
-    def __call__(self, target, target_q, target_scale, memory, init_reference_points):
+    def __call__(self, target, target_q, target_scale, memory, init_reference_points,
+                 spatial_shapes):
         c = self.cfg
         memory_q, memory_scale, _ = q.ActQuant(name="memory_quant")(memory)
         query_pos_head = MLPPredictionHead(2 * c.d_model, c.d_model, 2, name="query_pos_head")
@@ -553,7 +570,8 @@ class RTDetrV2Decoder(nn.Module):
         for i in range(c.decoder_layers):
             pos = query_pos_head(ref)
             x = RTDetrV2DecoderLayer(c, name=f"layers_{i}")(x, x_q, x_scale, pos, memory_q,
-                                                           memory_scale, ref[:, :, None, :])
+                                                           memory_scale, ref[:, :, None, :],
+                                                           spatial_shapes)
             x_q, x_scale, _ = q.ActQuant(name=f"hidden_quant_{i}")(x)
             corners = MLPPredictionHead(c.d_model, 4, 3, name=f"bbox_embed_{i}")(x_q, x_scale)
             ref = jax.nn.sigmoid(corners.astype(F32) + inverse_sigmoid(ref))
@@ -563,23 +581,21 @@ class RTDetrV2Decoder(nn.Module):
         return jnp.stack(hs, 1), jnp.stack(logits, 1), jnp.stack(refs, 1)
 
 
-def generate_anchors(cfg: Config, grid_size: float = 0.05):
+def generate_anchors(spatial_shapes, grid_size: float = 0.05):
     """RTDetrV2Model._cached_generate_anchors in float32 (anchor_image_size = None, so
-    computed from the feature shapes): a shape-derived constant (1, S, 4) + valid mask."""
+    computed per call from the feature map sizes, which are input sizes): anchors (1, S, 4)
+    + valid mask (1, S, 1), built in the graph."""
     anchors = []
-    for level, (h, w) in enumerate(cfg.spatial_shapes()):
-        gy, gx = np.meshgrid(np.arange(h).astype(np.float32), np.arange(w).astype(np.float32),
-                             indexing="ij")
-        xy = np.stack([gx, gy], -1)[None] + np.float32(0.5)
-        xy[..., 0] /= np.float32(w)
-        xy[..., 1] /= np.float32(h)
-        wh = np.ones_like(xy) * np.float32(grid_size) * np.float32(2.0 ** level)
-        anchors.append(np.concatenate([xy, wh], -1).reshape(-1, h * w, 4))
-    anchors = np.concatenate(anchors, 1)
+    for level, (h, w) in enumerate(spatial_shapes):
+        gy, gx = jnp.meshgrid(jnp.arange(h, dtype=F32), jnp.arange(w, dtype=F32), indexing="ij")
+        xy = jnp.stack([(gx + np.float32(0.5)) / w, (gy + np.float32(0.5)) / h], -1)[None]
+        wh = jnp.full(xy.shape, np.float32(grid_size) * np.float32(2.0 ** level), F32)
+        anchors.append(jnp.concatenate([xy, wh], -1).reshape(1, h * w, 4))
+    anchors = jnp.concatenate(anchors, 1)
     eps = np.float32(1e-2)
     valid = ((anchors > eps) & (anchors < 1 - eps)).all(-1, keepdims=True)
-    anchors = np.log(anchors / (np.float32(1) - anchors))
-    anchors = np.where(valid, anchors, np.finfo(np.float32).max).astype(np.float32)
+    anchors = jnp.log(anchors / (np.float32(1) - anchors))
+    anchors = jnp.where(valid, anchors, np.finfo(np.float32).max)
     return anchors, valid
 
 
@@ -594,21 +610,22 @@ class RTDetrV2Model(nn.Module):
         proj = [qconv(c.encoder_hidden_dim, 1, 1, 0, f"encoder_input_proj_{l}_0", F16)(fq, fs)
                 for l, (fq, fs) in enumerate(feats)]                      # BN folded
         enc = RTDetrV2HybridEncoder(c, name="encoder")(proj)              # [(int8, scale)]
-        sources = []
+        sources, spatial_shapes = [], []
         for l, (fq, fs) in enumerate(enc):
             f = qconv(D, 1, 1, 0, f"decoder_input_proj_{l}_0", F16)(fq, fs)
             B, H, W, _ = f.shape
             sources.append(f.reshape(B, H * W, D))
+            spatial_shapes.append((H, W))
         source_flatten = jnp.concatenate(sources, axis=1)              # (B, S, D) fp16
 
-        anchors, valid = generate_anchors(c)
-        memory = jnp.asarray(valid.astype(np.float16)) * source_flatten
+        anchors, valid = generate_anchors(spatial_shapes)
+        memory = valid.astype(F16) * source_flatten
         output_memory = qdense(D, "enc_output_0")(memory)
         output_memory = layer_norm(c.layer_norm_eps, "enc_output_1")(output_memory)
         om_q, om_s, _ = q.ActQuant(name="enc_output_quant")(output_memory)   # both heads
         enc_outputs_class = qdense(c.num_labels, "enc_score_head")(om_q, om_s)
         enc_outputs_coord_logits = (MLPPredictionHead(D, 4, 3, name="enc_bbox_head")(om_q, om_s)
-                                    .astype(F32) + jnp.asarray(anchors))
+                                    .astype(F32) + anchors)
 
         # query selection: top-k (fp16) over the per-token max class logit
         _, topk_ind = jax.lax.top_k(enc_outputs_class.max(-1), c.num_queries)
@@ -621,7 +638,8 @@ class RTDetrV2Model(nn.Module):
 
         hs, logits, refs = RTDetrV2Decoder(c, name="decoder")(target, target_q, om_s,
                                                               source_flatten,
-                                                              reference_points_unact)
+                                                              reference_points_unact,
+                                                              spatial_shapes)
         return {"intermediate_hidden_states": hs, "intermediate_logits": logits,
                 "intermediate_reference_points": refs, "enc_topk_logits": enc_topk_logits,
                 "enc_topk_bboxes": enc_topk_bboxes, "enc_outputs_class": enc_outputs_class}

@@ -36,7 +36,8 @@ watchdog_interval_s = 0.5        # RSS sampling period of the process-group watc
 
 [tools.docker]                   # DockerRunner; argv built in another change
 image = "chiplet-compiler/toolchain"
-tag = "0.2.0"                    # bump when anything in [tools.docker.build] or the pins below changes
+tag = "0.3.0"                    # bump when anything in [tools.docker.build] or the pins below changes
+                                 # (0.3.0: the locked JAX stack in /opt/cc/jax-venv for export)
 memory_gb = 8                    # default per-call cap (--memory and --memory-swap)
 cpus = 4.0                       # default per-call --cpus
 pids_limit = 4096
@@ -126,13 +127,16 @@ threads = 1
 memory_gb = 1
 timeout_min = 1
 
-[passes.export]                 # JAX -> StableHLO + composites + JSON
-runner = "docker"                # "docker" | "host"
-symbolic_inputs = true
+[passes.export]                  # JAX -> StableHLO + component composites + symbolic sizes + JSON
+runner = "docker"                # "docker" (toolchain image) | "host" (uv-managed env from uv.lock; CI)
+exclude_classes = []             # module class names never wrapped as composites (children still are)
+docker_python = "/opt/cc/jax-venv/bin/python"        # the locked JAX stack inside the image
+host_python = ["uv", "run", "--frozen", "python"]    # host command prefix
+# Input sizes are always symbolic and the invariance re-export always runs: there is no switch.
 [passes.export.resources]
-threads = 4                      # models exported in parallel
-memory_gb = 8                    # per model process
-timeout_min = 30
+threads = 4                      # models exported in parallel, one process each
+memory_gb = 32                   # declared for admission; each model process gets memory_gb / threads
+timeout_min = 60
 
 [passes.import]                  #
 [passes.import.resources]

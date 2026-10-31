@@ -10,7 +10,7 @@ capacity C_s rows, n_s of them real, real rows first in the reference's order):
   index["stem"]           in/out i32[124, C_0]   SubMConv3d(k=5) rulebook
   index["stage{s}"]
     conv_in / conv_out    i32[26, C_s]  SubMConv3d(k=3) rulebook of indice_key stage{s}
-    attn_order            i32[4, P_s*K_s]  serialized_order[slot][pad]
+    attn_order            i32[4, P_s, K_s]  serialized_order[slot][pad]
     attn_inverse          i32[4, C_s]   unpad[serialized_inverse[slot]]
     mask                  bool[P_s, K_s] valid attention keys
   index["pool{s}"] (s=1..4, level s-1 -> s)
@@ -26,15 +26,16 @@ attn_inverse / order are the identity; pool segment C_s (dropped) and cluster 0.
 
 from __future__ import annotations
 
+import dataclasses
 import re
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
-from models.spec import ModelSpec, Phase, as_spec
+from models.spec import ModelSpec, Phase, Sym, as_spec
 from models.ptv3 import host
-from models.ptv3.net import Config, DefaultSegmentorV2
+from models.ptv3.net import Capacity, Config, DefaultSegmentorV2, PatchCount, PatchSize
 
 # Worst-case bound: a nuScenes LIDAR_TOP sweep (Velodyne HDL-32E, 32 beams x 1085
 # firings per 20 Hz revolution) has at most 34720 points; grid sampling only
@@ -42,13 +43,23 @@ from models.ptv3.net import Config, DefaultSegmentorV2
 # level.
 N_MAX = 34720
 
+
+
+def pinned(cfg: Config) -> Config:
+    """`cfg` with the patch sizes K_s and counts P_s fixed to their values derived from the
+    capacities, so that they are independent sizes (symbols) of the export."""
+    n = range(cfg.num_stages)
+    return dataclasses.replace(cfg, patch_sizes=PatchSize(*(cfg.patch(s) for s in n)),
+                               patch_counts=PatchCount(*(cfg.n_patches(s) for s in n)))
+
+
 CONFIGS = {
-    "full": Config(capacity=(N_MAX,) * 5),
+    "full": pinned(Config(capacity=Capacity(*(N_MAX,) * 5))),
     # Same architecture and patch size (the unmodified config); only the point
     # bounds shrink. Example cloud: the 3500 voxels nearest the sensor of a
     # simulated sweep (levels hold ~3500/1500/600/180/60 points: multi-patch with tail
     # duplication at levels 0-1, single masked patches below, K_4 = 256 < 1024).
-    "reduced": Config(capacity=(3500, 2048, 1024, 512, 256)),
+    "reduced": pinned(Config(capacity=Capacity(3500, 2048, 1024, 512, 256))),
 }
 
 KV_STEM = 5 ** 3 - 1
@@ -68,7 +79,7 @@ def input_spec(cfg: Config):
         P, K = cfg.n_patches(s), cfg.patch(s)
         index[f"stage{s}"] = {
             "conv_in": S((KV_CPE, c[s]), i32), "conv_out": S((KV_CPE, c[s]), i32),
-            "attn_order": S((len(cfg.orders), P * K), i32),
+            "attn_order": S((len(cfg.orders), P, K), i32),
             "attn_inverse": S((len(cfg.orders), c[s]), i32),
             "mask": S((P, K), jnp.bool_)}
         if s > 0:
@@ -119,7 +130,8 @@ def build_inputs(cfg: Config, coord, strength, perms):
         if n <= K:
             mask[0, n:] = False
         rin, rout = _rule(st.grid, cfg.cpe_kernel, cap)
-        index[f"stage{s}"] = {"conv_in": rin, "conv_out": rout, "attn_order": order,
+        index[f"stage{s}"] = {"conv_in": rin, "conv_out": rout,
+                              "attn_order": order.reshape(len(cfg.orders), P, K),
                               "attn_inverse": inverse, "mask": mask}
         if s > 0:
             prev = c[s - 1]
@@ -233,6 +245,18 @@ def intermediates(cfg: Config, variables, feat, index) -> dict:
 # Spec
 # ----------------------------------------------------------------------------
 
+def input_shapes(cfg: Config):
+    """Symbolic shapes of input_spec: level s has capacity C<s>, P<s> patches of K<s> points."""
+    index = {"stem": "_, C0"}
+    for s in range(cfg.num_stages):
+        index[f"stage{s}"] = {"conv_in": f"_, C{s}", "conv_out": f"_, C{s}",
+                              "attn_order": f"_, P{s}, K{s}", "attn_inverse": f"_, C{s}",
+                              "mask": f"P{s}, K{s}"}
+        if s > 0:
+            index[f"pool{s}"] = f"C{s - 1}"
+    return ("C0, _", index)
+
+
 def build(cfg: Config) -> ModelSpec:
     module = DefaultSegmentorV2(cfg)
 
@@ -248,13 +272,24 @@ def build(cfg: Config) -> ModelSpec:
                  f"per-channel weights, per-tensor static activations, BN folded; fp16 "
                  f"attention core with fp32 softmax, fp16 LayerNorm / GELU), batch 1, point "
                  f"capacity per level {list(c)}, patch {cfg.enc_patch_size[0]}"),
-        phases=[Phase("forward", forward, input_spec(cfg), trip_count=40,
+        phases=[Phase("forward", forward, input_spec(cfg), trip_count=40, shapes=input_shapes(cfg),
                       note=("one DefaultSegmentorV2.forward on one test fragment (fragment batch "
                             "size 1); SemSegTester runs it once per fragment: 10 test-time "
                             "augmentations x F GridSample(0.05, test) fragments, F data-dependent "
                             "(4 on a simulated sweep) -> trip_count 40. Output: "
                             f"seg_logits [{c[0]}, {cfg.num_classes}], rows >= n_0 are padding."))],
         param_specs=as_spec(variables),
+        symbols={
+            **{f"C{s}": Sym(f"capacity.l{s}", alt, f"level-{s} point capacity (padded rows)")
+               for s, alt in enumerate((3000, 1800, 900, 400, 200))},
+            **{f"P{s}": Sym(f"patch_counts.l{s}", alt, f"level-{s} attention patch count")
+               for s, alt in enumerate((3, 3, 2, 2, 2))},
+            **{f"K{s}": Sym(f"patch_sizes.l{s}", alt, f"level-{s} attention patch size "
+                            f"(min(points, {cfg.enc_patch_size[s]}))")
+               for s, alt in enumerate((1000, 900, 800, 400, 200))},
+        },
+        # the reference's patch size is min(n_s, patch_size)
+        constraints=tuple(f"K{s} <= {k}" for s, k in enumerate(cfg.enc_patch_size)),
         excluded=[
             "nuScenes sweep loading (coord, strength / 255) and the test transform "
             "GridSample(0.025, train mode, fnv hash)",

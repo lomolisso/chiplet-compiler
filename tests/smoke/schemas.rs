@@ -10,6 +10,7 @@ fn committed_schemas_are_current() {
     for (name, schema) in cc_core::schema::core_schemas()
         .into_iter()
         .chain(cc_pipeline::pipeline_schemas())
+        .chain(cc_passes::pass_schemas())
     {
         let want = cc_core::canon::to_canonical_pretty(&schema).unwrap();
         let path = dir.join(name);

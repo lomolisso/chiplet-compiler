@@ -15,7 +15,7 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from models.spec import ModelSpec, Phase, as_spec
+from models.spec import ModelSpec, Phase, Sym, as_spec
 from models.mamba2.net import Config, Mamba2ForCausalLM
 
 # Full: Mamba-2 2.7B, bf16 activations (LLM inference dtype) + FP8 in_proj / out_proj.
@@ -100,14 +100,17 @@ def build(cfg: Config) -> ModelSpec:
                  f"prefill {cfg.seq_len} ({n_chunks} chunks), batch {cfg.batch}, {cfg.dtype}; FP8 E4M3 "
                  "W8A8 per-tensor static in_proj / out_proj (ModelOpt FP8 form, GPU fallback)"),
         phases=[
-            Phase("prefill", prefill, specs["prefill"],
+            Phase("prefill", prefill, specs["prefill"], shapes=("B, L",),
                   note="chunked SSD over the prompt (all chunks unrolled, inter-chunk recurrence "
                        "as a (c+1)x(c+1) decay matrix) -> last-position logits + final "
                        "conv/SSM states"),
             Phase("decode_step", decode_step, specs["decode_step"], trip_count=cfg.decode_steps,
+                  shapes=("B, _", "B, _, _", "B, _, _, _"),
                   note="one token: causal_conv1d_update + selective_state_update recurrence"),
         ],
         param_specs=as_spec(variables),
+        symbols={"B": Sym("batch", 3, "sequences per call"),
+                 "L": Sym("seq_len", 72, "prompt tokens (prefill)")},
         excluded=["GPT-NeoX tokenization (preprocessing)",
                   "FP8 calibration (offline; scales are parameters)",
                   "sampling / argmax over logits and the generate() loop (postprocessing; "
