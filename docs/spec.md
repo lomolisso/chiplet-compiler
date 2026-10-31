@@ -484,3 +484,10 @@ build/         (ignored) build/.<pass>/ artifacts
 | JSON by default, postcard supported from v1 (always with a JSON summary) | JSON only | Later graph artifacts need it; keeping it in `cc-core` from the start avoids a store change |
 | One directory per artifact kind (`out/<kind>/`) | Passes list their files | Every written file is accounted for and hashed; nothing to forget |
 | Rust 1.99.1 pinned exactly (`rust-toolchain.toml`, CI) | Floating `stable` | New clippy lints cannot break CI without a code change |
+| Build LLVM for Allo from source in a capped image stage | Base on `chhzh123/allo` | Pinned and reproducible with our Python 3.12 + uv; that image (2025-12-21, 14.5 GB) is 10 months older than the Allo pin and brings its own OS and conda |
+| Legacy `docker build` with `--memory`/`--memory-swap`/`--cpu-quota` | A buildx builder | buildx is not installed here; the legacy builder caps every RUN step hard |
+| apt frozen to one `snapshot.ubuntu.com` date, PyPI by `uv --exclude-newer` | Per-package version pins | The archive drops old versions; one date freezes the whole package set |
+| XLS Bazel tools built on Ubuntu 22.04, final image Ubuntu 24.04 | One base for every stage | 22.04 is XLS's build platform; 24.04 has Python 3.12 and the glibc 2.39 the z3 release needs |
+| ASAP7 `.db` for RVT TT only (`[tools.pdk]`) | All VTs or corners | Spec default; more sets need only a config change |
+| CI neither builds nor pulls the image | Pull from a registry | The image is host-only and ~15 GB; CI lints the Dockerfile and runs `doctor --dry` |
+| Host-specific EDA fixes live in the EDA environment (`~/pdks/setup_env.sh`, wrappers in `~/pdks/extra_bin/`) | A per-tool env map in chipc's config | One place for the environment: `eda-on` users and `eda-run` get the same fix; chipc only calls `eda-run` (e.g. LC's bundled `libk5crypto`) |

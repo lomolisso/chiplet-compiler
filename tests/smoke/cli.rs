@@ -72,10 +72,3 @@ fn run_status_verify_clean() {
     assert_eq!(code, 0);
     assert!(!env.build_dir().join(".hello_a").exists());
 }
-
-#[test]
-fn doctor_is_a_stub() {
-    let (code, out) = chipc(&env(), &["doctor"]);
-    assert_eq!(code, 0);
-    assert!(out.contains("another change"));
-}

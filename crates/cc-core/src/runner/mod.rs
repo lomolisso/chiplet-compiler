@@ -17,8 +17,9 @@ use std::time::Duration;
 use serde::Serialize;
 
 pub use docker::DockerRunner;
-pub use eda::EdaRunner;
+pub use eda::{EdaCommand, EdaRunner, EdaSettings, EdaTool};
 pub use host::HostRunner;
+pub use process::mem_available_bytes;
 
 use crate::cancel::CancelToken;
 use crate::canon;
@@ -310,10 +311,7 @@ impl Runners {
                 tools.host.watchdog_interval_s,
             ))),
             docker: Arc::new(DockerRunner::from_config(tools.docker.clone())),
-            eda: Arc::new(EdaRunner::new(
-                cfg.config.paths.eda_toggle.as_ref().map(|p| cfg.resolve(p)),
-                Duration::from_secs_f64(tools.eda.watchdog_interval_s),
-            )),
+            eda: Arc::new(EdaRunner::new(EdaSettings::from_config(cfg))),
         }
     }
 }

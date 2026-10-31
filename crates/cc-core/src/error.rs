@@ -36,10 +36,12 @@ pub enum CoreError {
     #[error("tool {tool}: {message}")]
     Tool { tool: String, message: String },
 
-    #[error("{runner} runner is not implemented yet (see {task})")]
-    Unimplemented {
-        runner: &'static str,
-        task: &'static str,
+    /// No license after every retry: an environment failure, never a result about the design.
+    #[error("tool {tool}: no license after {attempts} attempt(s): {message}")]
+    License {
+        tool: String,
+        attempts: u32,
+        message: String,
     },
 
     #[error("cancelled")]

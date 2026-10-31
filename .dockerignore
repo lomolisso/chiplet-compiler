@@ -1,0 +1,6 @@
+# The toolchain image needs only docker/ and third_party/ (docker/Dockerfile COPY lines).
+*
+!docker/
+!third_party/
+**/.git
+third_party/allo/mlir/build

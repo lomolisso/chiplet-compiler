@@ -32,51 +32,64 @@ impl ToolRunner for HostRunner {
     fn run(&self, inv: &Invocation, caps: &Caps, log: &ToolLog, cancel: &CancelToken) -> Result<ToolOutcome> {
         cancel.check()?;
         let call = CallLog::start(log, &inv.tool)?;
-        let mut cmd = Command::new(&inv.program);
-        cmd.args(&inv.args).stdin(Stdio::null());
-        cmd.stdout(File::create(&call.files.stdout).at(&call.files.stdout)?);
-        cmd.stderr(File::create(&call.files.stderr).at(&call.files.stderr)?);
-        for (k, v) in &inv.env {
-            cmd.env(k, v);
-        }
-        if let Some(cwd) = &inv.cwd {
-            cmd.current_dir(cwd);
-        }
-        process::isolate(&mut cmd);
-        let mut child = cmd.spawn().map_err(|e| CoreError::Tool {
-            tool: inv.tool.clone(),
-            message: format!("spawn `{}`: {e}", inv.program),
-        })?;
-        let pgid = child.id() as i32;
-        let sample = move || process::group_rss_bytes(pgid);
-        let kill = move || process::kill_group(pgid);
-        let sup = Supervisor {
-            timeout: caps.timeout(),
-            cancel,
-            sample_interval: self.watchdog_interval,
-            cap_bytes: Some(caps.memory_bytes()),
-            sample: &sample,
-            kill: &kill,
-        };
-        let res = process::supervise(&mut child, &sup).at(&call.files.stderr)?;
-        let (exit_code, signal) = process::exit_parts(&res.status);
-        let mut argv = vec![inv.program.clone()];
-        argv.extend(inv.args.iter().cloned());
-        let outcome = ToolOutcome {
-            runner: self.name().into(),
-            tool: inv.tool.clone(),
-            argv,
-            exit_code,
-            signal,
-            killed: res.killed,
-            duration_ms: call.t0.elapsed().as_millis() as u64,
-            peak_rss_bytes: res.peak_bytes,
-            stdout: call.files.stdout.clone(),
-            stderr: call.files.stderr.clone(),
-        };
+        let outcome = run_watched(self.name(), inv, caps, &call, cancel, self.watchdog_interval)?;
         call.finish(caps, &outcome)?;
         Ok(outcome)
     }
+}
+
+/// Spawn `inv` on the host in its own process group with the RSS watchdog, timeout and cancel token,
+/// output to the call's log files. Shared with `EdaRunner`; the caller records the call.
+pub(crate) fn run_watched(
+    runner: &str,
+    inv: &Invocation,
+    caps: &Caps,
+    call: &CallLog<'_>,
+    cancel: &CancelToken,
+    watchdog_interval: Duration,
+) -> Result<ToolOutcome> {
+    let mut cmd = Command::new(&inv.program);
+    cmd.args(&inv.args).stdin(Stdio::null());
+    cmd.stdout(File::create(&call.files.stdout).at(&call.files.stdout)?);
+    cmd.stderr(File::create(&call.files.stderr).at(&call.files.stderr)?);
+    for (k, v) in &inv.env {
+        cmd.env(k, v);
+    }
+    if let Some(cwd) = &inv.cwd {
+        cmd.current_dir(cwd);
+    }
+    process::isolate(&mut cmd);
+    let mut child = cmd.spawn().map_err(|e| CoreError::Tool {
+        tool: inv.tool.clone(),
+        message: format!("spawn `{}`: {e}", inv.program),
+    })?;
+    let pgid = child.id() as i32;
+    let sample = move || process::group_rss_bytes(pgid);
+    let kill = move || process::kill_group(pgid);
+    let sup = Supervisor {
+        timeout: caps.timeout(),
+        cancel,
+        sample_interval: watchdog_interval,
+        cap_bytes: Some(caps.memory_bytes()),
+        sample: &sample,
+        kill: &kill,
+    };
+    let res = process::supervise(&mut child, &sup).at(&call.files.stderr)?;
+    let (exit_code, signal) = process::exit_parts(&res.status);
+    let mut argv = vec![inv.program.clone()];
+    argv.extend(inv.args.iter().cloned());
+    Ok(ToolOutcome {
+        runner: runner.into(),
+        tool: inv.tool.clone(),
+        argv,
+        exit_code,
+        signal,
+        killed: res.killed,
+        duration_ms: call.t0.elapsed().as_millis() as u64,
+        peak_rss_bytes: res.peak_bytes,
+        stdout: call.files.stdout.clone(),
+        stderr: call.files.stderr.clone(),
+    })
 }
 
 #[cfg(test)]

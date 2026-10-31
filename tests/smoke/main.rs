@@ -6,6 +6,8 @@ mod cache;
 mod cli;
 mod config;
 mod dag;
+mod eda;
+mod env;
 mod pipeline;
 mod runners;
 mod schemas;

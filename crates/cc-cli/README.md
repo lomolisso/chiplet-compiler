@@ -15,7 +15,8 @@ chipc [--config config.toml] [--set key=value]... [-v] <command>
   clean [P] [--yes]     remove build/.<P>/; without P (needs --yes) every pass dir and build/.pipeline/
   graph                 pass DAG as Graphviz DOT (`chipc graph | dot -Tsvg > dag.svg`)
   test [--deep] [--test-threads N] [-- <nextest args>]
-  doctor                environment checks (stub; another change)
+  doctor [--dry] [--skip-licenses] [--build-args]
+                        environment checks + liberty .db build -> build/.env/ (crates/cc-pipeline/src/env/README.md)
 ```
 
 - `--config` defaults to `./config.toml`; `config.local.toml` beside it is merged if present.

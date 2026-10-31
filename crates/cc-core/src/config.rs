@@ -171,6 +171,53 @@ pub struct ToolsConfig {
     pub docker: DockerConfig,
     pub eda: EdaConfig,
     pub smt: SmtConfig,
+    pub xls: XlsPins,
+    pub allo: AlloPins,
+    pub grami: GramiPins,
+    pub pdk: PdkConfig,
+}
+
+/// XLS: one commit for the release tarball and the Bazel-built tools (`docs/context/tooling/xls.md` §1).
+/// Pins have no built-in value; `config.toml` holds them and `chipc doctor` checks them.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct XlsPins {
+    pub tag: String,
+    pub commit: String,
+    pub release_sha256: String,
+}
+
+/// Allo and the LLVM commit its submodule records (`docs/context/tooling/allo.md` §1).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct AlloPins {
+    pub commit: String,
+    pub llvm_commit: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct GramiPins {
+    pub commit: String,
+}
+
+/// Which ASAP7 Liberty set is compiled to `.db` (`docs/context/tooling/pdks.md` §3).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct PdkConfig {
+    pub asap7_vt: String,
+    pub asap7_corner: String,
+    pub asap7_groups: Vec<String>,
+}
+
+impl Default for PdkConfig {
+    fn default() -> Self {
+        Self {
+            asap7_vt: "RVT".into(),
+            asap7_corner: "TT".into(),
+            asap7_groups: ["AO", "OA", "INVBUF", "SEQ", "SIMPLE"].map(String::from).to_vec(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -195,6 +242,7 @@ pub struct DockerConfig {
     pub memory_gb: f64,
     pub cpus: f64,
     pub pids_limit: i64,
+    pub build: DockerBuildConfig,
 }
 
 impl Default for DockerConfig {
@@ -205,6 +253,53 @@ impl Default for DockerConfig {
             memory_gb: 8.0,
             cpus: 4.0,
             pids_limit: 4096,
+            build: DockerBuildConfig::default(),
+        }
+    }
+}
+
+/// `[tools.docker.build]`: inputs of `docker/build.sh` that only the image build uses. Pins have
+/// no built-in value (config.toml holds them); the caps bound the one-time build (spec §8).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct DockerBuildConfig {
+    pub ubuntu_2404: String,
+    pub ubuntu_2204: String,
+    pub apt_snapshot: String,
+    pub pypi_exclude_newer: String,
+    pub uv_version: String,
+    pub uv_sha256: String,
+    pub bazelisk_version: String,
+    pub bazelisk_sha256: String,
+    pub z3_version: String,
+    pub z3_sha256: String,
+    pub bitwuzla_version: String,
+    pub bitwuzla_sha256: String,
+    pub memory_gb: u32,
+    pub cpus: u32,
+    pub link_jobs: u32,
+    pub bazel_ram_mb: u32,
+}
+
+impl Default for DockerBuildConfig {
+    fn default() -> Self {
+        Self {
+            ubuntu_2404: String::new(),
+            ubuntu_2204: String::new(),
+            apt_snapshot: String::new(),
+            pypi_exclude_newer: String::new(),
+            uv_version: String::new(),
+            uv_sha256: String::new(),
+            bazelisk_version: String::new(),
+            bazelisk_sha256: String::new(),
+            z3_version: String::new(),
+            z3_sha256: String::new(),
+            bitwuzla_version: String::new(),
+            bitwuzla_sha256: String::new(),
+            memory_gb: 64,
+            cpus: 16,
+            link_jobs: 2,
+            bazel_ram_mb: 49152,
         }
     }
 }
@@ -214,6 +309,12 @@ impl Default for DockerConfig {
 pub struct EdaConfig {
     pub max_licenses: usize,
     pub watchdog_interval_s: f64,
+    /// Extra attempts after a license failure; the job never counts as a design failure.
+    pub license_retries: u32,
+    /// Wait before the first retry; doubles on each further attempt.
+    pub license_backoff_s: f64,
+    /// Substrings of tool output that mean "no license" (docs/context/tooling/eda_environment.md §4).
+    pub license_error_patterns: Vec<String>,
 }
 
 impl Default for EdaConfig {
@@ -221,6 +322,9 @@ impl Default for EdaConfig {
         Self {
             max_licenses: 2,
             watchdog_interval_s: 2.0,
+            license_retries: 3,
+            license_backoff_s: 30.0,
+            license_error_patterns: Vec::new(),
         }
     }
 }
@@ -558,6 +662,9 @@ fn validate(c: &Config) -> Result<()> {
     }
     if !positive(c.tools.host.watchdog_interval_s) || !positive(c.tools.eda.watchdog_interval_s) {
         return bad("watchdog intervals must be > 0");
+    }
+    if c.tools.eda.max_licenses == 0 {
+        return bad("tools.eda.max_licenses must be >= 1");
     }
     Ok(())
 }

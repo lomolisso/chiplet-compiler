@@ -67,8 +67,19 @@ pub enum Command {
         #[arg(last = true)]
         extra: Vec<String>,
     },
-    /// Check the environment (tools, images, licenses, PDKs). Implemented in another change.
-    Doctor,
+    /// Check the environment (image, tools, licenses, PDKs), build the liberty `.db` files and write
+    /// `build/.env/verify.json`. Exit code 0 only when every check passes.
+    Doctor {
+        /// Print every command doctor would run; run nothing.
+        #[arg(long)]
+        dry: bool,
+        /// Skip the license checks and the tiny DC synthesis.
+        #[arg(long)]
+        skip_licenses: bool,
+        /// Print the `docker/build.sh` inputs (KEY=VALUE) from the config and exit.
+        #[arg(long, conflicts_with_all = ["dry", "skip_licenses"])]
+        build_args: bool,
+    },
 }
 
 fn load(cli: &Cli) -> Result<LoadedConfig> {
@@ -232,12 +243,24 @@ pub fn execute(cli: &Cli, passes: Vec<Box<dyn Pass>>, out: &mut dyn Write) -> Re
                 .context("running cargo nextest (install: https://get.nexte.st)")?;
             Ok(status.code().unwrap_or(1))
         }
-        Command::Doctor => {
-            writeln!(
-                out,
-                "chipc doctor: environment checks (tools, image, licenses, PDKs) are implemented in another change"
-            )?;
+        Command::Doctor { build_args: true, .. } => {
+            let cfg = load(cli)?;
+            for (k, v) in cc_pipeline::env::build_args(&cfg.config)? {
+                writeln!(out, "{k}={v}")?;
+            }
             Ok(0)
+        }
+        Command::Doctor {
+            dry, skip_licenses, ..
+        } => {
+            let cfg = load(cli)?;
+            let runners = cc_core::runner::Runners::from_config(&cfg);
+            let opts = cc_pipeline::env::DoctorOptions {
+                dry: *dry,
+                skip_licenses: *skip_licenses,
+            };
+            let report = cc_pipeline::env::doctor(&cfg, &runners, opts, out)?;
+            Ok(if *dry || report.passed() { 0 } else { 1 })
         }
     }
 }

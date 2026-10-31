@@ -1,0 +1,3 @@
+/* header-only fixture (T02 smoke): chipc doctor reads only the library group name */
+library (NangateOpenCellLibrary) {
+}

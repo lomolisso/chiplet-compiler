@@ -3,6 +3,8 @@
 //! cap costs at most a few hundred MB before the test fails.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+mod env;
+
 use std::time::Duration;
 
 use cc_core::CancelToken;

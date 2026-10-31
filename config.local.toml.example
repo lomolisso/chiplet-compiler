@@ -17,3 +17,4 @@ cadence_root = "/software/cadence-2024-08"
 
 [resources]
 memory_budget_gb = 32            # shared machine: keep well below free memory (check `free -g`)
+

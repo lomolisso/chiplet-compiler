@@ -36,14 +36,59 @@ watchdog_interval_s = 0.5        # RSS sampling period of the process-group watc
 
 [tools.docker]                   # DockerRunner; argv built in another change
 image = "chiplet-compiler/toolchain"
-tag = "dev"
+tag = "0.2.0"                    # bump when anything in [tools.docker.build] or the pins below changes
 memory_gb = 8                    # default per-call cap (--memory and --memory-swap)
 cpus = 4.0                       # default per-call --cpus
 pids_limit = 4096
 
+[tools.docker.build]             # inputs of docker/build.sh only (`chipc doctor --build-args`)
+ubuntu_2404 = "ubuntu@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852"  # final image
+ubuntu_2204 = "ubuntu@sha256:076e7bf82319619f28dd0aa9c02ab34b055ad37100395b4f49a2ffba04fb5e11"  # XLS Bazel stage
+apt_snapshot = "20261030T000000Z"           # snapshot.ubuntu.com date: freezes every apt package
+pypi_exclude_newer = "2026-10-30T00:00:00Z"  # uv --exclude-newer: freezes PyPI resolution
+uv_version = "0.13.6"
+uv_sha256 = "f29c3e94ffabd7e6f3ba521dba169a9b7ec12100bf3257087f0f24f6123f3645"
+bazelisk_version = "v1.30.0"     # Bazel itself comes from third_party/xls/.bazelversion
+bazelisk_sha256 = "a248ae2b2b62b5baebb748f6fba7203bff1a27e5d01b55399a8406744cb539e8"
+z3_version = "5.3.3"             # release build for glibc 2.39 (Ubuntu 24.04)
+z3_sha256 = "d56f60b06f432f33de5810f7f1a384a339131f361e2d54d08ea83eea14326880"
+bitwuzla_version = "0.9.1"       # static Linux binary
+bitwuzla_sha256 = "057f1546ae2068df57beb178f3eeab1678f0e5f0c378787a05b7bb294617c9c6"
+memory_gb = 64                   # docker build --memory = --memory-swap (hard cap of every RUN step)
+cpus = 16                        # docker build CPU quota; also ninja -j and Bazel --jobs
+link_jobs = 2                    # LLVM_PARALLEL_LINK_JOBS (links are the LLVM memory peak)
+bazel_ram_mb = 49152             # Bazel --local_resources=memory (below memory_gb: JVM + headroom)
+
+[tools.xls]                      # third_party/xls is checked out at `commit`
+tag = "v0.0.0-10898-g8ddae8bf4"  # release whose tarball supplies codegen_main, opt_main, ...
+commit = "8ddae8bf466742285aa2d405470512cc73a9aeec"
+release_sha256 = "055b82894f747e5eca2bb3ba210be8f4d4827b57dadb2861935bd4ae809e4ca3"
+
+[tools.allo]                     # third_party/allo is checked out at `commit`
+commit = "ac21bae49ca5f912ecebea00908b56976d2361a2"
+llvm_commit = "6b09f739c4d085dc39eb9ff220c786bc3aa8c7fb"  # = Allo's externals/llvm-project gitlink
+
+[tools.grami]                    # third_party/grami is checked out at `commit`
+commit = "d2875ae80afa2f141323a3f6b89a387787fcda38"
+
+[tools.pdk]                      # Liberty sets compiled to .db by `chipc doctor` (build/.env/out/pdk_db/)
+asap7_vt = "RVT"                 # LVT | RVT | SLVT | SRAM
+asap7_corner = "TT"              # TT | FF | SS
+asap7_groups = ["AO", "OA", "INVBUF", "SEQ", "SIMPLE"]  # all five, or the corner has no flops
+
 [tools.eda]                      # host tools via eda-run
-max_licenses = 2                 # concurrent EDA invocations
-watchdog_interval_s = 2
+max_licenses = 2                 # concurrent EDA invocations (one shared semaphore)
+watchdog_interval_s = 2          # RSS sampling period of the process-group watchdog
+license_retries = 3              # extra attempts after a license failure (never a design failure)
+license_backoff_s = 30           # first retry wait; doubles each attempt
+# Output substrings that mean "no license". Synopsys Common Licensing message pages
+# (syn/W-2024.09/doc/syn/man/catn/SEC/): SEC-12 server unreachable, SEC-21 checkout failed,
+# SEC-50 all in use, SEC-85 communication failed, SEC-87 unable to obtain. Cadence: Genus message
+# observed on this host 2026-10-30 (docs/context/tooling/cadence.md §5).
+license_error_patterns = [
+  "(SEC-12)", "(SEC-21)", "(SEC-50)", "(SEC-85)", "(SEC-87)",
+  "Unable to complete periodic license check",
+]
 
 [tools.smt]                      #
 solver = "bitwuzla"              # "bitwuzla" | "z3"

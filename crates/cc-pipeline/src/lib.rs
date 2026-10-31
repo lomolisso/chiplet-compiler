@@ -4,6 +4,7 @@
 pub mod admission;
 pub mod context;
 pub mod dag;
+pub mod env;
 pub mod error;
 pub mod pass;
 pub mod pipeline;

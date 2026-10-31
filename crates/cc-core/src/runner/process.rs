@@ -133,6 +133,14 @@ pub(crate) fn group_rss_bytes(pgid: i32) -> Option<u64> {
     found.then_some(total)
 }
 
+/// `MemAvailable` from `/proc/meminfo` in bytes (proc(5)); `None` if unreadable.
+pub fn mem_available_bytes() -> Option<u64> {
+    let text = std::fs::read_to_string("/proc/meminfo").ok()?;
+    let line = text.lines().find(|l| l.starts_with("MemAvailable:"))?;
+    let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
+    Some(kb * 1024)
+}
+
 pub(crate) fn current_uid_gid() -> (u32, u32) {
     // SAFETY: getuid/getgid always succeed.
     unsafe { (libc::getuid(), libc::getgid()) }

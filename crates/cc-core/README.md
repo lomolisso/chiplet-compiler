@@ -11,7 +11,7 @@ Services every pass and the pipeline share. It knows no pass types (spec §3.4�
 | `cache.rs` | `cache_key` |
 | `canon.rs` | canonical JSON, blake3 hashing, atomic writes |
 | `cancel.rs` | `CancelToken` (cooperative cancellation) |
-| `runner/` | `ToolRunner` trait; `HostRunner`, `DockerRunner`, `EdaRunner` (stub until another change) |
+| `runner/` | `ToolRunner` trait; `HostRunner`, `DockerRunner`, `EdaRunner`; `EdaTool` (batch flags, native caps) |
 | `schema.rs` | JSON Schemas of the manifest and verify report (`docs/schemas/`) |
 | `error.rs` | `CoreError` (`thiserror`), `IoContext` |
 
@@ -60,7 +60,7 @@ Every external process goes through a `ToolRunner` (spec §8). Each call:
 |---|---|---|
 | `HostRunner` | own process group (`process_group(0)`), `RLIMIT_CORE = 0`; watchdog sums `VmRSS`-equivalent RSS (`/proc/<pid>/stat` field 24) over all members of the group every `tools.host.watchdog_interval_s`, `killpg(SIGKILL)` over the cap | `memory_cap`, `timeout`, `cancelled` |
 | `DockerRunner` | `docker run --init --name chipc-… --user uid:gid -e HOME=/tmp/home --memory M --memory-swap M --memory-swappiness 0 --cpus C --pids-limit P --ulimit core=0 --network none --mount type=bind,…` (`docs/context/tooling/docker_resources.md` §6). The container is named (not `--rm`) so `OOMKilled` can be read, then removed. Writable mount sources are created first (`--mount` does not create them). Peak memory from the container's cgroup (`--cidfile`). | `oom_killed` (kernel, inside the container's cgroup), `timeout` / `cancelled` (`docker kill`) |
-| `EdaRunner` | stub: builds the verified `bash --norc -i -c '. "$EDA_TOGGLE"; eda-run "$@"' eda-run <tool> …` command (`docs/context/tooling/eda_environment.md` §2); `run` returns `Unimplemented` until another change | - |
+| `EdaRunner` | host process group via the verified `bash --norc -i -c '. "$EDA_TOGGLE"; eda-run "$@"' eda-run <tool> …` (`docs/context/tooling/eda_environment.md` §2), inheriting the session env (Lmod); `Invocation::cwd` (a job dir) is required; `TMPDIR` under `paths.scratch_dir`; `MemAvailable` checked before launch; same RSS watchdog and timeout as `HostRunner`; at most `tools.eda.max_licenses` calls at once; bash's no-TTY lines dropped from stderr; output matching `tools.eda.license_error_patterns` is retried with doubling backoff and then reported as `CoreError::License` (never a tool result). `EdaTool::{batch_args, cap_preamble}` give each tool's batch flags and native thread/memory caps | `memory_cap`, `timeout`, `cancelled` |
 
 `BoundRunner` (what `PassContext` hands out) fixes the caps, log and token for one pass;
 `with_caps` can only lower them. `RLIMIT_AS` is not used: it limits virtual memory, which JVMs and

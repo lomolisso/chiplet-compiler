@@ -1,0 +1,5 @@
+# hadolint config for docker/Dockerfile (CI lints with hadolint v2.15.1).
+ignored:
+  - DL3008  # apt versions are frozen by APT::Snapshot / snapshot.ubuntu.com (one date), not per package
+  - DL3003  # `cd` inside a single RUN keeps the build steps self-contained
+  - DL3066  # the named user exists only inside the XLS Bazel build stage

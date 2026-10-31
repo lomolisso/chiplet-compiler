@@ -1,10 +1,8 @@
 use std::time::Duration;
 
+use cc_core::CancelToken;
 use cc_core::config::DockerConfig;
-use cc_core::runner::{
-    Caps, DockerRunner, EdaRunner, HostRunner, Invocation, KillReason, Mount, ToolLog, ToolRunner,
-};
-use cc_core::{CancelToken, CoreError};
+use cc_core::runner::{Caps, DockerRunner, HostRunner, Invocation, KillReason, Mount, ToolLog, ToolRunner};
 use cc_pipeline::{Pipeline, RunOptions};
 use tests::{Env, Fixture, recording_runners, resources};
 
@@ -143,29 +141,4 @@ fn host_runner_cancel_kills_the_process_group() {
         .unwrap();
     assert_eq!(out.killed, Some(KillReason::Cancelled));
     assert!(out.duration_ms < 5000);
-}
-
-#[test]
-fn eda_runner_is_a_stub_until_t02() {
-    let d = tempfile::tempdir().unwrap();
-    let r = EdaRunner::new(None, Duration::from_secs(2));
-    let caps = Caps {
-        memory_gb: 1.0,
-        cpus: 1.0,
-        timeout_s: 10.0,
-        pids_limit: 64,
-    };
-    let e = r.run(
-        &Invocation::new("dc", "dc_shell"),
-        &caps,
-        &ToolLog::new("p", d.path()),
-        &CancelToken::new(),
-    );
-    assert!(matches!(
-        e,
-        Err(CoreError::Unimplemented {
-            runner: "eda",
-            task: "a later release"
-        })
-    ));
 }
