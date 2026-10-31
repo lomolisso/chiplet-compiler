@@ -6,6 +6,7 @@ replay these files instead of running Python.
 """
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -32,6 +33,12 @@ s["model"] = "toy"
 (out / "export.json").write_text(json.dumps(s, indent=1, sort_keys=True) + "\n")
 for ph in s["phases"]:
     (out / ph / "exported.bin").unlink()  # not read by verify; keeps the fixture small
+# Source locations carry machine paths: keep them relative (repo files) or under `site-packages/`.
+site = re.compile(r'"[^"]*/site-packages/')
+for p in sorted(out.rglob("*")):
+    if p.suffix in (".mlir", ".json"):
+        t = p.read_text().replace(str(ROOT) + "/", "")
+        p.write_text(site.sub('"site-packages/', t))
 facts = subprocess.run(
     [sys.executable, "-m", "cc_export.facts", str(out)],
     check=True, capture_output=True, text=True, cwd=ROOT,

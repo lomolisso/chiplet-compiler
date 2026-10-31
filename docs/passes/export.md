@@ -1,7 +1,7 @@
 # `export`
 
 1. **Purpose.** Every phase of every port in `models/` → StableHLO with explicit component boundaries (`stablehlo.composite "cc.<framework>.<Class>"`) and symbolic input sizes, plus the JSON the Rust passes read. The only pass whose work is Python: this module drives `python/cc_export` and checks its outputs independently.
-2. **Background.** Spec §2, §4.1, §5; `docs/context/tooling/jax_export.md`, `stablehlo.md`, `docker_resources.md`; `python/cc_export/README.md` (interception, symbolic shapes, the JSON format).
+2. **Background.** Spec §2, §4.1, §5; `docs/tools/jax_export.md`, `stablehlo.md`, `docker_resources.md`; `docs/passes/export-frontend.md` (interception, symbolic shapes, the JSON format).
 3. **Outputs** (`out/export/<model>/`, JSON Schemas generated from `json.rs` into `docs/schemas/export_*.schema.json`):
    - `export.json` (`ModelFile`): versions, declared symbols (field, value, perturbation), constraints, per phase the canonical graph hash, coverage, census summary, the exporter's own checks (invariance certificate included), file sizes; the recipe audit as data and the parameter dtypes.
    - `<phase>/module.mlir`: StableHLO text (`Exported.mlir_module()`).
@@ -26,4 +26,4 @@
    - `size_variants`: phases declared as size variants of another have its graph.
    Every check has a negative test in `tests/smoke/export.rs` (a replayed real export of a toy port, `tests/fixtures/export/`).
 7. **Resources.** About 1–8 GB per model at `full` (abstract lowering), seconds per model at `reduced`. Cache key: besides the config section, the model set and `models.config`, the pass fingerprints its non-artifact inputs (`Pass::fingerprints`): the `models/` tree, `python/cc_export`, `verify/`, `uv.lock`, and the image tag when `runner = "docker"`; editing a port reruns the pass.
-8. **Limitations.** The invariance certificate is produced by the exporter (it needs the traced port); `verify` checks its consistency, not the trace itself. Composite attributes are hints (spec §4.3): later passes verify decompositions, never trust names. A dynamic dim's symbolic expression is not in the tensor type; it follows from the dimension-variable arguments (`jax.global_constant`) and the explicit size computation.
+8. **Limitations.** The invariance certificate is produced by the exporter (it needs the traced port); `verify` checks its consistency, not the trace itself. Composite attributes are hints (design §4.3): later passes verify decompositions, never trust names. A dynamic dim's symbolic expression is not in the tensor type; it follows from the dimension-variable arguments (`jax.global_constant`) and the explicit size computation (the `import` pass).

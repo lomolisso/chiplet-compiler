@@ -1,5 +1,5 @@
 //! `HostRunner`: a host process in its own process group, with an RSS watchdog over the whole group,
-//! a wall-clock timeout, cancellation, and `RLIMIT_CORE = 0` (spec §3.6).
+//! a wall-clock timeout, cancellation, and `RLIMIT_CORE = 0` (design §3.6).
 //!
 //! `RLIMIT_AS` is deliberately not set: it limits virtual memory, which JVMs and thread pools reserve
 //! far beyond their resident use. The watchdog measures resident memory instead.

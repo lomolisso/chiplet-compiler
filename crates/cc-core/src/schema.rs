@@ -1,4 +1,4 @@
-//! JSON Schemas of the framework's artifact kinds, committed under `docs/schemas/` (spec §3.4). A smoke
+//! JSON Schemas of the framework's artifact kinds, committed under `docs/schemas/` (design §3.4). A smoke
 //! test regenerates them and fails on drift; set `CC_UPDATE_SCHEMAS=1` to rewrite the files.
 
 use crate::manifest::Manifest;

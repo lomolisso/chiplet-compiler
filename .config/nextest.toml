@@ -1,4 +1,4 @@
-# cargo-nextest profiles (spec §9; docs/context/tooling/rust_stack.md §2).
+# cargo-nextest profiles (design §9; docs/tools/rust_stack.md §2).
 #   smoke: unit tests + tests/smoke (CI, seconds, no Docker/EDA)
 #   deep:  tests/deep (local only: real containers and host tools), serialised in the `heavy` group
 # Run via `chipc test [--deep]` or `cargo nextest run --profile smoke|deep`.

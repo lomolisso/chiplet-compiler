@@ -27,7 +27,7 @@ def _get(url: str, rng: tuple[int, int] | None = None) -> bytes:
     if os.path.exists(path):
         with open(path, "rb") as f:
             return f.read()
-    req = urllib.request.Request(url, headers={"User-Agent": "dnn-graph-decomp-verify"})
+    req = urllib.request.Request(url, headers={"User-Agent": "chiplet-compiler-verify"})
     tok = os.environ.get("HF_TOKEN")
     if tok and url.startswith(HF):
         req.add_header("Authorization", f"Bearer {tok}")

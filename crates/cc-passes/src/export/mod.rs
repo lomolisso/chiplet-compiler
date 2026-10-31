@@ -1,7 +1,7 @@
-//! `export` (spec §4.1): every phase of every port → StableHLO with component composites and
+//! `export` (design §4.1): every phase of every port → StableHLO with component composites and
 //! symbolic input sizes, plus the JSON the Rust passes read. The work is done by the Python exporter
 //! `python/cc_export` (the only Python pass), one capped process per model; this module drives it, and
-//! `verify` checks its outputs independently (see README.md).
+//! `verify` checks its outputs independently (see docs/passes/export.md).
 
 mod analysis;
 mod audit;

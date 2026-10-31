@@ -1,4 +1,4 @@
-//! `build/.pipeline/run-<timestamp>.json`: what one `chipc run` did (spec §3.3, observability).
+//! `build/.pipeline/run-<timestamp>.json`: what one `chipc run` did (design §3.3, observability).
 
 use std::path::{Path, PathBuf};
 

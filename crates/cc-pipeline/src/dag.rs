@@ -1,4 +1,4 @@
-//! The pass DAG (spec §3.3), derived from `requires`/`provides` only. A cycle, a duplicate provider or a
+//! The pass DAG (design §3.3), derived from `requires`/`provides` only. A cycle, a duplicate provider or a
 //! requirement nobody provides is a configuration error.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};

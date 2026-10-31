@@ -1,7 +1,7 @@
 # `cc_export`: JAX ports → StableHLO with components and symbolic sizes
 
 `python -m cc_export --model <key> --config reduced|full --out <dir>` exports every phase of `models/<key>` into
-`<dir>` (layout and checks: `crates/cc-passes/src/export/README.md`). Nothing executes: only `jax.export` (tracing
+`<dir>` (layout and checks: `docs/passes/export.md`). Nothing executes: only `jax.export` (tracing
 and lowering) on `ShapeDtypeStruct`s.
 
 | Module | Role |
@@ -68,7 +68,7 @@ Values are integer ids in definition order; an operand's port is its position. T
 `{"kind": "opaque", "value": "..."}` when no structured form exists). Dynamic dims are `null`; their expressions
 follow from the dimension-variable arguments (`jax.global_constant = "<symbol>"`) and the size computation.
 
-## Evaluating an export (tiny sizes only, spec §5.3)
+## Evaluating an export (tiny sizes only, design §5.3)
 
 `evaluate.load(path).call(*args)`: XLA's shape refinement does not specialize composite decompositions, so for
 evaluation every composite is rewritten into a `func.call` of its decomposition (the spec's own semantics of a

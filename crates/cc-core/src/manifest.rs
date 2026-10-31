@@ -1,4 +1,4 @@
-//! `build/.<pass>/manifest.json` (spec §3.4): cache key, inputs, outputs, config, tools, status, timings.
+//! `build/.<pass>/manifest.json` (design §3.4): cache key, inputs, outputs, config, tools, status, timings.
 
 use std::collections::BTreeMap;
 

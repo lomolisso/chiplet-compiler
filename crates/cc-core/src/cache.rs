@@ -1,4 +1,4 @@
-//! Pass cache keys (spec §3.3): blake3 over the input artifact hashes, the pass's config section, the
+//! Pass cache keys (design §3.3): blake3 over the input artifact hashes, the pass's config section, the
 //! model set and model config (`full`/`reduced`), the versions of the tools it calls and the pass
 //! version. A pass is a pure function of these, so equal keys mean equal outputs.
 

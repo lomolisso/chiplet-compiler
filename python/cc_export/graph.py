@@ -8,7 +8,7 @@ parsed by hand here. Ids are assigned in walk order, so the same module always g
 - Types are tagged by `kind`: `{"kind": "tensor", "shape": [16, null], "elem": "f32"}` (`null` = dynamic,
   `?` in MLIR), `{"kind": "function", "inputs": [...], "results": [...]}`, `{"kind": "other", "value": ...}`.
   The symbolic expression of a dynamic dim is not in the type: it follows from the dimension-variable
-  arguments (`jax.global_constant`) through the explicit size computation.
+  arguments (`jax.global_constant`) through the explicit size computation (the `import` pass).
 - Attributes are tagged by `kind` too: `{"kind": "int", "value": 3, "type": "i64"}`, `{"kind": "ints",
   "value": [...]}`, `{"kind": "dot_dimension_numbers", "lhs_batching_dimensions": [...], ...}`, ...; anything
   without a structured form is `{"kind": "opaque", "value": "<printed attribute>"}`.

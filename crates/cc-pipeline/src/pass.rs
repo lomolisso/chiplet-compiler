@@ -1,4 +1,4 @@
-//! The pass contract (spec §3.1). A pass reads only its declared inputs, writes only into its own
+//! The pass contract (design §3.1). A pass reads only its declared inputs, writes only into its own
 //! `build/.<name>/`, and is a pure function of (inputs, config section, models, tool versions, version).
 
 use std::collections::BTreeMap;
@@ -70,6 +70,6 @@ pub trait Pass: Send + Sync {
 
     fn run(&self, ctx: &mut PassContext) -> Result<(), PassError>;
 
-    /// Independent checks on the written artifacts (spec §5). Must not call the algorithm it checks.
+    /// Independent checks on the written artifacts (design §5). Must not call the algorithm it checks.
     fn verify(&self, ctx: &PassContext) -> Result<VerifyReport, PassError>;
 }

@@ -246,7 +246,7 @@ impl ToolRunner for RecordingRunner {
     }
 }
 
-/// Replays the another change exporter without Python: `python -m cc_export ... --model <m> --out <dir>` copies
+/// Replays the exporter without Python: `python -m cc_export ... --model <m> --out <dir>` copies
 /// `tests/fixtures/export/<m>/` to `<dir>`; `python -m cc_export.facts <dir>` prints `facts` (by default
 /// `tests/fixtures/export/facts.json`). Records every invocation and its caps.
 #[derive(Debug)]

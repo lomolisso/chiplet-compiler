@@ -20,7 +20,7 @@ from flax import linen as nn
 import jax
 from jax import lax
 import jax.numpy as jnp
-from models import quant as _q  # quantized: GGUF Q4_0 / Q6_K (dnn-graph-decomp)
+from models import quant as _q  # quantized: GGUF Q4_0 / Q6_K (chiplet-compiler)
 
 # quantized: GGUF block sizes (ggml-common.h QK4_0, QK_K and the Q6_K 16-weight
 # sub-block). Gemma 4 QAT Q4_0 release: google/gemma-4-26B-A4B-it-qat-q4_0-gguf.

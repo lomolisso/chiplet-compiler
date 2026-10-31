@@ -5,7 +5,7 @@
 `env` is not a pass in the DAG. It is the environment every pass relies on. `chipc doctor` proves that each external tool works on this machine by making it do one small real job. It compiles the Liberty files that Design Compiler needs into `.db` files, and it records the evidence in `build/.env/`, the only directory it writes.
 
 Later passes read from it:
-- the `characterize` pass and the `synth` pass use `build/.env/out/pdk_db/*.db`;
+- `characterize` and `synth` use `build/.env/out/pdk_db/*.db`;
 - every Docker pass uses the image whose pins doctor checked.
 
 Run doctor after cloning, after an image rebuild, and whenever a tool or licence looks broken:
@@ -19,14 +19,14 @@ chipc doctor --build-args    # the docker/build.sh inputs, from config.toml
 
 ## 2. Background
 
-- Tool runners: spec §3.6.
-  - Licensed tools run on the host through `eda-run`, using the verified `bash --norc -i -c …` form (`docs/context/tooling/eda_environment.md` §2).
-  - Open-source tools run in the capped toolchain image (`docs/context/tooling/docker_resources.md`, `docker/README.md`).
-- Liberty and `.db` files (`docs/context/tooling/pdks.md` §4).
+- Tool runners: design §3.6.
+  - Licensed tools run on the host through `eda-run`, using the verified `bash --norc -i -c …` form (`docs/tools/eda_environment.md` §2).
+  - Open-source tools run in the capped toolchain image (`docs/tools/docker_resources.md`, `docs/toolchain-image.md`).
+- Liberty and `.db` files (`docs/tools/pdks.md` §4).
   - `write_lib` takes the Liberty `library (NAME)`, not the file name.
   - Design Compiler links only `.db` files.
   - Formality, PrimeTime, Genus and Conformal can read `.lib` directly.
-- Licences and the tool-native caps used here: `docs/context/tooling/synopsys.md`, `cadence.md`.
+- Licences and the tool-native caps used here: `docs/tools/synopsys.md`, `cadence.md`.
 
 ## 3. Inputs and outputs
 
@@ -97,7 +97,7 @@ Each step is a handful of process launches. The cost is the one-time LC compilat
 
 | Key | Default | Meaning |
 |---|---|---|
-| `tools.docker.{image,tag}` | `chiplet-compiler/toolchain`, `0.2.0` | the image doctor checks |
+| `tools.docker.{image,tag}` | `chiplet-compiler/toolchain`, `0.3.0` | the image doctor checks |
 | `tools.docker.build.*` | see `config.toml` | image-only pins and build caps (`docker/build.sh`) |
 | `tools.{xls,allo,grami}.*` | see `config.toml` | submodule and image pins |
 | `tools.pdk.{asap7_vt,asap7_corner,asap7_groups}` | `RVT`, `TT`, all five | which ASAP7 Liberty set becomes `.db` |
@@ -134,7 +134,6 @@ Every check is computed independently of the code under test: it reads tool outp
   - LC: 8 GB, 1 CPU, 1 h;
   - DC: 8 GB, 2 cores, 30 min.
 - All EDA calls hold one of the `max_licenses` slots, and each gets its `TMPDIR` under `<scratch_dir>/tmp/eda/` (removed after a successful call).
-- Measured on this host: see `docs/reports/another change.md`.
 
 ## 8. Known limitations
 

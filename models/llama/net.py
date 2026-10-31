@@ -255,7 +255,7 @@ class Attention(nn.Module):
         # quantized: FP8 attention. Prefill (FP8 context FMHA) quantizes Q with the KV
         # scale; decode (XQA sm90, one query token) casts Q to FP8 unscaled. The kernel is
         # chosen by the phase (`decode`), never by the token count: the graph of each phase
-        # must not depend on input sizes (symbolic export, another change).
+        # must not depend on input sizes (symbolic export).
         q_scale = jnp.float32(1.0) if self.decode else k_scale
         attn_weights = self.qk_product(q.quantize(query, q_scale, "fp8"), key)
         attn_weights = attn_weights * (q_scale * k_scale * self.cfg.head_dim ** -0.5)

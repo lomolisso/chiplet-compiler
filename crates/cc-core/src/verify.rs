@@ -1,4 +1,4 @@
-//! `build/.<pass>/verify.json` (spec §5): every check with its status and evidence.
+//! `build/.<pass>/verify.json` (design §5): every check with its status and evidence.
 
 use std::collections::BTreeMap;
 

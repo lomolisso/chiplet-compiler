@@ -201,7 +201,7 @@ TINY = 4  # config.toml [testing] tiny_dim
                                   lambda: toys.haiku_port(getter=True), toys.keras_port])
 def test_interception_preserves_semantics(tmp_path, make):
     """The exported module (composites, symbolic shapes) computes what the phase function computes, at
-    tiny sizes with generated data (spec §5.3)."""
+    tiny sizes with generated data (design §5.3)."""
     import jax
 
     from cc_export import evaluate

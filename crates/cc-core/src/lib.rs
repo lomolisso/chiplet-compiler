@@ -1,5 +1,5 @@
 //! Core services shared by every pass: configuration, the artifact store, manifests and verify
-//! reports, cache keys, cancellation and the capped tool runners (spec §3.4–§3.6).
+//! reports, cache keys, cancellation and the capped tool runners (design §3.4–§3.6).
 
 pub mod artifact;
 pub mod cache;

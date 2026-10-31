@@ -1,4 +1,4 @@
-//! All passes, one module each (conventions: pass anatomy), and the registry (spec §3.2).
+//! All passes, one module each (conventions: pass anatomy), and the registry (design §3.2).
 //!
 //! `hello_a`, `hello_b`, `hello_c` are the framework's self-test passes: they exercise the DAG,
 //! caching, parallel branches, tool runners and verification without touching any model.

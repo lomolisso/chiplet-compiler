@@ -1,5 +1,5 @@
 [project]
-name = "dnn-graph-decomp"
+name = "chiplet-compiler"
 version = "0.2.0"
 description = "JAX ports of the DNN workload set"
 requires-python = ">=3.12,<3.13"
@@ -25,7 +25,7 @@ dependencies = [
   "sentencepiece==0.2.2",   # gemma4
   "keras==3.15.1",          # dlrm
   "keras-rs==0.4.0",        # dlrm
-  # export (python/cc_export)
+  # export front end (python/cc_export)
   "flatbuffers==25.9.23",   # jax.export.Exported.serialize (exported.bin)
 ]
 

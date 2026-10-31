@@ -1,4 +1,4 @@
-//! `chipc doctor` (spec §3.6, §8): prove the environment works by making every tool do one
+//! `chipc doctor` (design §3.6, §8): prove the environment works by making every tool do one
 //! small real job, build the liberty `.db` files, and record the evidence in `build/.env/`.
 //!
 //! Every external call goes through a `ToolRunner` (host: git/docker CLI/df; Docker: the image;
@@ -32,7 +32,7 @@ pub const DC_TINY: ArtifactKind = ArtifactKind("dc_tiny");
 const DOCTOR_VERSION: u32 = 1;
 /// The steps `cc-selftest` reports (docker/selftest.sh).
 pub const SELFTEST_STEPS: [&str; 6] = ["xls", "xls_equiv", "rtl_tools", "smt", "grami", "allo"];
-/// Version query per licensed tool (flags observed on this host, docs/context/tooling/{synopsys,cadence}.md).
+/// Version query per licensed tool (flags observed on this host, docs/tools/{synopsys,cadence}.md).
 const EDA_VERSION_PROBES: [(&str, &[&str]); 8] = [
     ("dc_shell", &["-version"]),
     ("lc_shell", &["-version"]),
@@ -45,7 +45,7 @@ const EDA_VERSION_PROBES: [(&str, &[&str]); 8] = [
 ];
 const GIB: f64 = (1u64 << 30) as f64;
 
-// Doctor's own caps: tiny jobs only (spec §8).
+// Doctor's own caps: tiny jobs only (design §8).
 const HOST_CAPS: Caps = Caps {
     memory_gb: 1.0,
     cpus: 1.0,
@@ -1031,7 +1031,7 @@ mod tests {
 
     #[test]
     fn version_lines_seen_on_this_host() {
-        // Outputs observed 2026-10-30 (docs/context/tooling/synopsys.md, cadence.md).
+        // Outputs observed 2026-10-30 (docs/tools/synopsys.md, cadence.md).
         let dc = "Info: [VCS_SAVE_RESTORE_INFO] ASLR ...\n\ndc_shell version    -  W-2024.09\n";
         assert_eq!(version_line(dc).as_deref(), Some("dc_shell version - W-2024.09"));
         assert_eq!(

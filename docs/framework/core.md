@@ -1,6 +1,6 @@
 # cc-core
 
-Services every pass and the pipeline share. It knows no pass types (spec §3.4–§3.6).
+Services every pass and the pipeline share. It knows no pass types (design §3.4–§3.6).
 
 | Module | Role |
 |---|---|
@@ -30,7 +30,7 @@ Services every pass and the pipeline share. It knows no pass types (spec §3.4�
   (`section.parse::<T>()`). A section without a registered pass is not an error (planned passes' sections
   exist before their passes).
 - **Paths** resolve against the directory of `config.toml`. **Models:** `models.keys = "all"` resolves to
-  the sorted subdirectories of `paths.models_dir` holding a `recipe.py` (spec §2); explicit keys are
+  the sorted subdirectories of `paths.models_dir` holding a `recipe.py` (design §2); explicit keys are
   checked against that catalog.
 
 ## Artifacts
@@ -49,7 +49,7 @@ build/.<pass>/manifest.json  verify.json  out/<kind>/…  views/  logs/
 
 ## Tool runners
 
-Every external process goes through a `ToolRunner` (spec §8). Each call:
+Every external process goes through a `ToolRunner` (design §8). Each call:
 
 - gets `Caps { memory_gb, cpus, timeout_s, pids_limit }`, a `CancelToken` and a `ToolLog`;
 - writes `logs/<n>-<tool>.out|.err` and appends one JSON line to `logs/tools.jsonl` (command line, caps,
@@ -59,8 +59,8 @@ Every external process goes through a `ToolRunner` (spec §8). Each call:
 | Runner | Isolation | Kill reasons |
 |---|---|---|
 | `HostRunner` | own process group (`process_group(0)`), `RLIMIT_CORE = 0`; watchdog sums `VmRSS`-equivalent RSS (`/proc/<pid>/stat` field 24) over all members of the group every `tools.host.watchdog_interval_s`, `killpg(SIGKILL)` over the cap | `memory_cap`, `timeout`, `cancelled` |
-| `DockerRunner` | `docker run --init --name chipc-… --user uid:gid -e HOME=/tmp/home --memory M --memory-swap M --memory-swappiness 0 --cpus C --pids-limit P --ulimit core=0 --network none --mount type=bind,…` (`docs/context/tooling/docker_resources.md` §6). The container is named (not `--rm`) so `OOMKilled` can be read, then removed. Writable mount sources are created first (`--mount` does not create them). Peak memory from the container's cgroup (`--cidfile`). | `oom_killed` (kernel, inside the container's cgroup), `timeout` / `cancelled` (`docker kill`) |
-| `EdaRunner` | host process group via the verified `bash --norc -i -c '. "$EDA_TOGGLE"; eda-run "$@"' eda-run <tool> …` (`docs/context/tooling/eda_environment.md` §2), inheriting the session env (Lmod); `Invocation::cwd` (a job dir) is required; `TMPDIR` under `paths.scratch_dir`; `MemAvailable` checked before launch; same RSS watchdog and timeout as `HostRunner`; at most `tools.eda.max_licenses` calls at once; bash's no-TTY lines dropped from stderr; output matching `tools.eda.license_error_patterns` is retried with doubling backoff and then reported as `CoreError::License` (never a tool result). `EdaTool::{batch_args, cap_preamble}` give each tool's batch flags and native thread/memory caps | `memory_cap`, `timeout`, `cancelled` |
+| `DockerRunner` | `docker run --init --name chipc-… --user uid:gid -e HOME=/tmp/home --memory M --memory-swap M --memory-swappiness 0 --cpus C --pids-limit P --ulimit core=0 --network none --mount type=bind,…` (`docs/tools/docker_resources.md` §6). The container is named (not `--rm`) so `OOMKilled` can be read, then removed. Writable mount sources are created first (`--mount` does not create them). Peak memory from the container's cgroup (`--cidfile`). | `oom_killed` (kernel, inside the container's cgroup), `timeout` / `cancelled` (`docker kill`) |
+| `EdaRunner` | host process group via the verified `bash --norc -i -c '. "$EDA_TOGGLE"; eda-run "$@"' eda-run <tool> …` (`docs/tools/eda_environment.md` §2), inheriting the session env (Lmod); `Invocation::cwd` (a job dir) is required; `TMPDIR` under `paths.scratch_dir`; `MemAvailable` checked before launch; same RSS watchdog and timeout as `HostRunner`; at most `tools.eda.max_licenses` calls at once; bash's no-TTY lines dropped from stderr; output matching `tools.eda.license_error_patterns` is retried with doubling backoff and then reported as `CoreError::License` (never a tool result). `EdaTool::{batch_args, cap_preamble}` give each tool's batch flags and native thread/memory caps | `memory_cap`, `timeout`, `cancelled` |
 
 `BoundRunner` (what `PassContext` hands out) fixes the caps, log and token for one pass;
 `with_caps` can only lower them. `RLIMIT_AS` is not used: it limits virtual memory, which JVMs and

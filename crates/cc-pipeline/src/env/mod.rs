@@ -1,5 +1,5 @@
 //! The environment: what `chipc doctor` checks and builds outside the pass DAG. It writes only
-//! `build/.env/` (manifest, verify report, liberty `.db` files). See `README.md` in this directory.
+//! `build/.env/` (manifest, verify report, liberty `.db` files). See `docs/framework/environment.md`.
 
 pub mod doctor;
 pub mod pdk_db;

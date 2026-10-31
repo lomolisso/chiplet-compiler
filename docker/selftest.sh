@@ -1,6 +1,6 @@
 #!/bin/bash
 # Image self-test: every tool does one small real job, so a broken image fails at build
-# time instead of in a pass. Runs in seconds; only tiny generated inputs (spec §8).
+# time instead of in a pass. Runs in seconds; only tiny generated inputs (design §8).
 # Usage: cc-selftest [KEEP_DIR]   With KEEP_DIR, inputs and outputs stay there (chipc doctor keeps
 # them as evidence). Each finished step prints `cc-selftest: pass <step>`; the first failure stops.
 set -euo pipefail

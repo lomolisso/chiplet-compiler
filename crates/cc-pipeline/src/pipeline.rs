@@ -1,4 +1,4 @@
-//! The pipeline manager (spec §3.3): plan, cache check, Kahn scheduling with admission control, one
+//! The pipeline manager (design §3.3): plan, cache check, Kahn scheduling with admission control, one
 //! scoped OS thread and one rayon pool per running pass, failure propagation, cancellation, manifests
 //! and the run summary.
 
@@ -170,7 +170,7 @@ fn panic_message(p: &(dyn std::any::Any + Send)) -> String {
 
 impl Pipeline {
     /// Validate the registry (DAG), `pipeline.targets`, and every registered pass's config section.
-    /// Sections without a registered pass only warn: planned passes' sections exist before their passes.
+    /// Sections without a registered pass only warn: planned passes' sections exist before the passes.
     pub fn new(passes: Vec<Box<dyn Pass>>, config: LoadedConfig) -> Result<Self, PipelineError> {
         let graph = PassGraph::build(&passes)?;
         for t in &config.config.pipeline.targets {

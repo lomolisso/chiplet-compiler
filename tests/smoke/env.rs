@@ -1,4 +1,4 @@
-//! smoke checks: `chipc doctor --dry` builds the right commands, the image build inputs come from
+//! Smoke checks: `chipc doctor --dry` builds the right commands, the image build inputs come from
 //! `config.toml`, the submodules are shallow and pinned, the Dockerfile lints. No Docker, no EDA.
 
 use std::process::Command;

@@ -80,7 +80,7 @@ impl PassContext {
         self.config.resolve(p)
     }
 
-    /// A declared input. Reading anything else is an error (the pass rule, spec §3.1).
+    /// A declared input. Reading anything else is an error (the pass rule, design §3.1).
     pub fn input(&self, kind: ArtifactKind) -> Result<&KindDir, PassError> {
         self.inputs.get(kind.name()).ok_or_else(|| {
             PassError::Core(CoreError::Artifact {

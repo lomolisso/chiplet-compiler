@@ -1,4 +1,4 @@
-//! Independent checks of the export (spec §4.1, §5). Per model (check names `<model>:<check>`):
+//! Independent checks of the export (design §4.1, §5). Per model (check names `<model>:<check>`):
 //!
 //! - `exported`: `export.json` parses and every phase exported.
 //! - `schema`: every `graph.json` / `symbols.json` / `census.json` parses into the strict types.

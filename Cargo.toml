@@ -8,7 +8,7 @@ edition = "2024"
 rust-version = "1.99"
 publish = false
 
-# Versions: docs/context/tooling/rust_stack.md §1 (crates.io, 2026-10-30). Pin minors; Cargo.lock is committed.
+# Versions: docs/tools/rust_stack.md §1 (crates.io, 2026-10-30). Pin minors; Cargo.lock is committed.
 [workspace.dependencies]
 cc-core = { path = "crates/cc-core" }
 cc-pipeline = { path = "crates/cc-pipeline" }

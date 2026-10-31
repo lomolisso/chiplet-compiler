@@ -2,7 +2,7 @@
   "$defs": {
     "PassResources": {
       "additionalProperties": false,
-      "description": "`[passes.<name>.resources]`: what the scheduler admits against the budget (spec §3.3, §8).",
+      "description": "`[passes.<name>.resources]`: what the scheduler admits against the budget (design §3.3, §8).",
       "properties": {
         "memory_gb": {
           "default": 4.0,

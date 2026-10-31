@@ -1,4 +1,4 @@
-//! deep checks against the real environment: the toolchain image, `eda-run` and the licenses.
+//! Deep checks against the real environment: the toolchain image, `eda-run` and the licenses.
 //! They use the repository's `config.toml` + `config.local.toml` (machine paths) and refresh
 //! `build/.env/` (the doctor's evidence, which later passes read).
 

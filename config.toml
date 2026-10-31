@@ -2,16 +2,17 @@
 # Machine-specific paths and overrides go in config.local.toml (untracked; see config.local.toml.example).
 # Every pass reads only [passes.<pass>] and [passes.<pass>.resources]. Unknown keys are an error.
 # Merge order: built-in defaults < config.toml < config.local.toml < `chipc --set key=value`.
-# A [passes.<name>] section whose pass is not registered yet only warns (planned passes' sections exist early).
+# A [passes.<name>] section whose pass is not implemented yet only warns: the sections of planned passes
+# document their intended keys and may still change.
 
 [pipeline]
 max_parallel_passes = 2          # passes running at once (subject to the budgets below)
 targets = ["hello_b", "hello_c"] # passes to reach; dependencies are pulled in automatically; [] = every pass
-                                 # (another change toy passes until another change registers `export`; finally "report")
+                                 # (the self-test passes for now; finally "report")
 stop_on_failure = false          # true: on the first failure, admit nothing new and cancel running passes
 
 [resources]
-# Admission (spec §3.3): a ready pass starts when the running passes plus it fit both limits below.
+# Admission (design §3.3): a ready pass starts when the running passes plus it fit both limits below.
 # A pass declaring more than a limit by itself waits until nothing else runs, then runs alone.
 memory_budget_gb = 32            # sum of declared memory_gb of concurrently running passes
 threads_total = 16               # sum of declared threads of concurrently running passes
@@ -34,10 +35,10 @@ seed = 20261030
 [tools.host]                     # HostRunner
 watchdog_interval_s = 0.5        # RSS sampling period of the process-group watchdog
 
-[tools.docker]                   # DockerRunner; argv built in another change
+[tools.docker]                   # DockerRunner
 image = "chiplet-compiler/toolchain"
-tag = "0.3.0"                    # bump when anything in [tools.docker.build] or the pins below changes
-                                 # (0.3.0: the locked JAX stack in /opt/cc/jax-venv for export)
+tag = "0.3.0"                    # the release in which the image inputs ([tools.docker.build], the pins below,
+                                 # docker/) last changed; bump it with them
 memory_gb = 8                    # default per-call cap (--memory and --memory-swap)
 cpus = 4.0                       # default per-call --cpus
 pids_limit = 4096
@@ -85,13 +86,13 @@ license_backoff_s = 30           # first retry wait; doubles each attempt
 # Output substrings that mean "no license". Synopsys Common Licensing message pages
 # (syn/W-2024.09/doc/syn/man/catn/SEC/): SEC-12 server unreachable, SEC-21 checkout failed,
 # SEC-50 all in use, SEC-85 communication failed, SEC-87 unable to obtain. Cadence: Genus message
-# observed on this host 2026-10-30 (docs/context/tooling/cadence.md §5).
+# observed on this host 2026-10-30 (docs/tools/cadence.md §5).
 license_error_patterns = [
   "(SEC-12)", "(SEC-21)", "(SEC-50)", "(SEC-85)", "(SEC-87)",
   "Unable to complete periodic license check",
 ]
 
-[tools.smt]                      #
+[tools.smt]
 solver = "bitwuzla"              # "bitwuzla" | "z3"
 timeout_s = 60
 
@@ -138,19 +139,19 @@ threads = 4                      # models exported in parallel, one process each
 memory_gb = 32                   # declared for admission; each model process gets memory_gb / threads
 timeout_min = 60
 
-[passes.import]                  #
+[passes.import]
 [passes.import.resources]
 threads = 8
 memory_gb = 4
 timeout_min = 30
 
-[passes.components]              #
+[passes.components]
 [passes.components.resources]
 threads = 8
 memory_gb = 4
 timeout_min = 30
 
-[passes.normalize]               #
+[passes.normalize]
 [passes.normalize.order]         # reduction order ω per dtype family: "seq" | "tree:<fan-in>"
 int = "seq"
 float = "seq"
@@ -159,21 +160,21 @@ threads = 8
 memory_gb = 2
 timeout_min = 30
 
-[passes.kernels]                 #
+[passes.kernels]
 tie_break = "ssa_order"
 [passes.kernels.resources]
 threads = 8
 memory_gb = 2
 timeout_min = 30
 
-[passes.kernel_classes]          #
+[passes.kernel_classes]
 wl_iterations = 3
 [passes.kernel_classes.resources]
 threads = 16
 memory_gb = 4
 timeout_min = 30
 
-[passes.iteration_space]         #
+[passes.iteration_space]
 [passes.iteration_space.template]
 enabled = true
 min_reuse = 8                    # minimum reuse factor for routing a class to an array template
@@ -183,14 +184,14 @@ threads = 8
 memory_gb = 2
 timeout_min = 30
 
-[passes.datapaths]               #
+[passes.datapaths]
 allow_unknown = []               # classes allowed to end with solver "unknown" (with a reason)
 [passes.datapaths.resources]
 threads = 16
 memory_gb = 8
 timeout_min = 120
 
-[passes.characterize]            #
+[passes.characterize]
 tool = "dc"                      # "dc" | "genus"
 pdks = ["nangate45", "asap7"]
 clock_ps = { nangate45 = 2000, asap7 = 1000 }
@@ -199,7 +200,7 @@ threads = 2                      # bounded by tools.eda.max_licenses
 memory_gb = 8
 timeout_min = 240
 
-[passes.mine]                    #
+[passes.mine]
 tau_start = 40
 tau_min = 2
 budget_s = 3600
@@ -211,7 +212,7 @@ threads = 8
 memory_gb = 8
 timeout_min = 120
 
-[passes.merge]                   #
+[passes.merge]
 requant_variant = "recipe"       # "recipe" | "fp32" | "fixed"
 target_units = 0                 # 0 = stop when area gain <= 0
 max_logic_depth = 0              # 0 = derive from the clock target and the characterize library
@@ -223,7 +224,7 @@ threads = 8
 memory_gb = 8
 timeout_min = 240
 
-[passes.softfloat]               #
+[passes.softfloat]
 formats = ["e4m3fn", "bf16", "fp16", "fp32"]   # add "e5m2" if a recipe needs it (none does today)
 subnormals = "ieee"              # "ieee" | "ftz"
 random_vectors = 100000
@@ -232,13 +233,13 @@ threads = 8
 memory_gb = 4
 timeout_min = 120
 
-[passes.allo_emit]               #
+[passes.allo_emit]
 [passes.allo_emit.resources]
 threads = 4
 memory_gb = 4
 timeout_min = 120
 
-[passes.xls]                     #
+[passes.xls]
 delay_model = "asap7"
 clock_period_ps = 1000
 [passes.xls.resources]
@@ -246,14 +247,14 @@ threads = 4
 memory_gb = 4
 timeout_min = 120
 
-[passes.rtl_verify]              #
+[passes.rtl_verify]
 simulator = "verilator"          # "verilator" | "iverilog" | "vcs" | "xcelium"
 [passes.rtl_verify.resources]
 threads = 4
 memory_gb = 4
 timeout_min = 120
 
-[passes.synth]                   #
+[passes.synth]
 tool = "dc"                      # "dc" | "genus"
 lec = "formality"                # "formality" | "conformal"
 sta = true
@@ -262,7 +263,7 @@ threads = 2
 memory_gb = 8
 timeout_min = 240
 
-[passes.report]                  #
+[passes.report]
 [passes.report.resources]
 threads = 1
 memory_gb = 1

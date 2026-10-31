@@ -1,4 +1,4 @@
-//! The recipe audit (spec §2) over the census: the same rules as `verify/dtype_audit.py` `check`,
+//! The recipe audit (design §2) over the census: the same rules as `verify/dtype_audit.py` `check`,
 //! reimplemented so `verify` does not trust the exporter's own audit.
 
 use std::collections::{BTreeMap, BTreeSet};

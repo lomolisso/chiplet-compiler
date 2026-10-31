@@ -1,7 +1,7 @@
-//! deep check: the real `export` pass through the toolchain image (`runner = "docker"`) on
+//! Deep check: the real `export` pass through the toolchain image (`runner = "docker"`) on
 //! `[testing] deep_models` at the `full` config (abstract lowering only; 8 GB per model process), with
 //! every check of its `verify`, including the census against the recipes at full. Writes into the build
-//! area's ephemeral `runs/deep-export/` (scratch policy, docs/conventions.md) and removes it when the test
+//! area's ephemeral `runs/deep-export/` (scratch policy, docs/development.md) and removes it when the test
 //! passes; a failed run keeps it for inspection.
 
 use cc_core::{CheckStatus, LoadedConfig};

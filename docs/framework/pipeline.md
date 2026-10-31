@@ -1,7 +1,7 @@
 # cc-pipeline
 
 The pipeline manager: the `Pass` trait, the pass DAG, the scheduler with admission control, caching and
-resume (spec §3.1–§3.3). It knows nothing about any particular pass; `cc-passes` registers them.
+resume (design §3.1–§3.3). It knows nothing about any particular pass; `cc-passes` registers them.
 
 ## Modules
 
@@ -32,7 +32,7 @@ pub trait Pass: Send + Sync {
 }
 ```
 
-Compared with the sketch in spec §3.1, three methods are added: `tools` (spec §3.3 puts tool versions in
+Compared with the sketch in design §3.1, three methods are added: `tools` (design §3.3 puts tool versions in
 the cache key, so the pass must name its tools), `model_dependent` (so `--models` does not rerun
 model-independent passes such as `characterize`), and `check_config` (every section is parsed strictly
 before anything runs, so a typo in a late pass's section fails the run immediately, not hours later).
@@ -84,7 +84,7 @@ With `L` the set of running passes, a ready pass `p` is admitted iff `L` is empt
 The "`L` is empty" clause is the **oversize rule**: a pass whose own declaration exceeds a limit could
 never satisfy it, so it waits until nothing else runs and then runs alone (with a warning). Ready passes
 that do not fit are retried at the next event; a smaller ready pass may start ahead of a larger one
-(backfilling). Admission uses *declared* resources (spec §8); passes must stay within them.
+(backfilling). Admission uses *declared* resources (design §8); passes must stay within them.
 
 ### Failure, cancellation, timeouts
 
@@ -136,11 +136,11 @@ crash mid-pass is never mistaken for a success.
 - Peak RSS of a pass is the driver process's RSS sampled during the pass window (25 ms period). With
   overlapping passes it is an upper bound; external tools report their own peaks in `tools.jsonl`.
 
-## How to add a pass (checklist, spec §3.2)
+## How to add a pass (checklist, design §3.2)
 
 1. `crates/cc-passes/src/<name>/` with `mod.rs` (the `Pass` impl), `config.rs`
    (`#[serde(deny_unknown_fields, default)]` struct), `algo/` (strategies), `verify.rs` (independent
-   checks), `README.md` (the eight sections of `docs/conventions.md`). `hello_a`/`hello_b` are templates.
+   checks), and `docs/passes/<name>.md` (the eight sections of `docs/development.md`). `hello_a`/`hello_b` are templates.
 2. Pick artifact kinds (`ArtifactKind("<name>.<what>")`) for `provides()`; list the kinds you read in
    `requires()`. Read and write only through `ctx.input(kind)` / `ctx.output(kind)`.
 3. Implement `check_config` as `section.parse::<YourConfig>().map(drop)`.

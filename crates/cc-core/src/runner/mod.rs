@@ -1,4 +1,4 @@
-//! Tool runners (spec §3.6): the only way a pass starts an external process. Every call gets memory/CPU
+//! Tool runners (design §3.6): the only way a pass starts an external process. Every call gets memory/CPU
 //! caps and a timeout, honours the pass's cancel token, and is logged to `build/.<pass>/logs/`
 //! (`tools.jsonl` plus one stdout/stderr file pair per call).
 

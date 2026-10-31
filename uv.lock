@@ -94,7 +94,7 @@ wheels = [
 ]
 
 [[package]]
-name = "dnn-graph-decomp"
+name = "chiplet-compiler"
 version = "0.2.0"
 source = { virtual = "." }
 dependencies = [

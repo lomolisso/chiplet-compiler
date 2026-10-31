@@ -1,4 +1,4 @@
-//! Layered configuration (spec §3.5): built-in defaults < `config.toml` < `config.local.toml` <
+//! Layered configuration (design §3.5): built-in defaults < `config.toml` < `config.local.toml` <
 //! `--set key=value`. Fixed sections are strict (`deny_unknown_fields`); `[passes.<name>]` sections are
 //! opaque here and parsed strictly by their pass, so `cc-core` knows no pass types.
 
@@ -187,7 +187,7 @@ pub struct ToolsConfig {
     pub pdk: PdkConfig,
 }
 
-/// XLS: one commit for the release tarball and the Bazel-built tools (`docs/context/tooling/xls.md` §1).
+/// XLS: one commit for the release tarball and the Bazel-built tools (`docs/tools/xls.md` §1).
 /// Pins have no built-in value; `config.toml` holds them and `chipc doctor` checks them.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
@@ -197,7 +197,7 @@ pub struct XlsPins {
     pub release_sha256: String,
 }
 
-/// Allo and the LLVM commit its submodule records (`docs/context/tooling/allo.md` §1).
+/// Allo and the LLVM commit its submodule records (`docs/tools/allo.md` §1).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct AlloPins {
@@ -211,7 +211,7 @@ pub struct GramiPins {
     pub commit: String,
 }
 
-/// Which ASAP7 Liberty set is compiled to `.db` (`docs/context/tooling/pdks.md` §3).
+/// Which ASAP7 Liberty set is compiled to `.db` (`docs/tools/pdks.md` §3).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct PdkConfig {
@@ -269,7 +269,7 @@ impl Default for DockerConfig {
 }
 
 /// `[tools.docker.build]`: inputs of `docker/build.sh` that only the image build uses. Pins have
-/// no built-in value (config.toml holds them); the caps bound the one-time build (spec §8).
+/// no built-in value (config.toml holds them); the caps bound the one-time build (design §8).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct DockerBuildConfig {
@@ -323,7 +323,7 @@ pub struct EdaConfig {
     pub license_retries: u32,
     /// Wait before the first retry; doubles on each further attempt.
     pub license_backoff_s: f64,
-    /// Substrings of tool output that mean "no license" (docs/context/tooling/eda_environment.md §4).
+    /// Substrings of tool output that mean "no license" (docs/tools/eda_environment.md §4).
     pub license_error_patterns: Vec<String>,
 }
 
@@ -355,7 +355,7 @@ impl Default for SmtConfig {
     }
 }
 
-/// `[passes.<name>.resources]`: what the scheduler admits against the budget (spec §3.3, §8).
+/// `[passes.<name>.resources]`: what the scheduler admits against the budget (design §3.3, §8).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, default)]
 pub struct PassResources {
@@ -596,7 +596,7 @@ impl LoadedConfig {
         })
     }
 
-    /// Catalog keys: the subdirectories of `models_dir` that hold a `recipe.py` (spec §2), sorted.
+    /// Catalog keys: the subdirectories of `models_dir` that hold a `recipe.py` (design §2), sorted.
     pub fn model_catalog(&self) -> Result<Vec<String>> {
         let dir = self.models_dir();
         if !dir.is_dir() {

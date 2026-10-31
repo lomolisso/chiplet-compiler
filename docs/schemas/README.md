@@ -1,7 +1,7 @@
-# schemas/
+# Artifact schemas
 
 JSON Schemas (draft 2020-12, generated with `schemars` from the Rust types) of every artifact kind in
-`build/`, generated from the Rust types; each pass adds its own.
+`build/`; each pass adds the schemas of its artifact kinds.
 
 | File | Rust type | Written to |
 |---|---|---|

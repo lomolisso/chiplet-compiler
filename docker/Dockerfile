@@ -1,5 +1,5 @@
 # chiplet-compiler toolchain image. Build only with docker/build.sh, which passes every pin
-# from config.toml (`chipc doctor --build-args`) and the memory/CPU caps (docker/README.md).
+# from config.toml (`chipc doctor --build-args`) and the memory/CPU caps (docs/toolchain-image.md).
 #
 # This host's Docker has no buildx, so this file targets the legacy builder: `docker build
 # --memory/--memory-swap/--cpu-quota` caps every RUN step; no BuildKit-only syntax.
@@ -245,7 +245,7 @@ COPY --from=llvm-allo /opt/cc/venv /opt/cc/venv
 COPY --from=jax /opt/cc/jax-venv /opt/cc/jax-venv
 COPY docker/cc-probe.py /opt/cc/bin/cc-probe
 COPY docker/selftest.sh /opt/cc/bin/cc-selftest
-# DockerRunner runs as the host uid with HOME=/tmp/home (docs/context/tooling/docker_resources.md §3).
+# DockerRunner runs as the host uid with HOME=/tmp/home (docs/tools/docker_resources.md §3).
 RUN mkdir -p /tmp/home && chmod 1777 /tmp/home && chmod 0755 /opt/cc/bin/cc-probe /opt/cc/bin/cc-selftest
 ENV PATH=/opt/cc/bin:/opt/cc/venv/bin:/opt/xls/bin:/opt/solvers/bin:/opt/llvm-project/build/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     VIRTUAL_ENV=/opt/cc/venv \

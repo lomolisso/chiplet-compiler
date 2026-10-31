@@ -1,4 +1,4 @@
-//! Admission control (spec §3.3, §8). A ready pass starts when the passes already running plus this one
+//! Admission control (design §3.3, §8). A ready pass starts when the passes already running plus this one
 //! stay within `pipeline.max_parallel_passes`, `resources.memory_budget_gb` and
 //! `resources.threads_total`.
 //!

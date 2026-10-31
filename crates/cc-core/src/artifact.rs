@@ -1,4 +1,4 @@
-//! The artifact repository (spec §3.4). Layout per pass:
+//! The artifact repository (design §3.4). Layout per pass:
 //!
 //! ```text
 //! build/.<pass>/manifest.json  verify.json  out/<kind>/…  views/  logs/

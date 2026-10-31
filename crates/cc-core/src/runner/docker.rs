@@ -1,4 +1,4 @@
-//! `DockerRunner`: one capped container per call (docs/context/tooling/docker_resources.md §2, §3, §6).
+//! `DockerRunner`: one capped container per call (docs/tools/docker_resources.md §2, §3, §6).
 //!
 //! `--memory-swap` equals `--memory` (no swap: host swap is full); `--init` reaps and forwards signals;
 //! the job runs as the invoking user because the daemon has no userns remapping. The container is named
@@ -109,7 +109,7 @@ impl DockerRunner {
 /// Peak memory of the container's cgroup: v1 `memory.max_usage_in_bytes` (this host) or v2 `memory.peak`.
 fn cgroup_peak(cid: &str) -> Option<u64> {
     // Docker creates the cidfile before writing the id: an empty id would name the parent `docker`
-    // cgroup (every container's peak, verified 2026-10-30).
+    // cgroup (every container's peak).
     if cid.is_empty() || !cid.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
     }

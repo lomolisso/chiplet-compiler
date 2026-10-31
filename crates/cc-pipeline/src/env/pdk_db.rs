@@ -1,4 +1,4 @@
-//! Liberty → Synopsys `.db` (docs/context/tooling/pdks.md §4): Design Compiler links only `.db`,
+//! Liberty → Synopsys `.db` (docs/tools/pdks.md §4): Design Compiler links only `.db`,
 //! neither kit ships one, so `lc_shell` compiles each `.lib`. `write_lib` takes the Liberty
 //! `library (NAME)`, not the file name (`write_lib(2)`), so the name is read from each file.
 

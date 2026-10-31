@@ -2,7 +2,7 @@
 # Build the toolchain image. Usage, from the repo root, on the build host:
 #   scripts/on-build-host docker/build.sh
 # Every pin and cap comes from config.toml via `chipc doctor --build-args` (override the binary
-# with CHIPC=...). Long build (hours): run it in the background; see docker/README.md.
+# with CHIPC=...). Long build (hours): run it in the background; see docs/toolchain-image.md.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -22,7 +22,7 @@ check third_party/grami "${arg[GRAMI_COMMIT]}" third_party/grami
 llvm="$(git -C third_party/allo ls-tree HEAD externals/llvm-project | awk '{print $3}')"
 [[ "$llvm" == "${arg[LLVM_COMMIT]}" ]] || { echo "build.sh: Allo records LLVM $llvm, config pins ${arg[LLVM_COMMIT]}" >&2; exit 1; }
 
-# Shared machine: the cap must fit in what is free now, with headroom (spec §8).
+# Shared machine: the cap must fit in what is free now, with headroom (design §8).
 mem="${arg[CAP_MEMORY_GB]}"
 avail_gb=$(( $(awk '/^MemAvailable:/ {print $2}' /proc/meminfo) / 1024 / 1024 ))
 if (( avail_gb < mem + 16 )); then
@@ -31,7 +31,7 @@ if (( avail_gb < mem + 16 )); then
 fi
 
 # Docker's storage (/srv) holds the layers; on the build host it is also the shared scratch disk. Keep at
-# least 100 GB free for other users (scratch policy, docs/conventions.md).
+# least 100 GB free for other users (scratch policy, docs/development.md).
 srv_free_gb=$(( $(df -Pk /srv | awk 'NR==2 {print $4}') / 1024 / 1024 ))
 if (( srv_free_gb < 100 )); then
   echo "build.sh: /srv has ${srv_free_gb} GB free (< 100 GB); not starting" >&2

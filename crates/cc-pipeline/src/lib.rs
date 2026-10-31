@@ -1,5 +1,5 @@
 //! The pipeline manager: the `Pass` trait, the pass DAG, the scheduler with memory admission, caching
-//! and resume (spec §3.1–§3.3). See `README.md` for the admission rule and how to add a pass.
+//! and resume (design §3.1–§3.3). See `docs/framework/pipeline.md` for the admission rule and how to add a pass.
 
 pub mod admission;
 pub mod context;

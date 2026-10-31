@@ -1,6 +1,6 @@
 //! `EdaRunner`: licensed host EDA tools, only through `eda-run` in an interactive bash that inherits
 //! the session environment (Lmod), never by sourcing `eda-on` in the driver
-//! (docs/context/tooling/eda_environment.md §2–§5; spec §3.6).
+//! (docs/tools/eda_environment.md §2–§5; design §3.6).
 //!
 //! Per call: a job directory as CWD (tools drop logs there), `TMPDIR` on the scratch disk (`/tmp` is
 //! 8 GB here), a `MemAvailable` check before launch, the process-group RSS watchdog and timeout of
@@ -277,7 +277,7 @@ impl Drop for SlotGuard<'_> {
 }
 
 /// The licensed tools and their batch-mode flags and native resource caps
-/// (docs/context/tooling/synopsys.md §2, §8; cadence.md §2, §3, §6). Passes put `cap_preamble`
+/// (docs/tools/synopsys.md §2, §8; cadence.md §2, §3, §6). Passes put `cap_preamble`
 /// first in every script; the RSS watchdog stays the backstop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EdaTool {

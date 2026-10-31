@@ -1,4 +1,4 @@
-"""Evaluate an exported phase at tiny sizes (spec §5.3: symbolic dims instantiated small, generated data).
+"""Evaluate an exported phase at tiny sizes (design §5.3: symbolic dims instantiated small, generated data).
 
 `Exported.call` refines the symbolic shapes to the concrete argument shapes before compiling. XLA's shape
 refinement (jaxlib 0.12) specializes `func.call` callees but not `stablehlo.composite` decompositions, so a

@@ -44,7 +44,7 @@ def audit(key: str, cfg_name: str = "reduced"):
 
 
 def check(rec: dict, per_phase: dict, cfg_name: str, param_dtypes: set[str]) -> list[str]:
-    """The recipe's audit over {phase: {signature: {"count", ...}}} (also used by cc_export, another change)."""
+    """The recipe's audit over {phase: {signature: {"count", ...}}} (also used by cc_export)."""
     aud = rec["audit"]
     seen, errors = set(), []
     for ph, summ in per_phase.items():

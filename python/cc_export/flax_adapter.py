@@ -1,6 +1,6 @@
 """Flax linen: every submodule method call becomes a composite.
 
-Mechanism (docs/context/tooling/jax_export.md §4):
+Mechanism (docs/tools/jax_export.md §4):
 - `nn.intercept_methods` sees every wrapped module method call without touching model code.
 - The module's variables (`module.variables`) are explicit operands; the decomposition re-applies an unbound
   clone (`module.clone(parent=None)`) to them. A bound module cannot be used inside another trace (Flax

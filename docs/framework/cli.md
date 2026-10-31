@@ -16,7 +16,7 @@ chipc [--config config.toml] [--set key=value]... [-v] <command>
   graph                 pass DAG as Graphviz DOT (`chipc graph | dot -Tsvg > dag.svg`)
   test [--deep] [--test-threads N] [-- <nextest args>]
   doctor [--dry] [--skip-licenses] [--build-args]
-                        environment checks + liberty .db build -> build/.env/ (crates/cc-pipeline/src/env/README.md)
+                        environment checks + liberty .db build -> build/.env/ (docs/framework/environment.md)
 ```
 
 - `--config` defaults to `./config.toml`; `config.local.toml` beside it is merged if present.
@@ -30,7 +30,7 @@ error (printed as `error: …` with its cause chain).
 
 ## Building and running
 
-On the build host (docs/conventions.md, "Build host and scratch"); the wrapper puts the built `chipc` on `PATH`:
+On the build host (docs/development.md, "Build host and scratch"); the wrapper puts the built `chipc` on `PATH`:
 
 ```bash
 scripts/on-build-host cargo build -j 16 -p cc-cli
