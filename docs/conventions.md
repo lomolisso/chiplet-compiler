@@ -61,6 +61,36 @@ crates/cc-passes/src/<pass>/
 - **External calls.** Every external tool call goes through a `ToolRunner`, which applies caps and timeouts. Never call `eda-on` in-process; never `Command::new("dc_shell")` directly.
 - **Long jobs on the shared machine.** Run them in the background with caps, and check `free -g` first.
 
+## Build host and scratch
+
+Two machines share the NFS home, so the checkout has the same path on both.
+
+- **Orchestration host (iacoma227).** Editing, git and `gh`, reading results. Nothing
+  compiles, builds an image, runs a container, runs `chipc` or runs a test there: its local scratch is ~95 % full
+  with other users' data, and it is a Condor execute node.
+- **Build host (iacoma231).** Everything else, through `scripts/on-build-host <command>` (ssh, same checkout path,
+  the build environment below). Check it first with `scripts/on-build-host --status` (load, memory, free scratch).
+- **Build area:** `/scratch/$USER/chiplet-compiler/` on the build host (local disk; `/scratch` = `/srv/scratch`, the
+  same disk as Docker's `/srv`). `config.local.toml` points `paths.scratch_dir` and `paths.build_dir` there.
+
+| Path | Kind | Holds |
+|---|---|---|
+| `target/` | persistent, rebuildable | `CARGO_TARGET_DIR` |
+| `venv/` | persistent, rebuildable | the locked Python stack (`UV_PROJECT_ENVIRONMENT`) |
+| `build/` | persistent, rebuildable | `paths.build_dir`: the pass artifacts later passes read |
+| `logs/` | persistent (small) | `docker/build.sh` logs |
+| `runs/<name>/` | ephemeral | ad-hoc runs, experiments, deep-test build dirs |
+| `tmp/` | ephemeral | `TMPDIR`, per-call EDA temp (`tmp/eda/`) |
+| image `chiplet-compiler/toolchain:<tag>` | persistent, rebuildable | the current tag only, in Docker's `/srv/docker` |
+
+- **Cleanup is mandatory.** Delete an ephemeral run when it has served its purpose, at the latest when the
+  change is merged; tests that build into `runs/` remove their directory when they pass (a failed run is kept for
+  inspection, then removed). When the image tag changes, remove the old tag by name. Never prune Docker globally
+  (`docker system|image|builder prune`): the daemon is shared.
+- **Disk guard.** Keep at least 100 GB free on the build host's `/scratch` (`docker/build.sh` refuses below that);
+  if a run would go lower, stop and ask.
+- **Moving the image to another host:** `docker save <image> | ssh <host> docker load` (no temp file), not a rebuild.
+
 ## Tests
 
 - **Placement:**
@@ -71,7 +101,8 @@ crates/cc-passes/src/<pass>/
   - **Smoke** (all 25 models, `reduced` config, CI budget: less than 2 min and 4 GB in total): preconditions, schema, invariants, and the pass run in full when that is seconds.
   - **Deep** (`testing.deep_models`, local): the full pass including tool calls, plus the pass's `verify`, plus golden snapshot checks (`insta`) of summary JSON.
 - **Negative tests.** Every check in `verify.rs` has one: a mutated artifact must make it fail.
-- **Running:** `cargo nextest run --profile smoke` / `--profile deep`, or `chipc test [--deep]`.
+- **Running** (on the build host): `scripts/on-build-host cargo nextest run --profile smoke` / `--profile deep`,
+  or `scripts/on-build-host chipc test [--deep]`.
 
 ## Sources
 

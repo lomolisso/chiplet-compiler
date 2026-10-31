@@ -133,7 +133,7 @@ Every check is computed independently of the code under test: it reads tool outp
   - EDA probes: 4 GB, 600 s;
   - LC: 8 GB, 1 CPU, 1 h;
   - DC: 8 GB, 2 cores, 30 min.
-- All EDA calls hold one of the `max_licenses` slots, and each gets its `TMPDIR` under `<scratch_dir>/chipc/eda-tmp/`.
+- All EDA calls hold one of the `max_licenses` slots, and each gets its `TMPDIR` under `<scratch_dir>/tmp/eda/` (removed after a successful call).
 - Measured on this host: see `docs/reports/another change.md`.
 
 ## 8. Known limitations

@@ -87,11 +87,12 @@ impl EdaRunner {
         })
     }
 
-    /// Per-call `TMPDIR`: `<scratch>/chipc/eda-tmp/<pass>-<n>-<tool>`.
+    /// Per-call `TMPDIR`: `<scratch>/tmp/eda/<pass>-<n>-<tool>` (the build area's ephemeral `tmp/`, removed after
+    /// a successful call).
     fn tmp_dir(&self, log: &ToolLog, cwd: &Path, n: u64, tool: &str) -> PathBuf {
         let leaf = format!("{}-{n:04}-{}", sanitize(log.pass()), sanitize(tool));
         match &self.settings.scratch_dir {
-            Some(s) => s.join("chipc").join("eda-tmp").join(leaf),
+            Some(s) => s.join("tmp").join("eda").join(leaf),
             None => cwd.join(".tmp").join(leaf),
         }
     }

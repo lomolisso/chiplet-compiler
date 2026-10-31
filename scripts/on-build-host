@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Run a command on the build host, in this checkout, with the project's build environment.
+#
+# The orchestration machine (editing, git) never compiles, builds images, runs containers or
+# tests; everything heavy runs on the build host over ssh. The NFS home is shared, so the checkout path is the
+# same there. Build outputs live in the build host's local scratch (docs/conventions.md, "Build host and scratch").
+#
+#   scripts/on-build-host --status                        load, memory and free scratch of the build host
+#   scripts/on-build-host cargo build -p cc-cli
+#   scripts/on-build-host cargo nextest run --profile smoke
+#   scripts/on-build-host chipc run --only export         (chipc = the built binary, on PATH there)
+#   scripts/on-build-host uv run --frozen python -m pytest python/tests -q
+#   scripts/on-build-host docker/build.sh
+#
+# Environment: CC_BUILD_HOST (default iacoma231), CC_BUILD_AREA (default /scratch/$USER/chiplet-compiler).
+set -euo pipefail
+
+host="${CC_BUILD_HOST:-iacoma231}"
+area="${CC_BUILD_AREA:-/scratch/$USER/chiplet-compiler}"
+repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if [[ $# -eq 0 ]]; then
+  sed -n '2,15p' "$0" >&2
+  exit 2
+fi
+
+if [[ "$1" == "--status" ]]; then
+  exec ssh -o BatchMode=yes "$host" "hostname; cat /proc/loadavg; free -g | head -2; df -h /scratch | tail -1; du -sh '$area'/* 2>/dev/null"
+fi
+
+cmd="$(printf '%q ' "$@")"
+# A non-login, non-interactive shell with an explicit environment: no profile noise, nothing implicit.
+exec ssh -o BatchMode=yes "$host" bash --noprofile --norc -s <<EOF
+set -euo pipefail
+export HOME='$HOME' USER='$USER'
+export PATH='$area/target/debug:$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin'
+export CARGO_TARGET_DIR='$area/target'
+export UV_PROJECT_ENVIRONMENT='$area/venv'
+export TMPDIR='$area/tmp'
+export CC_BUILD_AREA='$area'
+export JAX_PLATFORMS=cpu KERAS_BACKEND=jax
+mkdir -p '$area'/{target,venv,build,logs,runs,tmp}
+cd '$repo'
+$cmd
+EOF

@@ -1,7 +1,8 @@
 //! deep check: the real `export` pass through the toolchain image (`runner = "docker"`) on
 //! `[testing] deep_models` at the `full` config (abstract lowering only; 8 GB per model process), with
-//! every check of its `verify`, including the census against the recipes at full. Writes into a scratch
-//! build directory, not the repository's `build/`.
+//! every check of its `verify`, including the census against the recipes at full. Writes into the build
+//! area's ephemeral `runs/deep-export/` (scratch policy, docs/conventions.md) and removes it when the test
+//! passes; a failed run keeps it for inspection.
 
 use cc_core::{CheckStatus, LoadedConfig};
 use cc_pipeline::{Pipeline, RunOptions, RunStatus};
@@ -9,9 +10,14 @@ use tests::repo_root;
 
 #[test]
 fn export_deep_models_at_full() {
-    let scratch = std::env::var("CC_SCRATCH")
-        .unwrap_or_else(|_| format!("/srv/scratch/{}", std::env::var("USER").unwrap_or_default()));
-    let build = std::path::Path::new(&scratch).join("chipc-deep-export");
+    // Set by scripts/on-build-host.
+    let area = std::env::var("CC_BUILD_AREA").unwrap_or_else(|_| {
+        format!(
+            "/scratch/{}/chiplet-compiler",
+            std::env::var("USER").unwrap_or_default()
+        )
+    });
+    let build = std::path::Path::new(&area).join("runs").join("deep-export");
     let sets = [
         format!("paths.build_dir={}", build.display()),
         "models.config=full".to_string(),
@@ -48,4 +54,6 @@ fn export_deep_models_at_full() {
             "{m}"
         );
     }
+    // Passed: the run has served its purpose.
+    std::fs::remove_dir_all(&build).unwrap();
 }

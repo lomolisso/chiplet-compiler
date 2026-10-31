@@ -57,7 +57,7 @@ fn eda_runner_runs_through_eda_run_and_filters_bash_noise() {
         .check()
         .unwrap();
     let stdout = out.stdout_string().unwrap();
-    let tmp = d.path().join("scratch/chipc/eda-tmp/synth-0001-dc");
+    let tmp = d.path().join("scratch/tmp/eda/synth-0001-dc");
     assert!(stdout.contains(&format!("tmp={}", tmp.display())), "{stdout}");
     assert!(stdout.contains("job/dc"), "{stdout}");
     assert_eq!(std::fs::read_to_string(&out.stderr).unwrap(), "real-err\n");

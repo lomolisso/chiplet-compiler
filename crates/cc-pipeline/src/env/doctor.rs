@@ -272,7 +272,7 @@ impl Doctor<'_> {
             return;
         };
         if !self.opts.dry {
-            let probe = scratch.join("chipc").join(".doctor-probe");
+            let probe = scratch.join("tmp").join(".doctor-probe");
             let writable = canon::write_atomic(&probe, b"ok").is_ok();
             let _ = std::fs::remove_file(&probe);
             if !writable {

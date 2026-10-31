@@ -13,11 +13,15 @@ Every check in a pass's `verify.rs` has a negative test (a mutated artifact must
 
 ## Running
 
+On the build host (docs/conventions.md, "Build host and scratch"):
+
 ```bash
-export CARGO_TARGET_DIR=/srv/scratch/$USER/chiplet-target
-cargo nextest run --profile smoke            # or: chipc test
-free -g && cargo nextest run --profile deep  # or: chipc test --deep  (needs Docker; serialised in `heavy`)
+scripts/on-build-host cargo nextest run --profile smoke   # or: scripts/on-build-host chipc test
+scripts/on-build-host --status                            # before deep: load, memory, free scratch
+scripts/on-build-host cargo nextest run --profile deep    # or: … chipc test --deep  (Docker; serialised in `heavy`)
 ```
+
+Deep tests build into the ephemeral `runs/` of the build area and remove what they built when they pass.
 
 Profiles and test groups are in `.config/nextest.toml`: `smoke` = everything except the `deep` binary,
 `deep` = only the `deep` binary, in the `heavy` group (`max-threads = 1`). Plain `cargo test` also runs

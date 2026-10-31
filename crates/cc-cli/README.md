@@ -28,11 +28,13 @@ chipc [--config config.toml] [--set key=value]... [-v] <command>
 **Exit codes:** 0 success; 1 a pass failed (`run`) or a check failed (`verify`); 2 usage, config or DAG
 error (printed as `error: …` with its cause chain).
 
-## Building on the lab host
+## Building and running
+
+On the build host (docs/conventions.md, "Build host and scratch"); the wrapper puts the built `chipc` on `PATH`:
 
 ```bash
-export CARGO_TARGET_DIR=/srv/scratch/$USER/chiplet-target   # local disk; /home is NFS, /tmp is 8 GB
-cargo build -j 8 -p cc-cli && "$CARGO_TARGET_DIR/debug/chipc" run
+scripts/on-build-host cargo build -j 16 -p cc-cli
+scripts/on-build-host chipc run
 ```
 
 ## Adding a subcommand

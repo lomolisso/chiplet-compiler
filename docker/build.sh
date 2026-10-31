@@ -1,5 +1,6 @@
 #!/bin/bash
-# Build the toolchain image. Usage, from the repo root:  docker/build.sh
+# Build the toolchain image. Usage, from the repo root, on the build host:
+#   scripts/on-build-host docker/build.sh
 # Every pin and cap comes from config.toml via `chipc doctor --build-args` (override the binary
 # with CHIPC=...). Long build (hours): run it in the background; see docker/README.md.
 set -euo pipefail
@@ -29,7 +30,15 @@ if (( avail_gb < mem + 16 )); then
   exit 1
 fi
 
-logdir="${SCRATCH_DIR:-/srv/scratch/$USER}/chipc"
+# Docker's storage (/srv) holds the layers; on the build host it is also the shared scratch disk. Keep at
+# least 100 GB free for other users (scratch policy, docs/conventions.md).
+srv_free_gb=$(( $(df -Pk /srv | awk 'NR==2 {print $4}') / 1024 / 1024 ))
+if (( srv_free_gb < 100 )); then
+  echo "build.sh: /srv has ${srv_free_gb} GB free (< 100 GB); not starting" >&2
+  exit 1
+fi
+
+logdir="${CC_BUILD_AREA:-/scratch/$USER/chiplet-compiler}/logs"   # set by scripts/on-build-host
 mkdir -p "$logdir"
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 log="$logdir/docker-build-$stamp.log"

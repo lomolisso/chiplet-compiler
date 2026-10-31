@@ -12,12 +12,17 @@ The toolchain image. It holds every open-source tool the pipeline calls; `Docker
 
 ## Build
 
+Everything here runs on the build host (docs/conventions.md, "Build host and scratch"):
+
 ```bash
-free -g                                        # shared machine: build.sh refuses below cap + 16 GB
-docker/build.sh                                # from the repo root; long: run it in the background
-# CHIPC=/path/to/chipc docker/build.sh         # use a built chipc instead of `cargo run`
-chipc doctor                                   # then check it (image.pins, image.tools, image.selftest.*)
+scripts/on-build-host --status                 # load, memory, free /scratch (build.sh refuses below 100 GB free on /srv)
+scripts/on-build-host docker/build.sh          # from the repo root; long: run it in the background
+# scripts/on-build-host env CHIPC=chipc docker/build.sh   # use the built chipc instead of `cargo run`
+scripts/on-build-host chipc doctor             # then check it (image.pins, image.tools, image.selftest.*)
 ```
+
+- **Another host** gets a copy streamed, not rebuilt: `docker save chiplet-compiler/toolchain:<tag> | ssh <host> docker load`. The build-stage cache is not copied, so the next image change on that host rebuilds every stage once (~75 min).
+- **Old tags** are removed by name (`docker rmi chiplet-compiler/toolchain:<old>`) once a new tag is verified; never prune globally.
 
 - **Tag.** The image is `chiplet-compiler/toolchain:<tools.docker.tag>`, currently `0.2.0`. Bump the tag whenever `[tools.docker.build]`, `[tools.xls]`, `[tools.allo]` or `[tools.grami]` changes.
 - **Pins.** `build.sh` gets every pin from `chipc doctor --build-args`, so `config.toml` is the only place they are written. It also checks that `third_party/` sits at the pinned commits.
@@ -78,4 +83,4 @@ The image was first built across several invocations of `docker/build.sh` on 202
 
 The three Bazel-built tools (`xlscc`, `eval_ir_main`, `check_ir_equivalence_main`) print `redacted` for `--version` (unstamped build). Their commit is the submodule pin, which `versions.json` records.
 
-The build log is at `/srv/scratch/$USER/chipc/docker-build-<UTC stamp>.log`.
+The build log is at `/scratch/$USER/chiplet-compiler/logs/docker-build-<UTC stamp>.log` on the build host.
