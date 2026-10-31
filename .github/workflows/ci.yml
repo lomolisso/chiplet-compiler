@@ -4,6 +4,7 @@ name: ci
 
 on:
   push:
+    branches: [main]               # branches are checked by their pull request: one lint and one test per PR
   pull_request:
     types: [opened, synchronize, reopened, edited]
 
@@ -40,12 +41,11 @@ jobs:
           fi
 
       - name: Commit subjects are conventional commits
-        if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
+        if: github.event_name == 'pull_request'
         env:
           PR_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           base="$PR_BASE"
-          if [ -z "$base" ]; then base=$(git merge-base origin/main HEAD); fi
           re="^(${CC_TYPES})(\([a-z0-9._/-]+\))?!?: [^ ].*[^.]$"
           bad=0
           while IFS= read -r subject; do

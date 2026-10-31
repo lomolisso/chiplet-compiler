@@ -448,7 +448,7 @@ Dense GEMMs are, in practice, computed on systolic arrays or tensor cores. chipl
 | Deep | `tests/deep/` | the full pass on `testing.deep_models`, including the tool calls | locally: `chipc test --deep` |
 | Python | `python/tests/`, `verify/test_quant.py` | export front end, quantization library | CI |
 
-`cargo nextest` profiles separate smoke from deep, and deep tests are in a `heavy` test group with `max-threads = 1`. CI (`.github/workflows/ci.yml`) runs fmt, clippy, unit, smoke and the Python tests on every push and pull request; a pull request can be merged only when its `lint` and `test` jobs pass. Deep tests run on the build host before a change that touches tool calls is merged.
+`cargo nextest` profiles separate smoke from deep, and deep tests are in a `heavy` test group with `max-threads = 1`. CI (`.github/workflows/ci.yml`) runs fmt, clippy, unit, smoke and the Python tests on every pull request and every push to `main`; a pull request can be merged only when its `lint` and `test` jobs pass. Deep tests run on the build host before a change that touches tool calls is merged.
 
 ## 10. Repository layout
 
