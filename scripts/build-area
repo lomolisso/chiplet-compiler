@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Manage the build area on the build host (docs/development.md, "Build host and scratch").
+#
+#   scripts/build-area status          load, memory, free scratch, size of every build-area entry and run
+#   scripts/build-area init <name>     give the worktree .worktrees/<name> its own build dir, runs/<name>/build,
+#                                      seeded with a copy of the main build dir; writes the worktree's untracked
+#                                      config.local.toml (the main checkout's, with build_dir pointing there)
+#   scripts/build-area clean <name>    delete runs/<name> (do this before removing the worktree)
+#
+# Environment: CC_BUILD_HOST (default iacoma231), CC_BUILD_AREA (default /scratch/$USER/chiplet-compiler).
+set -euo pipefail
+
+host="${CC_BUILD_HOST:-iacoma231}"
+area="${CC_BUILD_AREA:-/scratch/$USER/chiplet-compiler}"
+# The main checkout, also when this script runs from a worktree.
+main="$(cd "$(dirname "$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --path-format=absolute --git-common-dir)")" && pwd)"
+
+usage() { sed -n '2,11p' "$0" >&2; exit 2; }
+remote() { ssh -o BatchMode=yes "$host" "$@"; }
+check_name() {
+  [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "build-area: bad name '$1'" >&2; exit 2; }
+}
+
+case "${1:-}" in
+  status)
+    remote "hostname; cat /proc/loadavg; free -g | head -2; df -h /scratch | tail -1;
+            du -sh '$area'/* 2>/dev/null; du -sh '$area'/runs/* 2>/dev/null || true"
+    ;;
+  init)
+    [[ $# -eq 2 ]] || usage
+    name="$2"; check_name "$name"
+    wt="$main/.worktrees/$name"
+    [[ -d "$wt" ]] || { echo "build-area: no worktree $wt" >&2; exit 1; }
+    [[ -f "$main/config.local.toml" ]] || { echo "build-area: $main/config.local.toml is missing" >&2; exit 1; }
+    run="$area/runs/$name/build"
+    remote "set -e; mkdir -p '$run'; if [ -d '$area/build' ]; then cp -a '$area/build/.' '$run/'; fi; du -sh '$run'"
+    if grep -q '^build_dir *=' "$main/config.local.toml"; then
+      sed "s|^build_dir *=.*|build_dir = \"$run\"  # this worktree's build dir (scripts/build-area)|" \
+        "$main/config.local.toml" > "$wt/config.local.toml"
+    else
+      sed "s|^\[paths\]$|[paths]\nbuild_dir = \"$run\"  # this worktree's build dir (scripts/build-area)|" \
+        "$main/config.local.toml" > "$wt/config.local.toml"
+    fi
+    echo "build-area: $wt/config.local.toml -> build_dir = $run"
+    ;;
+  clean)
+    [[ $# -eq 2 ]] || usage
+    name="$2"; check_name "$name"
+    remote "rm -rf '$area/runs/$name'; df -h /scratch | tail -1"
+    ;;
+  *) usage ;;
+esac
