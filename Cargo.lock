@@ -140,7 +140,7 @@ dependencies = [
 
 [[package]]
 name = "cc-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "cc-core",
@@ -154,7 +154,7 @@ dependencies = [
 
 [[package]]
 name = "cc-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "blake3",
  "chrono",
@@ -172,14 +172,14 @@ dependencies = [
 
 [[package]]
 name = "cc-ir"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "cc-core",
 ]
 
 [[package]]
 name = "cc-passes"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "cc-core",
  "cc-pipeline",
@@ -193,7 +193,7 @@ dependencies = [
 
 [[package]]
 name = "cc-pipeline"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "cc-core",
  "chrono",
@@ -210,7 +210,7 @@ dependencies = [
 
 [[package]]
 name = "cc-smt"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "cc-core",
 ]
@@ -963,7 +963,7 @@ dependencies = [
 
 [[package]]
 name = "tests"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "cc-cli",
  "cc-core",

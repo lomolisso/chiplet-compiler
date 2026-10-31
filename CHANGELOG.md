@@ -6,6 +6,21 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-31
+
+### Added
+
+- `export` pass: every phase of every model to StableHLO with component composites and symbolic sizes.
+- Invariance certificate and recipe audit in the export's verification.
+- `scripts/on-build-host` and `scripts/build-area` to build and run on the build host.
+- Version, changelog and contribution guide; CI gates merges on `lint` and `test`.
+
+### Changed
+
+- Toolchain image `0.3.0` adds the locked JAX stack for the export.
+- Pass cache keys include source fingerprints and the model configuration.
+- Documentation reorganized under `docs/`.
+
 ## [0.2.0] - 2026-10-31
 
 ### Added
@@ -24,6 +39,7 @@ All notable changes to this project are listed here. The format follows
 - Pipeline manager: pass DAG, parallel scheduling with memory admission, resume, cancellation.
 - `chipc` CLI and self-test passes.
 
-[Unreleased]: https://github.com/lomolisso/chiplet-compiler/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/lomolisso/chiplet-compiler/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/lomolisso/chiplet-compiler/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/lomolisso/chiplet-compiler/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/lomolisso/chiplet-compiler/releases/tag/v0.1.0
