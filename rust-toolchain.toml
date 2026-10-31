@@ -1,0 +1,5 @@
+# Exact pin: same compiler and clippy lints locally and in CI. Bump deliberately.
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

@@ -1,0 +1,18 @@
+[package]
+name = "cc-passes"
+description = "chiplet-compiler passes: one module per pass, plus the registry"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+cc-core.workspace = true
+cc-pipeline.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

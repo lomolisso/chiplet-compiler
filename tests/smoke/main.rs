@@ -1,0 +1,12 @@
+//! Smoke suite (CI): framework behaviour on toy and fixture passes. No external tools beyond
+//! `/bin/echo`, no Docker, seconds in total.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
+mod cache;
+mod cli;
+mod config;
+mod dag;
+mod pipeline;
+mod runners;
+mod schemas;
+mod verify;

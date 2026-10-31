@@ -1,0 +1,27 @@
+[package]
+name = "cc-cli"
+description = "chiplet-compiler command line (binary `chipc`)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "chipc"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+cc-core.workspace = true
+cc-passes.workspace = true
+cc-pipeline.workspace = true
+chrono.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

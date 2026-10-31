@@ -1,0 +1,25 @@
+# cargo-nextest profiles (spec §9; docs/context/tooling/rust_stack.md §2).
+#   smoke: unit tests + tests/smoke (CI, seconds, no Docker/EDA)
+#   deep:  tests/deep (local only: real containers and host tools), serialised in the `heavy` group
+# Run via `chipc test [--deep]` or `cargo nextest run --profile smoke|deep`.
+
+[test-groups]
+heavy = { max-threads = 1 }      # tests that spawn Docker/EDA tools or use > 1 GB
+solver = { max-threads = 4 }     # SMT solver tests
+
+[profile.default]
+default-filter = "not binary(deep)"
+
+[profile.smoke]
+default-filter = "not binary(deep)"
+fail-fast = false
+slow-timeout = { period = "30s", terminate-after = 4 }
+
+[profile.deep]
+default-filter = "binary(deep)"
+fail-fast = false
+slow-timeout = { period = "300s", terminate-after = 4 }
+
+[[profile.deep.overrides]]
+filter = "binary(deep)"
+test-group = "heavy"

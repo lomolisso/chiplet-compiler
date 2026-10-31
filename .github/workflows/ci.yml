@@ -1,0 +1,53 @@
+# CI (spec §9; docs/context/tooling/ci.md). Private-repo runner: 2 vCPU, 8 GB, 14 GB disk.
+# Runs fmt, clippy, unit + smoke tests and the Python checks. Deep tests (Docker toolchain, EDA) are local only.
+name: ci
+on: [push, pull_request]
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_BUILD_JOBS: "2"
+      RAYON_NUM_THREADS: "2"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: false            # no third-party sources in CI
+          fetch-depth: 1
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"          # same as rust-toolchain.toml
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2   # after the toolchain step: its key includes the rustc version
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo nextest run --workspace --profile smoke --test-threads 2
+
+  python:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      JAX_PLATFORMS: cpu
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: false
+          fetch-depth: 1
+      # setup-uv publishes no moving major tag (`v10` does not resolve): pin the release commit.
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.11.21"           # local uv; keep CI and the lab host on one version
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run --frozen python -m pytest verify/test_quant.py -q

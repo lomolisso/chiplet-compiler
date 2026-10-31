@@ -1,0 +1,30 @@
+[package]
+name = "tests"
+description = "Workspace integration tests: smoke (CI) and deep (local)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[test]]
+name = "smoke"
+path = "smoke/main.rs"
+
+[[test]]
+name = "deep"
+path = "deep/main.rs"
+
+[dependencies]
+cc-cli.workspace = true
+cc-core.workspace = true
+cc-passes.workspace = true
+cc-pipeline.workspace = true
+clap.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

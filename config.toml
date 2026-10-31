@@ -1,0 +1,220 @@
+# chiplet-compiler configuration (tracked defaults).
+# Machine-specific paths and overrides go in config.local.toml (untracked; see config.local.toml.example).
+# Every pass reads only [passes.<pass>] and [passes.<pass>.resources]. Unknown keys are an error.
+# Merge order: built-in defaults < config.toml < config.local.toml < `chipc --set key=value`.
+# A [passes.<name>] section whose pass is not registered yet only warns (planned passes' sections exist early).
+
+[pipeline]
+max_parallel_passes = 2          # passes running at once (subject to the budgets below)
+targets = ["hello_b", "hello_c"] # passes to reach; dependencies are pulled in automatically; [] = every pass
+                                 # (another change toy passes until another change registers `export`; finally "report")
+stop_on_failure = false          # true: on the first failure, admit nothing new and cancel running passes
+
+[resources]
+# Admission (spec §3.3): a ready pass starts when the running passes plus it fit both limits below.
+# A pass declaring more than a limit by itself waits until nothing else runs, then runs alone.
+memory_budget_gb = 32            # sum of declared memory_gb of concurrently running passes
+threads_total = 16               # sum of declared threads of concurrently running passes
+
+[paths]
+build_dir = "build"
+models_dir = "models"
+third_party_dir = "third_party"
+# eda_toggle, scratch_dir, pdk paths: machine-specific, see config.local.toml.example
+
+[models]
+keys = "all"                     # "all" or a list of catalog keys, e.g. ["resnet50", "llama"]
+config = "full"                  # "full" | "reduced"; analysis is abstract, so full is cheap
+
+[testing]
+deep_models = ["resnet50", "mobilenetv4_conv_m", "bert", "llama", "qwen3vl", "centerpoint", "sdxl"]
+tiny_dim = 4                     # value given to symbolic dims for numeric checks (never model scale)
+seed = 20261030
+
+[tools.host]                     # HostRunner
+watchdog_interval_s = 0.5        # RSS sampling period of the process-group watchdog
+
+[tools.docker]                   # DockerRunner; argv built in another change
+image = "chiplet-compiler/toolchain"
+tag = "dev"
+memory_gb = 8                    # default per-call cap (--memory and --memory-swap)
+cpus = 4.0                       # default per-call --cpus
+pids_limit = 4096
+
+[tools.eda]                      # host tools via eda-run
+max_licenses = 2                 # concurrent EDA invocations
+watchdog_interval_s = 2
+
+[tools.smt]                      #
+solver = "bitwuzla"              # "bitwuzla" | "z3"
+timeout_s = 60
+
+# ---------------------------------------------------------------------------------------------
+# Passes. Section name == pass name == build/.<pass>/ directory.
+# [passes.<pass>.resources]: threads (rayon pool size), memory_gb (admitted against the budget; caps the
+# pass's tool calls), timeout_min (the pass is cancelled after it). Defaults: 4, 4, 60.
+# ---------------------------------------------------------------------------------------------
+
+# Framework self-test passes: hello_a -> hello_b, and hello_c independent. No model is touched.
+[passes.hello_a]
+greeting = "hello"               # text written to out/hello.a/greeting.json
+sleep_ms = 0                     # artificial work time (overlap test)
+[passes.hello_a.resources]
+threads = 1
+memory_gb = 1
+timeout_min = 1
+
+[passes.hello_b]
+suffix = ", world"               # appended to hello_a's greeting
+sleep_ms = 0
+fail = false                     # true: induce a failure (failure propagation / resume test)
+[passes.hello_b.resources]
+threads = 1
+memory_gb = 1
+timeout_min = 1
+
+[passes.hello_c]
+text = "independent"             # echoed through the HostRunner (/bin/echo)
+sleep_ms = 0
+[passes.hello_c.resources]
+threads = 1
+memory_gb = 1
+timeout_min = 1
+
+[passes.export]                 # JAX -> StableHLO + composites + JSON
+runner = "docker"                # "docker" | "host"
+symbolic_inputs = true
+[passes.export.resources]
+threads = 4                      # models exported in parallel
+memory_gb = 8                    # per model process
+timeout_min = 30
+
+[passes.import]                  #
+[passes.import.resources]
+threads = 8
+memory_gb = 4
+timeout_min = 30
+
+[passes.components]              #
+[passes.components.resources]
+threads = 8
+memory_gb = 4
+timeout_min = 30
+
+[passes.normalize]               #
+[passes.normalize.order]         # reduction order ω per dtype family: "seq" | "tree:<fan-in>"
+int = "seq"
+float = "seq"
+[passes.normalize.resources]
+threads = 8
+memory_gb = 2
+timeout_min = 30
+
+[passes.kernels]                 #
+tie_break = "ssa_order"
+[passes.kernels.resources]
+threads = 8
+memory_gb = 2
+timeout_min = 30
+
+[passes.kernel_classes]          #
+wl_iterations = 3
+[passes.kernel_classes.resources]
+threads = 16
+memory_gb = 4
+timeout_min = 30
+
+[passes.iteration_space]         #
+[passes.iteration_space.template]
+enabled = true
+min_reuse = 8                    # minimum reuse factor for routing a class to an array template
+max_dims = 7                     # bound of the space-time mapping search
+[passes.iteration_space.resources]
+threads = 8
+memory_gb = 2
+timeout_min = 30
+
+[passes.datapaths]               #
+allow_unknown = []               # classes allowed to end with solver "unknown" (with a reason)
+[passes.datapaths.resources]
+threads = 16
+memory_gb = 8
+timeout_min = 120
+
+[passes.characterize]            #
+tool = "dc"                      # "dc" | "genus"
+pdks = ["nangate45", "asap7"]
+clock_ps = { nangate45 = 2000, asap7 = 1000 }
+[passes.characterize.resources]
+threads = 2                      # bounded by tools.eda.max_licenses
+memory_gb = 8
+timeout_min = 240
+
+[passes.mine]                    #
+tau_start = 40
+tau_min = 2
+budget_s = 3600
+top_k = 32
+[passes.mine.mis]
+algorithm = "exact_ilp"          # "exact_ilp" | "branch_and_bound" | "greedy_min_degree"
+[passes.mine.resources]
+threads = 8
+memory_gb = 8
+timeout_min = 120
+
+[passes.merge]                   #
+requant_variant = "recipe"       # "recipe" | "fp32" | "fixed"
+target_units = 0                 # 0 = stop when area gain <= 0
+max_logic_depth = 0              # 0 = derive from the clock target and the characterize library
+[passes.merge.clique]
+algorithm = "exact_ilp"          # "exact_ilp" | "ostergard" | "greedy"
+timeout_s = 300
+[passes.merge.resources]
+threads = 8
+memory_gb = 8
+timeout_min = 240
+
+[passes.softfloat]               #
+formats = ["e4m3fn", "bf16", "fp16", "fp32"]   # add "e5m2" if a recipe needs it (none does today)
+subnormals = "ieee"              # "ieee" | "ftz"
+random_vectors = 100000
+[passes.softfloat.resources]
+threads = 8
+memory_gb = 4
+timeout_min = 120
+
+[passes.allo_emit]               #
+[passes.allo_emit.resources]
+threads = 4
+memory_gb = 4
+timeout_min = 120
+
+[passes.xls]                     #
+delay_model = "asap7"
+clock_period_ps = 1000
+[passes.xls.resources]
+threads = 4
+memory_gb = 4
+timeout_min = 120
+
+[passes.rtl_verify]              #
+simulator = "verilator"          # "verilator" | "iverilog" | "vcs" | "xcelium"
+[passes.rtl_verify.resources]
+threads = 4
+memory_gb = 4
+timeout_min = 120
+
+[passes.synth]                   #
+tool = "dc"                      # "dc" | "genus"
+lec = "formality"                # "formality" | "conformal"
+sta = true
+[passes.synth.resources]
+threads = 2
+memory_gb = 8
+timeout_min = 240
+
+[passes.report]                  #
+[passes.report.resources]
+threads = 1
+memory_gb = 1
+timeout_min = 10

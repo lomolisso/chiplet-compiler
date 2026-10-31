@@ -1,0 +1,19 @@
+# Copy to config.local.toml (untracked) and adjust. Values here override config.toml.
+# Rust builds: export CARGO_TARGET_DIR=/srv/scratch/$USER/chiplet-target (local disk; /home is NFS at 97 %,
+# /tmp is 8 GB). This is an environment variable, not a config key.
+# Paths below are the ones verified on the lab server on 2026-10-30.
+
+[paths]
+eda_toggle = "/home/rid2/bin/eda-toggle.sh"      # defines eda-run; never source eda-on in the driver
+pdk_root = "/home/rid2/pdks"
+nangate45_lib = "/home/rid2/pdks/FreePDK45/Nangate45_OpenCellLib/stdcells.lib"
+nangate45_lef = "/home/rid2/pdks/FreePDK45/Nangate45_OpenCellLib/stdcells.lef"
+asap7_root = "/home/rid2/pdks/asap7"
+asap7_nldm_dir = "/home/rid2/pdks/asap7/asap7sc7p5t_28/LIB/NLDM"
+asap7_lef_dir = "/home/rid2/pdks/asap7/asap7sc7p5t_28/LEF"
+scratch_dir = "/srv/scratch/rid2"                # local disk; /tmp is only 8 GB (Cargo target, Bazel, EDA temp)
+synopsys_root = "/software/Synopsys-2024_x86_64"
+cadence_root = "/software/cadence-2024-08"
+
+[resources]
+memory_budget_gb = 32            # shared machine: keep well below free memory (check `free -g`)

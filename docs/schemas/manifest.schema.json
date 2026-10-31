@@ -1,0 +1,215 @@
+{
+  "$defs": {
+    "FileRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "hash": {
+          "type": "string"
+        },
+        "path": {
+          "description": "Relative to `out/<kind>/`, `/`-separated.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "hash",
+        "bytes"
+      ],
+      "type": "object"
+    },
+    "InputRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "hash": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "producer": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "producer",
+        "hash"
+      ],
+      "type": "object"
+    },
+    "OutputRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "files": {
+          "items": {
+            "$ref": "#/$defs/FileRecord"
+          },
+          "type": "array"
+        },
+        "hash": {
+          "description": "blake3 over the sorted `(path, file hash)` pairs of `files`.",
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "hash",
+        "files"
+      ],
+      "type": "object"
+    },
+    "PassResources": {
+      "additionalProperties": false,
+      "description": "`[passes.<name>.resources]`: what the scheduler admits against the budget (spec §3.3, §8).",
+      "properties": {
+        "memory_gb": {
+          "default": 4.0,
+          "format": "double",
+          "type": "number"
+        },
+        "threads": {
+          "default": 4,
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "timeout_min": {
+          "default": 60.0,
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "PassStatus": {
+      "oneOf": [
+        {
+          "enum": [
+            "ok",
+            "failed",
+            "cancelled"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "running",
+          "description": "Written when the pass starts; seen afterwards only if the driver died mid-pass.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "cache_key": {
+      "description": "blake3 of (inputs, config section, models, tool versions, pass version); see `cache::cache_key`.",
+      "type": "string"
+    },
+    "config": {
+      "description": "The pass's config section without `resources` (canonical JSON)."
+    },
+    "duration_ms": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "finished_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "inputs": {
+      "items": {
+        "$ref": "#/$defs/InputRecord"
+      },
+      "type": "array"
+    },
+    "models": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "outputs": {
+      "items": {
+        "$ref": "#/$defs/OutputRecord"
+      },
+      "type": "array"
+    },
+    "pass": {
+      "type": "string"
+    },
+    "pass_version": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "peak_rss_bytes": {
+      "description": "Peak RSS of the driver process during the pass window (an upper bound when passes overlap).",
+      "format": "uint64",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "resources": {
+      "$ref": "#/$defs/PassResources",
+      "description": "Declared resources. Recorded, but not part of the cache key: they do not change outputs."
+    },
+    "schema_version": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "started_at": {
+      "description": "RFC 3339, UTC.",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/PassStatus"
+    },
+    "tool_versions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "pass",
+    "pass_version",
+    "cache_key",
+    "status",
+    "inputs",
+    "outputs",
+    "config",
+    "resources",
+    "tool_versions",
+    "models",
+    "started_at"
+  ],
+  "title": "Manifest",
+  "type": "object"
+}

@@ -1,0 +1,46 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "tests"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+publish = false
+
+# Versions: docs/context/tooling/rust_stack.md §1 (crates.io, 2026-10-30). Pin minors; Cargo.lock is committed.
+[workspace.dependencies]
+cc-core = { path = "crates/cc-core" }
+cc-pipeline = { path = "crates/cc-pipeline" }
+cc-ir = { path = "crates/cc-ir" }
+cc-smt = { path = "crates/cc-smt" }
+cc-passes = { path = "crates/cc-passes" }
+cc-cli = { path = "crates/cc-cli" }
+
+anyhow = "1.0.104"
+blake3 = "1.8.7"
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+clap = { version = "4.6.7", features = ["derive"] }
+libc = "0.2.191"
+memory-stats = { version = "1.2.0", features = ["always_use_statm"] }
+petgraph = { version = "0.8.3", default-features = false, features = ["std", "graphmap", "stable_graph"] }
+postcard = { version = "1.1.3", features = ["use-std"] }
+rayon = "1.12.0"
+schemars = "1.2.3"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+serde_path_to_error = "0.1"
+tempfile = "3.27.0"
+thiserror = "2.0.21"
+toml = "1.1.8"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+
+[workspace.lints.rust]
+unsafe_code = "deny"            # runners opt in locally with SAFETY comments (libc calls)
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"            # conventions: no unwrap() outside tests (clippy.toml allows it in tests)
+expect_used = "warn"
+dbg_macro = "warn"

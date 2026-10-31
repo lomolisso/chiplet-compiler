@@ -1,0 +1,236 @@
+{
+  "$defs": {
+    "PassResources": {
+      "additionalProperties": false,
+      "description": "`[passes.<name>.resources]`: what the scheduler admits against the budget (spec §3.3, §8).",
+      "properties": {
+        "memory_gb": {
+          "default": 4.0,
+          "format": "double",
+          "type": "number"
+        },
+        "threads": {
+          "default": 4,
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "timeout_min": {
+          "default": 60.0,
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "PassRun": {
+      "additionalProperties": false,
+      "properties": {
+        "cache_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "duration_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "end_offset_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pass": {
+          "type": "string"
+        },
+        "peak_rss_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "resources": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PassResources"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "start_offset_ms": {
+          "description": "Milliseconds since the run started (monotonic clock), for overlap analysis.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/RunStatus"
+        }
+      },
+      "required": [
+        "pass",
+        "status"
+      ],
+      "type": "object"
+    },
+    "RunStatus": {
+      "oneOf": [
+        {
+          "enum": [
+            "failed"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "ok",
+          "description": "Ran and verified.",
+          "type": "string"
+        },
+        {
+          "const": "cache_hit",
+          "description": "Skipped: an `ok` manifest with the same cache key and intact outputs exists.",
+          "type": "string"
+        },
+        {
+          "const": "cancelled",
+          "description": "Cancelled by `stop_on_failure` after another pass failed.",
+          "type": "string"
+        },
+        {
+          "const": "skipped",
+          "description": "Not started: a dependency did not succeed, or the run was stopping.",
+          "type": "string"
+        }
+      ]
+    },
+    "Totals": {
+      "additionalProperties": false,
+      "properties": {
+        "cache_hits": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cancelled": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "failed": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ran": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "skipped": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ran",
+        "cache_hits",
+        "failed",
+        "cancelled",
+        "skipped"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "duration_ms": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "finished_at": {
+      "type": "string"
+    },
+    "from": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "models": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "only": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "passes": {
+      "description": "In the order the passes finished (or were decided).",
+      "items": {
+        "$ref": "#/$defs/PassRun"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "started_at": {
+      "type": "string"
+    },
+    "targets": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "totals": {
+      "$ref": "#/$defs/Totals"
+    }
+  },
+  "required": [
+    "schema_version",
+    "started_at",
+    "finished_at",
+    "duration_ms",
+    "targets",
+    "models",
+    "passes",
+    "totals",
+    "ok"
+  ],
+  "title": "RunSummary",
+  "type": "object"
+}
