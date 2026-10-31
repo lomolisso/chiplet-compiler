@@ -17,7 +17,7 @@ Keep the workflow short and cached.
 
 ## 2. Workflow (`.github/workflows/ci.yml`)
 
-Two jobs on `ubuntu-24.04`, triggered on push and pull request:
+Two jobs on `ubuntu-24.04`, triggered on every pull request (opened, updated, title edited) and on pushes to `main`:
 
 | Job | Steps |
 |---|---|
