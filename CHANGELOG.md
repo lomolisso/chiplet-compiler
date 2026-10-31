@@ -6,6 +6,15 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-31
+
+### Added
+
+- Toolchain image with GraMi, Allo, XLS, Verilator, Yosys and SMT solvers, built under memory caps.
+- `EdaRunner` for licensed Synopsys and Cadence tools through `eda-run`.
+- `chipc doctor`: environment checks, licenses and Liberty `.db` compilation.
+- GraMi, Allo and XLS as shallow submodules.
+
 ## [0.1.0] - 2026-10-31
 
 ### Added
@@ -15,5 +24,6 @@ All notable changes to this project are listed here. The format follows
 - Pipeline manager: pass DAG, parallel scheduling with memory admission, resume, cancellation.
 - `chipc` CLI and self-test passes.
 
-[Unreleased]: https://github.com/lomolisso/chiplet-compiler/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/lomolisso/chiplet-compiler/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/lomolisso/chiplet-compiler/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/lomolisso/chiplet-compiler/releases/tag/v0.1.0
