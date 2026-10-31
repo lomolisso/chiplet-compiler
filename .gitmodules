@@ -1,0 +1,12 @@
+[submodule "third_party/grami"]
+	path = third_party/grami
+	url = https://github.com/ehab-abdelhamid/GraMi.git
+	shallow = true
+[submodule "third_party/allo"]
+	path = third_party/allo
+	url = https://github.com/cornell-zhang/allo.git
+	shallow = true
+[submodule "third_party/xls"]
+	path = third_party/xls
+	url = https://github.com/google/xls.git
+	shallow = true

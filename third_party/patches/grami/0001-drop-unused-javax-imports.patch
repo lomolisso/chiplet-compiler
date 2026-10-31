@@ -1,0 +1,30 @@
+Drop two unused imports so GraMi builds on Java >= 11.
+
+javax.jws (module java.xml.ws) and javax.rmi.CORBA (module java.corba) were removed
+from the JDK in Java 11 (JEP 320, https://openjdk.org/jeps/320). Neither import is
+used: the code calls utilities.Util.clone fully qualified. Applied to GraMi d2875ae8
+inside the Docker image build only (docs/context/tooling/grami.md §3); the submodule
+itself is never edited. Apply with: patch -p1 -d <grami> < this-file
+
+--- a/GRAMI_DIRECTED_SUBGRAPHS/src/search/RightMostExtension.java
++++ b/GRAMI_DIRECTED_SUBGRAPHS/src/search/RightMostExtension.java
+@@ -27,8 +27,6 @@
+ import java.util.Map;
+ import java.util.TreeMap;
+
+-import javax.jws.Oneway;
+-import javax.rmi.CORBA.Util;
+
+ import utilities.MyPair;
+
+--- a/GRAMI_UNDIRECTED_SUBGRAPHS/src/search/RightMostExtension.java
++++ b/GRAMI_UNDIRECTED_SUBGRAPHS/src/search/RightMostExtension.java
+@@ -27,8 +27,6 @@
+ import java.util.Map;
+ import java.util.TreeMap;
+
+-import javax.jws.Oneway;
+-import javax.rmi.CORBA.Util;
+
+ import utilities.MyPair;
+

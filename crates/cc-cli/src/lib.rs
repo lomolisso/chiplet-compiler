@@ -235,7 +235,7 @@ pub fn execute(cli: &Cli, passes: Vec<Box<dyn Pass>>, out: &mut dyn Write) -> Re
         Command::Doctor => {
             writeln!(
                 out,
-                "chipc doctor: environment checks are implemented in another change"
+                "chipc doctor: environment checks (tools, image, licenses, PDKs) are implemented in another change"
             )?;
             Ok(0)
         }

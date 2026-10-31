@@ -1,6 +1,6 @@
 //! `EdaRunner` (stub; completed in another change). Host EDA tools run only through `eda-run` in an interactive
 //! bash, inheriting the session environment, never by sourcing `eda-on` in the driver
-//! (docs/context/tooling/eda_environment.md §2).
+//! (docs/context/tooling/eda_environment.md §2; spec §3.6).
 
 use std::path::PathBuf;
 use std::time::Duration;

@@ -168,7 +168,7 @@ export → import → components → normalize → kernels → kernel_classes �
 - `characterize` (primitive area/delay library) and `softfloat` (the Allo soft-float library) depend only on the environment, so they run in parallel with the analysis chain.
 - `synth` and `rtl_verify` both consume `xls` and run in parallel.
 
-For each pass: purpose, method, reused tools, outputs and **verification**. The verification is formal or structural and never needs model-scale compute. Implementation details are in each pass's documentation.
+For each pass: purpose, method, reused tools, outputs and **verification**. The verification is formal or structural and never needs model-scale compute. Implementation details are in each pass's `README.md`.
 
 ### 4.1 `export` (Python, DockerRunner)
 
@@ -461,7 +461,7 @@ verify/        pre-framework Python checks of the ports (dtype audit, census, un
 docker/        Dockerfile and image docs
 third_party/   git submodules: grami, allo, xls (shallow)
 tests/         smoke/, deep/, fixtures/
-docs/          spec.md, conventions.md, context/{tooling,theory,literature}/, schemas/
+docs/          spec.md, conventions.md, reports/, context/{tooling,theory,literature}/, schemas/
 build/         (ignored) build/.<pass>/ artifacts
 ```
 

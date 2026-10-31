@@ -49,7 +49,7 @@ build/.<pass>/manifest.json  verify.json  out/<kind>/…  views/  logs/
 
 ## Tool runners
 
-Every external process goes through a `ToolRunner`. Each call:
+Every external process goes through a `ToolRunner` (spec §8). Each call:
 
 - gets `Caps { memory_gb, cpus, timeout_s, pids_limit }`, a `CancelToken` and a `ToolLog`;
 - writes `logs/<n>-<tool>.out|.err` and appends one JSON line to `logs/tools.jsonl` (command line, caps,

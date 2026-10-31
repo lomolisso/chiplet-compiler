@@ -1,5 +1,5 @@
 //! Deep suite (local only, `heavy` test group, one test at a time): the runners against real processes
-//! and a real container. Check `free -g` first. Caps here are 64 MiB, so a broken
+//! and a real container. Check `free -g` first (spec §8). Caps here are 64 MiB, so a broken
 //! cap costs at most a few hundred MB before the test fails.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

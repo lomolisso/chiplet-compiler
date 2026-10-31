@@ -10,7 +10,7 @@ chiplet-compiler takes quantized DNN models written in JAX, lowers them to Stabl
 
 Each step is checked formally or structurally (SMT proofs, isomorphism certificates, equivalence checking), never by running the large models.
 
-**Status:** the framework core is built; the passes are added one at a time.
+**Status:** the framework core is built (pipeline manager, artifact store, capped tool runners, `chipc`); the passes are added one at a time.
 
 ## Read
 - [docs/spec.md](docs/spec.md): the system design: passes, verification, datatypes, decisions.
