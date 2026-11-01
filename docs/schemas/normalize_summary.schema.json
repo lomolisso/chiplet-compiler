@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`components/<id>.postcard.summary.json`.",
+  "properties": {
+    "edges": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "height": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "id": {
+      "type": "string"
+    },
+    "instances": {
+      "description": "Instances of the component (from the components summary).",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "models": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Instances per model.",
+      "type": "object"
+    },
+    "nodes": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "nodes_in": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "omega": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Reductions per order (`seq`, `tree:<b>`).",
+      "type": "object"
+    },
+    "rules": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Rewrites applied, per rule.",
+      "type": "object"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "height",
+    "nodes_in",
+    "nodes",
+    "edges",
+    "rules",
+    "omega",
+    "instances",
+    "models"
+  ],
+  "title": "NormalizedSummary",
+  "type": "object"
+}

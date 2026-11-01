@@ -93,8 +93,11 @@ license_error_patterns = [
 ]
 
 [tools.smt]
-solver = "bitwuzla"              # "bitwuzla" | "z3"
-timeout_s = 60
+solver = "bitwuzla"              # "bitwuzla" | "z3": proves; the other one re-checks in verify
+timeout_s = 60                   # per query
+runner = "docker"                # "docker": the solvers of [tools.docker]'s image | "host": the paths below
+z3 = "z3"                        # host binaries (runner = "host"), resolved on PATH unless absolute
+bitwuzla = "bitwuzla"
 
 # ---------------------------------------------------------------------------------------------
 # Passes. Section name == pass name == build/.<pass>/ directory.
@@ -158,9 +161,13 @@ memory_gb = 4                    # measured 2026-11-01: 3.3 GB peak for all mode
 timeout_min = 30
 
 [passes.normalize]
-[passes.normalize.order]         # reduction order ω per dtype family: "seq" | "tree:<fan-in>"
-int = "seq"
-float = "seq"
+views = true                     # write views/normalize.md
+[passes.normalize.order]         # reduction order ω per dtype family: "seq" | "tree:<fan-in>" (fan-in >= 2)
+bool = "seq"                     # integer families default to "seq" (every order gives the same bits)
+sint = "seq"
+uint = "seq"
+float = "seq"                    # float families must be set: their order is part of the semantics
+complex = "seq"
 [passes.normalize.resources]
 threads = 8
 memory_gb = 2

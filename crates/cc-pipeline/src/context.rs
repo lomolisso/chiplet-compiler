@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use cc_core::config::{ModelConfigKind, PathsConfig, TestingConfig};
+use cc_core::config::{ModelConfigKind, PathsConfig, SmtConfig, TestingConfig};
 use cc_core::runner::{BoundRunner, Caps, Runners, ToolLog};
 use cc_core::{
     ArtifactKind, CancelToken, CoreError, KindDir, LoadedConfig, PassDir, PassResources, PassSection,
@@ -73,6 +73,11 @@ impl PassContext {
 
     pub fn paths(&self) -> &PathsConfig {
         &self.config.config.paths
+    }
+
+    /// `[tools.smt]`: which solver proves, where the binaries are, the per-query timeout.
+    pub fn smt(&self) -> &SmtConfig {
+        &self.config.config.tools.smt
     }
 
     /// Resolve a configured path against the repository root.

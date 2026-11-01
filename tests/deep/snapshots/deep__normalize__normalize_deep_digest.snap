@@ -1,0 +1,21 @@
+---
+source: tests/deep/normalize.rs
+expression: digest
+---
+{
+  "checks": 822,
+  "components": 203,
+  "nodes": 26890,
+  "nodes_in": 29052,
+  "omega": {
+    "seq": 415
+  },
+  "rules": {
+    "broadcast_identity": 2,
+    "convert_identity": 6,
+    "cse": 82,
+    "dce": 2072,
+    "reshape_collapse": 2,
+    "splat_fold": 2035
+  }
+}

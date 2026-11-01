@@ -23,6 +23,10 @@ scripts/on-build-host cargo nextest run --profile deep    # or: … chipc test -
 
 Deep tests build into the ephemeral `runs/` of the build area and remove what they built when they pass.
 
+Smoke tests that prove rules (`smoke/normalize.rs`) call real solvers: the toolchain image's on the build
+host, or host binaries on `PATH` when `CC_SMT_RUNNER=host` (CI downloads the pinned z3 and bitwuzla
+releases and sets it; docs/framework/smt.md).
+
 Golden snapshots (`insta`, `tests/deep/snapshots/`) pin summary digests of deep runs. After an intended
 change, rerun with `INSTA_UPDATE=always` (or review with `cargo insta review`) and commit the new `.snap`.
 

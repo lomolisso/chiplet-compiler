@@ -344,6 +344,10 @@ impl Default for EdaConfig {
 pub struct SmtConfig {
     pub solver: String,
     pub timeout_s: u64,
+    /// `docker`: the solvers of the toolchain image; `host`: the binaries `z3` and `bitwuzla` below.
+    pub runner: String,
+    pub z3: String,
+    pub bitwuzla: String,
 }
 
 impl Default for SmtConfig {
@@ -351,6 +355,9 @@ impl Default for SmtConfig {
         Self {
             solver: "bitwuzla".into(),
             timeout_s: 60,
+            runner: "docker".into(),
+            z3: "z3".into(),
+            bitwuzla: "bitwuzla".into(),
         }
     }
 }

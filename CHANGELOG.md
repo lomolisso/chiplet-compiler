@@ -10,6 +10,7 @@ All notable changes to this project are listed here. The format follows
 
 - `import` pass and `cc-ir`: typed IR with symbolic dimensions, inlined calls, size tagging and the op-semantics table.
 - `components` pass: composite calls and entry regions as instances, deduplicated into size- and width-free components with certificates.
+- `normalize` pass and `cc-smt`: exactness-preserving rewrites proven once with SMT, a replayable ledger, and a reduction order on every reduction.
 
 ### Fixed
 

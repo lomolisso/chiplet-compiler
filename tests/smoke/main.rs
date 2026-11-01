@@ -11,6 +11,7 @@ mod eda;
 mod env;
 mod export;
 mod import;
+mod normalize;
 mod pipeline;
 mod runners;
 mod schemas;

@@ -10,7 +10,8 @@
 | [framework/environment.md](framework/environment.md) | `chipc doctor` and the Liberty `.db` files |
 | [framework/cli.md](framework/cli.md) | `chipc` commands |
 | [framework/ir.md](framework/ir.md) | `cc-ir`: the IR, symbolic dimensions, the op-semantics table, graphs for matching |
-| [passes/](passes/) | One document per pass: `export`, `export-frontend` (the Python side), `import`, `components`, `selftest` |
+| [framework/smt.md](framework/smt.md) | `cc-smt`: SMT-LIB scripts and the solver runner |
+| [passes/](passes/) | One document per pass: `export`, `export-frontend` (the Python side), `import`, `components`, `normalize`, `selftest` |
 | [toolchain-image.md](toolchain-image.md) | The Docker toolchain image: build, pins, cache, measurements |
 | [third-party.md](third-party.md) | The submodules (GraMi, Allo, XLS) and their pins |
 | [model-verification.md](model-verification.md) | Python checks of the model ports (`verify/`) |
