@@ -144,11 +144,7 @@ fn transpose_collapse() -> String {
         s.constant(&j, &bv(AXIS));
         let before = at_pos(&transpose_fwd(&p, &xi), &j);
         let after = at_pos(&xi, &at_pos(&p, &j));
-        cases.push(and(&[
-            in_rank(&p),
-            in_rank_of(&j, r),
-            not(&eq(&before, &after)),
-        ]));
+        cases.push(and(&[in_rank(&p), in_rank_of(&j, r), not(&eq(&before, &after))]));
     }
     s.assert(or(&cases));
     s.render()
