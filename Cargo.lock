@@ -230,15 +230,18 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+ "vf2",
 ]
 
 [[package]]
 name = "cc-passes"
 version = "0.3.0"
 dependencies = [
+ "blake3",
  "cc-core",
  "cc-ir",
  "cc-pipeline",
+ "postcard",
  "rayon",
  "schemars",
  "serde",
@@ -1349,6 +1352,12 @@ name = "valuable"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
+
+[[package]]
+name = "vf2"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4bcf7d8381208a82de75cbd253a7a18586792d745641ff3b76e3319a8b0b78c7"
 
 [[package]]
 name = "wait-timeout"

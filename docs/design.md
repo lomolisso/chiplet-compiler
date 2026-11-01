@@ -206,13 +206,20 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
 
 - **Purpose.** Composites → component instances → abstract components C.
 - **Method.**
-  - Each composite call is an instance.
-  - Ops outside composites form maximal weakly-connected regions (`anon:<hash>`).
-  - Abstract component = instance with element types as (family, width) and concrete dims kept as attributes.
-  - Deduplicate by canonical form (WL bucket + VF2 confirmation).
+  - Each executed composite call is an instance (a call path: one decomposition may serve several calls).
+  - The entry's other ops form maximal weakly connected regions (`anon:<hash>`), with composite calls as
+    cut points and size computation joined to its first consumer; they are not split further.
+  - Abstract component = instance without sizes or widths: every dim except the literal 1 is a class
+    variable (classes are the axes the op table's StableHLO rules force equal), element types are
+    (family, class), size-attribute entries other than 0 and 1 and constant values are parameters. Size
+    computation and shape operands are left out; a dimension value entering compute is a `size_in` input.
+  - Deduplicate by canonical form (WL bucket + VF2 isomorphism confirmation), by nesting height; a
+    nested call is labelled by its child component.
 - **Verification.**
-  - Partition property (every op in exactly one instance).
-  - Recoverability: substituting an instance's dims and widths back into its abstract component gives a graph isomorphic to the instance. The VF2 mapping is stored as a certificate and re-checked.
+  - Partition property (every op at every executed call path in exactly one instance).
+  - Recoverability: substituting an instance's dims, widths and parameters back into its abstract
+    component gives a graph isomorphic to the instance. The VF2 mapping is stored as a certificate and
+    re-checked edge by edge against a graph rebuilt from the module.
 
 ### 4.4 `normalize`
 
@@ -509,3 +516,9 @@ build/         (ignored) build/.<pass>/ artifacts
 | Symbolic dims in JAX's dimension algebra (polynomials over symbols with `floordiv`, `mod`, `max`, `min`) | Polynomials only | The ports' sizes halve and pad (`floordiv(H + 1, 2)`, `-L mod 256`); it is the algebra the exporter used |
 | JAX's `chlo.*` composites are inlined | Keep them as components | They are lowering helpers (`top_k`, `erf`), not module boundaries (`passes.import.inline_composites`) |
 | A dimension value entering compute is allowed and recorded (`dim_as_data`) | Reject it | rtdetr_v2 anchors, llama positions, means over a symbolic axis use sizes as run-time scalars; the graph stays size-independent |
+| Components are compared by graph isomorphism (VF2 isomorphism mode after equal node and edge counts) | Non-induced subgraph matching | With equal node and edge counts a monomorphism, an induced match and an isomorphism coincide; the isomorphism mode states the intent |
+| Anon regions are not split further | Split at layout ops | Layout and data movement are kernel boundaries (`kernels`, K1-K4); a second rule here would duplicate it |
+| Size computation is in the partition but not in the abstract graph; `dim_as_data` operands are `size_in` inputs | Size ops as graph nodes | Import validated that result types determine shape operands; lowering differences in size code would split equal components |
+| Dims abstracted by spec-derived classes (every dim but 1 is a variable, symbolic or constant) | One variable per distinct value; symbols kept in the graph | Classes follow from the labelled graph, so certificates map them; coincidental equalities (square Dense) do not split components |
+| Component identity is the graph, not the composite name | Name + graph | Equal graphs from different modules or frameworks are one component; names are listed per component |
+| Size-attribute entries are parameters except 0 and 1; floats are (family `float`, format parameter) | All literal; convention in the family | Sizes must not enter identity; 0 and 1 mark degenerate structure; design §6.1 makes the format a parameter |

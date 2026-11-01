@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`components/<id>.postcard.summary.json`.",
+  "properties": {
+    "children": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "dims": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "edges": {
+      "description": "Dataflow edges (parallel edges counted).",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "elems": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "hash": {
+      "type": "string"
+    },
+    "height": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "id": {
+      "type": "string"
+    },
+    "instances": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "models": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Instances per model.",
+      "type": "object"
+    },
+    "names": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Composite names of the instances, with counts (`anon` for anon regions).",
+      "type": "object"
+    },
+    "nodes": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "ops": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Ops per name.",
+      "type": "object"
+    },
+    "phases": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "hash",
+    "height",
+    "nodes",
+    "edges",
+    "dims",
+    "elems",
+    "ops",
+    "children",
+    "names",
+    "models",
+    "phases",
+    "instances"
+  ],
+  "title": "ComponentSummary",
+  "type": "object"
+}

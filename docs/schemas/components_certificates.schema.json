@@ -1,0 +1,114 @@
+{
+  "$defs": {
+    "NodeRef": {
+      "description": "Where a node of an instance graph comes from in the module (a certificate entry).",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "An op.",
+          "properties": {
+            "op": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A value used as an input: a decomposition argument, a region argument, or (anon regions) a value\ndefined outside the region.",
+          "properties": {
+            "value": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The size value at operand `port` of op `op` (a `dim_as_data` port).",
+          "properties": {
+            "size_in": {
+              "properties": {
+                "op": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "port": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "op",
+                "port"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "size_in"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "An exported value of an anon region.",
+          "properties": {
+            "out": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "out"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`certificates/<model>/<phase>.json`: per instance, the image of every component node.",
+  "properties": {
+    "certificates": {
+      "additionalProperties": {
+        "items": {
+          "$ref": "#/$defs/NodeRef"
+        },
+        "type": "array"
+      },
+      "type": "object"
+    },
+    "model": {
+      "type": "string"
+    },
+    "phase": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "model",
+    "phase",
+    "certificates"
+  ],
+  "title": "CertificatesFile",
+  "type": "object"
+}

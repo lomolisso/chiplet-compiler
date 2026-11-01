@@ -9,6 +9,11 @@ All notable changes to this project are listed here. The format follows
 ### Added
 
 - `import` pass and `cc-ir`: typed IR with symbolic dimensions, inlined calls, size tagging and the op-semantics table.
+- `components` pass: composite calls and entry regions as instances, deduplicated into size- and width-free components with certificates.
+
+### Fixed
+
+- JSON floats are parsed exactly (`serde_json` `float_roundtrip`); `import` read some float attributes one ulp off.
 
 ## [0.3.0] - 2026-10-31
 

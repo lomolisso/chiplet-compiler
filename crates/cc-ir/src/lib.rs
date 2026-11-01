@@ -1,6 +1,7 @@
 //! The chiplet-compiler IR (`docs/framework/ir.md`): typed modules with symbolic sizes, and the
 //! op-semantics table that encodes the StableHLO specification (design §4.2).
 
+pub mod absgraph;
 pub mod attrs;
 pub mod hash;
 pub mod ir;

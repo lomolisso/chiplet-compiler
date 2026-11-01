@@ -3,6 +3,7 @@
 //! `hello_a`, `hello_b`, `hello_c` are the framework's self-test passes: they exercise the DAG,
 //! caching, parallel branches, tool runners and verification without touching any model.
 
+pub mod components;
 pub mod export;
 pub mod hello_a;
 pub mod hello_b;
@@ -16,5 +17,6 @@ pub use registry::registry;
 pub fn pass_schemas() -> Vec<(&'static str, serde_json::Value)> {
     let mut v = export::json::schemas();
     v.extend(import::json::schemas());
+    v.extend(components::json::schemas());
     v
 }

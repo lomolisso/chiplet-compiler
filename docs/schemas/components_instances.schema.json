@@ -1,0 +1,1243 @@
+{
+  "$defs": {
+    "Atom": {
+      "description": "An atom of a monomial.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "var": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "var"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "floor_div": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "$ref": "#/$defs/SymExpr"
+                },
+                {
+                  "$ref": "#/$defs/SymExpr"
+                }
+              ],
+              "type": "array"
+            }
+          },
+          "required": [
+            "floor_div"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "mod": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "$ref": "#/$defs/SymExpr"
+                },
+                {
+                  "$ref": "#/$defs/SymExpr"
+                }
+              ],
+              "type": "array"
+            }
+          },
+          "required": [
+            "mod"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "max": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "$ref": "#/$defs/SymExpr"
+                },
+                {
+                  "$ref": "#/$defs/SymExpr"
+                }
+              ],
+              "type": "array"
+            }
+          },
+          "required": [
+            "max"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "min": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "$ref": "#/$defs/SymExpr"
+                },
+                {
+                  "$ref": "#/$defs/SymExpr"
+                }
+              ],
+              "type": "array"
+            }
+          },
+          "required": [
+            "min"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Attr": {
+      "description": "A typed attribute.",
+      "oneOf": [
+        {
+          "enum": [
+            "unit"
+          ],
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "int": {
+              "properties": {
+                "ty": {
+                  "type": "string"
+                },
+                "value": {
+                  "format": "int128",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "value",
+                "ty"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "int"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "float": {
+              "properties": {
+                "ty": {
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/$defs/Scalar"
+                }
+              },
+              "required": [
+                "value",
+                "ty"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "float"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "bool": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "bool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "str": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "str"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "symbol": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "symbol"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "ints": {
+              "items": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "ints"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "bools": {
+              "items": {
+                "type": "boolean"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "bools"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Dense elements: the values when the export kept them (at most 1024), else a content digest.",
+          "properties": {
+            "dense": {
+              "properties": {
+                "digest": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "splat": {
+                  "type": "boolean"
+                },
+                "ty": {
+                  "$ref": "#/$defs/Type"
+                },
+                "values": {
+                  "items": {
+                    "$ref": "#/$defs/Scalar"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "ty",
+                "splat"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "dense"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "array": {
+              "items": {
+                "$ref": "#/$defs/Attr"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "array"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "dict": {
+              "additionalProperties": {
+                "$ref": "#/$defs/Attr"
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "dict"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "$ref": "#/$defs/Type"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A StableHLO enum (`comparison_direction`, `comparison_type`, `fft_type`, `precision`, …).",
+          "properties": {
+            "enum": {
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "value"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "enum"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "dot_dims": {
+              "$ref": "#/$defs/DotDims"
+            }
+          },
+          "required": [
+            "dot_dims"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "conv_dims": {
+              "$ref": "#/$defs/ConvDims"
+            }
+          },
+          "required": [
+            "conv_dims"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "gather_dims": {
+              "$ref": "#/$defs/GatherDims"
+            }
+          },
+          "required": [
+            "gather_dims"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "scatter_dims": {
+              "$ref": "#/$defs/ScatterDims"
+            }
+          },
+          "required": [
+            "scatter_dims"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No structured form: the printed attribute.",
+          "properties": {
+            "opaque": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "opaque"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Bindings": {
+      "additionalProperties": false,
+      "properties": {
+        "dims": {
+          "description": "Per dim class of the component.",
+          "items": {
+            "$ref": "#/$defs/Dim"
+          },
+          "type": "array"
+        },
+        "elems": {
+          "description": "Per element class of the component, in MLIR spelling (`f32`, `bf16`, `i8`, `f8E4M3FN`).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "params": {
+          "description": "Per component node: its parameters (size-attribute entries, constant value, size value).",
+          "items": {
+            "items": {
+              "$ref": "#/$defs/Param"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "dims",
+        "elems",
+        "params"
+      ],
+      "type": "object"
+    },
+    "ConvDims": {
+      "description": "`stablehlo.convolution` dimension numbers (spec `#convolution`).",
+      "properties": {
+        "input_batch": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "input_feature": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "input_spatial": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "kernel_input_feature": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "kernel_output_feature": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "kernel_spatial": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "output_batch": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "output_feature": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "output_spatial": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "input_batch",
+        "input_feature",
+        "input_spatial",
+        "kernel_input_feature",
+        "kernel_output_feature",
+        "kernel_spatial",
+        "output_batch",
+        "output_feature",
+        "output_spatial"
+      ],
+      "type": "object"
+    },
+    "Counts": {
+      "additionalProperties": false,
+      "properties": {
+        "nodes": {
+          "description": "Nodes of the graph.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ops": {
+          "description": "Owned ops.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "size": {
+          "description": "Owned ops left out of the graph (size computation, shape-only constants).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ops",
+        "size",
+        "nodes"
+      ],
+      "type": "object"
+    },
+    "Dim": {
+      "description": "A dimension: a constant or a symbolic expression over the model's size symbols. A `Sym` is never a\nconstant expression (constructors fold it into `Const`).",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "const": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "const"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "sym": {
+              "$ref": "#/$defs/SymExpr"
+            }
+          },
+          "required": [
+            "sym"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "DotDims": {
+      "description": "`stablehlo.dot_general` dimension numbers (spec `#dot_general`).",
+      "properties": {
+        "lhs_batching": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "lhs_contracting": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "rhs_batching": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "rhs_contracting": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "lhs_batching",
+        "rhs_batching",
+        "lhs_contracting",
+        "rhs_contracting"
+      ],
+      "type": "object"
+    },
+    "Elem": {
+      "description": "An element type. MLIR signless `iN` (N > 1) is a signed two's-complement integer in StableHLO\n(spec \"Types\": `si`/`i` are signed, `ui` unsigned); `i1` is the boolean.",
+      "oneOf": [
+        {
+          "enum": [
+            "bool"
+          ],
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "int": {
+              "properties": {
+                "signed": {
+                  "type": "boolean"
+                },
+                "width": {
+                  "format": "uint16",
+                  "maximum": 65535,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "signed",
+                "width"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "int"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "float": {
+              "properties": {
+                "exp": {
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "flavour": {
+                  "$ref": "#/$defs/FloatFlavour"
+                },
+                "mant": {
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "exp",
+                "mant",
+                "flavour"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "float"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "complex": {
+              "$ref": "#/$defs/Elem"
+            }
+          },
+          "required": [
+            "complex"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "FloatFlavour": {
+      "description": "Special-value convention of a binary float format.",
+      "oneOf": [
+        {
+          "const": "ieee",
+          "description": "IEEE 754 style: infinities and NaNs.",
+          "type": "string"
+        },
+        {
+          "const": "finite_nan",
+          "description": "`FN`: finite, NaN only, no infinities (OCP OFP8 E4M3, MLIR `f8E4M3FN`).",
+          "type": "string"
+        },
+        {
+          "const": "finite_nan_unsigned_zero",
+          "description": "`FNUZ`: finite, one NaN encoding (negative zero), no infinities (MLIR `f8E4M3FNUZ`, `f8E5M2FNUZ`).",
+          "type": "string"
+        },
+        {
+          "const": "finite_nan_unsigned",
+          "description": "`FNU`: finite, NaN only, unsigned (MLIR `f8E8M0FNU`).",
+          "type": "string"
+        },
+        {
+          "const": "finite_nan_unsigned_zero_bias11",
+          "description": "`FN` with exponent bias 11 (MLIR `f8E4M3B11FNUZ`).",
+          "type": "string"
+        }
+      ]
+    },
+    "GatherDims": {
+      "description": "`stablehlo.gather` dimension numbers (spec `#gather`).",
+      "properties": {
+        "collapsed_slice_dims": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "index_vector_dim": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "offset_dims": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "operand_batching_dims": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "start_index_map": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "start_indices_batching_dims": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "offset_dims",
+        "collapsed_slice_dims",
+        "operand_batching_dims",
+        "start_indices_batching_dims",
+        "start_index_map",
+        "index_vector_dim"
+      ],
+      "type": "object"
+    },
+    "InstanceKind": {
+      "oneOf": [
+        {
+          "const": "composite",
+          "description": "One executed call of a `cc.*` composite.",
+          "type": "string"
+        },
+        {
+          "const": "anon",
+          "description": "A maximal weakly connected region of the entry's own ops.",
+          "type": "string"
+        }
+      ]
+    },
+    "InstanceRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "attributes": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Attr"
+          },
+          "description": "The composite's `composite_attributes` and `version`.",
+          "type": "object"
+        },
+        "bindings": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Bindings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The values of the component's classes and parameters for this instance."
+        },
+        "component": {
+          "description": "The component (`None`: the instance has no compute op).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "counts": {
+          "$ref": "#/$defs/Counts"
+        },
+        "func": {
+          "description": "The decomposition function (module function index).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "`<model>/<phase>/<call op>/…` (composite) or `<model>/<phase>/anon:<hash>`.",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/InstanceKind"
+        },
+        "name": {
+          "description": "The composite's name (`cc.flax.Dense`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ops": {
+          "description": "Owned op ids at `position.path`, as inclusive ranges. A composite instance also owns its call op,\nat its parent's path.",
+          "items": {
+            "items": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "position": {
+          "$ref": "#/$defs/Position"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "attributes",
+        "position",
+        "ops",
+        "counts"
+      ],
+      "type": "object"
+    },
+    "Mono": {
+      "description": "A product of atoms with powers (sorted by atom; the empty monomial is 1).",
+      "items": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "$ref": "#/$defs/Atom"
+          },
+          {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        ],
+        "type": "array"
+      },
+      "type": "array"
+    },
+    "Param": {
+      "description": "One instance parameter of a node, in attribute order (then the `size_in` value).",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "int": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "int"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "value": {
+              "$ref": "#/$defs/Attr"
+            }
+          },
+          "required": [
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "size": {
+              "$ref": "#/$defs/SizeValue"
+            }
+          },
+          "required": [
+            "size"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Position": {
+      "additionalProperties": false,
+      "properties": {
+        "cc_path": {
+          "description": "`cc_path` of the composite attributes (the source module path).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "children": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "parent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "description": "The composite-call op ids from the entry (empty for anon regions).",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "path",
+        "children"
+      ],
+      "type": "object"
+    },
+    "Scalar": {
+      "description": "One element of a dense constant.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "int": {
+              "format": "int128",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "int"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "float": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "float"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "bool": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "bool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Non-finite floats (`inf`, `-inf`, `nan`) and anything without a numeric form.",
+          "properties": {
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A complex number `(re, im)`.",
+          "properties": {
+            "complex": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "$ref": "#/$defs/Scalar"
+                },
+                {
+                  "$ref": "#/$defs/Scalar"
+                }
+              ],
+              "type": "array"
+            }
+          },
+          "required": [
+            "complex"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ScatterDims": {
+      "description": "`stablehlo.scatter` dimension numbers (spec `#scatter`).",
+      "properties": {
+        "index_vector_dim": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "input_batching_dims": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "inserted_window_dims": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "scatter_indices_batching_dims": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "scattered_dims_to_operand_dims": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "update_window_dims": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "update_window_dims",
+        "inserted_window_dims",
+        "input_batching_dims",
+        "scatter_indices_batching_dims",
+        "scattered_dims_to_operand_dims",
+        "index_vector_dim"
+      ],
+      "type": "object"
+    },
+    "SizeValue": {
+      "description": "A size value: per element, its guarded cases (`guard` facts `f >= 0` → `value`), as printed\nexpressions; `None` when nothing is known.",
+      "properties": {
+        "elems": {
+          "items": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "SymExpr": {
+      "description": "A canonical sum of terms `(monomial, coefficient)`, sorted by monomial, coefficients non-zero.",
+      "properties": {
+        "terms": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "$ref": "#/$defs/Mono"
+              },
+              {
+                "format": "int64",
+                "type": "integer"
+              }
+            ],
+            "type": "array"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "terms"
+      ],
+      "type": "object"
+    },
+    "TensorType": {
+      "properties": {
+        "elem": {
+          "$ref": "#/$defs/Elem"
+        },
+        "shape": {
+          "items": {
+            "$ref": "#/$defs/Dim"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "shape",
+        "elem"
+      ],
+      "type": "object"
+    },
+    "Type": {
+      "description": "A value type. Only tensors occur in the exported modules; anything else is kept by its printed form.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "tensor": {
+              "$ref": "#/$defs/TensorType"
+            }
+          },
+          "required": [
+            "tensor"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "other": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "other"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`instances/<model>/<phase>.json`.",
+  "properties": {
+    "instances": {
+      "items": {
+        "$ref": "#/$defs/InstanceRecord"
+      },
+      "type": "array"
+    },
+    "model": {
+      "type": "string"
+    },
+    "ops": {
+      "description": "Ops of the module.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "phase": {
+      "type": "string"
+    },
+    "root": {
+      "description": "The entry's terminator: the one op outside every instance.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "model",
+    "phase",
+    "ops",
+    "instances"
+  ],
+  "title": "InstancesFile",
+  "type": "object"
+}

@@ -35,7 +35,7 @@ impl Pass for Import {
     }
 
     fn version(&self) -> u32 {
-        1
+        2
     }
 
     fn requires(&self) -> &[ArtifactKind] {

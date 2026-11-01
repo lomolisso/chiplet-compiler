@@ -14,6 +14,10 @@ JSON Schemas (draft 2020-12, generated with `schemars` from the Rust types) of e
 | `import_ir.schema.json` | `cc_ir::Module` | `build/.import/out/import/<model>/<phase>/ir.postcard` (postcard; the schema of its JSON form) |
 | `import_summary.schema.json` | `cc_passes::import::json::Summary` | `build/.import/out/import/<model>/<phase>/ir.postcard.summary.json` |
 | `import_op_inventory.schema.json` | `cc_passes::import::json::Inventory` | `build/.import/out/import/op_inventory.json` |
+| `components_instances.schema.json` | `cc_passes::components::json::InstancesFile` | `build/.components/out/components/instances/<model>/<phase>.json` |
+| `components_component.schema.json` | `cc_passes::components::json::StoredComponent` | `build/.components/out/components/components/<id>.postcard` (postcard; the schema of its JSON form) |
+| `components_summary.schema.json` | `cc_passes::components::json::ComponentSummary` | `build/.components/out/components/components/<id>.postcard.summary.json` |
+| `components_certificates.schema.json` | `cc_passes::components::json::CertificatesFile` | `build/.components/out/components/certificates/<model>/<phase>.json` |
 | `run_summary.schema.json` | `cc_pipeline::RunSummary` | `build/.pipeline/run-<ts>.json` |
 
 The smoke test `schemas::committed_schemas_are_current` regenerates them and fails on drift. After

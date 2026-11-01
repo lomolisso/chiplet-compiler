@@ -6,7 +6,7 @@ expression: digest
   "bert/forward": {
     "dim_as_data": 0,
     "funcs": 586,
-    "ir_hash": "abeaafd4b922376b14efffde6c20575c67a4f7b9fa6cfa33ba3604b71572b5ba",
+    "ir_hash": "c83d697cf558d970ad75a7070c1e9287d755c31691d9194ce56f12fb5711c89c",
     "ledger": {
       "calls": 490,
       "composites": {},
@@ -32,7 +32,7 @@ expression: digest
   "llama/decode_step": {
     "dim_as_data": 128,
     "funcs": 453,
-    "ir_hash": "704ea47dbe5a4788d2b43258f2714a0ac9b5994346e0ee69ed981d2770704c67",
+    "ir_hash": "11d980aa3cf3c6b89f5ef38acbabdee105f6731e0008bae617436b58548cb3b3",
     "ledger": {
       "calls": 417,
       "composites": {},
@@ -45,7 +45,7 @@ expression: digest
   "llama/prefill": {
     "dim_as_data": 129,
     "funcs": 453,
-    "ir_hash": "2e94e09b6b6e17c60d6f8e8276774919802e14dd2657e0891f4b2f0c7a362e66",
+    "ir_hash": "9227b09fd516cfa937d611df706cccff6a0139731cfa1271e18e80d73fe98755",
     "ledger": {
       "calls": 417,
       "composites": {},
@@ -71,7 +71,7 @@ expression: digest
   "qwen3vl/decode_step": {
     "dim_as_data": 1222,
     "funcs": 1322,
-    "ir_hash": "b128995a1729a8eb8fcf70f0a5bb88934b92f8926a3ba9e6e44079fb054a0af6",
+    "ir_hash": "c1b96bfca45229e3dfe8bffd8933295e61890002c123fbac809e838c5d6c6641",
     "ledger": {
       "calls": 1975,
       "composites": {
@@ -86,7 +86,7 @@ expression: digest
   "qwen3vl/prefill": {
     "dim_as_data": 2073,
     "funcs": 1322,
-    "ir_hash": "785928b529725f980adf613560ce018c0de6ec1e8c5712ebcd4286361249fb1e",
+    "ir_hash": "30aa27aaf15b97a22fc35d3628b7d30fbc4733e0bf7b220bd27ea2ccecf229ec",
     "ledger": {
       "calls": 1975,
       "composites": {
@@ -101,7 +101,7 @@ expression: digest
   "qwen3vl/vision_encoder": {
     "dim_as_data": 0,
     "funcs": 238,
-    "ir_hash": "01daa1888e17d5a423bb3af2179497fa99fbca51759822c13680d4dcd3b854f3",
+    "ir_hash": "fe1cfe6f0fadfaaff2e5f40c5bb420a6fc455cbe5e4f322e03a78baec5a996bc",
     "ledger": {
       "calls": 71,
       "composites": {
@@ -129,7 +129,7 @@ expression: digest
   "sdxl/text_encoder_g": {
     "dim_as_data": 2,
     "funcs": 361,
-    "ir_hash": "0478a44578359d6cf2bc39819078ceca9feb987cc0757405ba3b195e9c7c0668",
+    "ir_hash": "9ee31258d690c49917f7de5b1824802af65bd704a0ef687891ec4acfc6c2af17",
     "ledger": {
       "calls": 7,
       "composites": {
@@ -157,7 +157,7 @@ expression: digest
   "sdxl/unet_step": {
     "dim_as_data": 184,
     "funcs": 2144,
-    "ir_hash": "75754bda47e702e1fe74a87e0d846f3b6025f8d329313196ab456681f532278d",
+    "ir_hash": "88ec19f58e66108befc02a0e6e761f7471bcd9ba971db6f0367e9c4cc823933b",
     "ledger": {
       "calls": 1523,
       "composites": {

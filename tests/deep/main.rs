@@ -5,6 +5,7 @@
 
 mod env;
 mod export;
+mod components;
 mod import;
 
 use std::time::Duration;
