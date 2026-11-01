@@ -1,6 +1,6 @@
 [package]
 name = "cc-smt"
-description = "chiplet-compiler SMT-LIB generation and solver runner (skeleton)"
+description = "chiplet-compiler SMT-LIB scripts and solver runner"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,6 +8,8 @@ publish.workspace = true
 
 [dependencies]
 cc-core.workspace = true
+schemars.workspace = true
+serde.workspace = true
 
 [lints]
 workspace = true

@@ -9,6 +9,7 @@ pub mod hello_a;
 pub mod hello_b;
 pub mod hello_c;
 pub mod import;
+pub mod normalize;
 pub mod registry;
 
 pub use registry::registry;
@@ -18,5 +19,6 @@ pub fn pass_schemas() -> Vec<(&'static str, serde_json::Value)> {
     let mut v = export::json::schemas();
     v.extend(import::json::schemas());
     v.extend(components::json::schemas());
+    v.extend(normalize::json::schemas());
     v
 }

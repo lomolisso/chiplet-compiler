@@ -18,6 +18,10 @@ JSON Schemas (draft 2020-12, generated with `schemars` from the Rust types) of e
 | `components_component.schema.json` | `cc_passes::components::json::StoredComponent` | `build/.components/out/components/components/<id>.postcard` (postcard; the schema of its JSON form) |
 | `components_summary.schema.json` | `cc_passes::components::json::ComponentSummary` | `build/.components/out/components/components/<id>.postcard.summary.json` |
 | `components_certificates.schema.json` | `cc_passes::components::json::CertificatesFile` | `build/.components/out/components/certificates/<model>/<phase>.json` |
+| `normalize_component.schema.json` | `cc_passes::normalize::json::NormalizedComponent` | `build/.normalize/out/normalize/components/<id>.postcard` (postcard; the schema of its JSON form) |
+| `normalize_summary.schema.json` | `cc_passes::normalize::json::NormalizedSummary` | `build/.normalize/out/normalize/components/<id>.postcard.summary.json` |
+| `normalize_ledger.schema.json` | `cc_passes::normalize::json::LedgerFile` | `build/.normalize/out/normalize/ledger/<id>.json` |
+| `normalize_rule_result.schema.json` | `cc_passes::normalize::json::RuleResult` | `build/.normalize/out/normalize/rules/<rule>.result` |
 | `run_summary.schema.json` | `cc_pipeline::RunSummary` | `build/.pipeline/run-<ts>.json` |
 
 The smoke test `schemas::committed_schemas_are_current` regenerates them and fails on drift. After

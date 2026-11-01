@@ -79,6 +79,11 @@ rustup component add rustfmt clippy
   for bitwuzla (e.g. `--lang smt2`) (unverified); test once and freeze in config.
 - Memory: solver subprocesses go through `ToolRunner` (Docker or RSS watchdog); z3 also accepts `-memory:<MB>` and
   `-T:<sec>` command-line limits (z3 `-h`; (unverified) for 5.x).
+- In use (2026-11-01): `cc-smt` runs both solvers in batch mode on `.smt2` files (`<solver> <file>`, no flags: both
+  detect SMT-LIB 2 from the extension), not interactively through `easy-smt`; `datapaths` may add the interactive
+  mode. Observed in the image: both accept `(set-logic ALL)` with UF + BV + FP; Bitwuzla 0.9.1 rejects
+  non-IEEE float formats (`--fpexp` build option) and equalities over uninterpreted sorts; Z3 prints an error for
+  `(get-model)` after `unsat` (exit 1) while Bitwuzla does not (docs/framework/smt.md).
 
 ## 5. Rationale summary
 

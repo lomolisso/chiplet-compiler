@@ -7,6 +7,7 @@ mod components;
 mod env;
 mod export;
 mod import;
+mod normalize;
 
 use std::time::Duration;
 

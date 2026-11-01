@@ -114,6 +114,18 @@ jobs:
           curl -fsSLo /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-linux-x86_64
           echo "c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507  /usr/local/bin/hadolint" | sha256sum -c -
           chmod +x /usr/local/bin/hadolint
+      - name: install z3 and bitwuzla (the image's pins, checksummed; smoke test normalize::ci_solver_pins_match_the_config)
+        run: |
+          d="$RUNNER_TEMP/solvers"; mkdir -p "$d/bin"
+          curl -fsSLo "$d/z3.zip" https://github.com/Z3Prover/z3/releases/download/z3-5.3.3/z3-5.3.3-x64-glibc-2.39.zip
+          echo "d56f60b06f432f33de5810f7f1a384a339131f361e2d54d08ea83eea14326880  $d/z3.zip" | sha256sum -c -
+          curl -fsSLo "$d/bitwuzla.zip" https://github.com/bitwuzla/bitwuzla/releases/download/0.9.1/Bitwuzla-Linux-x86_64-static.zip
+          echo "057f1546ae2068df57beb178f3eeab1678f0e5f0c378787a05b7bb294617c9c6  $d/bitwuzla.zip" | sha256sum -c -
+          unzip -q "$d/z3.zip" -d "$d/z3" && cp "$d"/z3/z3-*/bin/z3 "$d/bin/"
+          unzip -q "$d/bitwuzla.zip" -d "$d/bitwuzla" && find "$d/bitwuzla" -type f -name bitwuzla -exec cp {} "$d/bin/" \;
+          chmod 0755 "$d"/bin/* && "$d/bin/z3" --version && "$d/bin/bitwuzla" --version
+          echo "$d/bin" >> "$GITHUB_PATH"
+          echo "CC_SMT_RUNNER=host" >> "$GITHUB_ENV"
       - run: cargo nextest run --workspace --profile smoke
       # setup-uv publishes no moving major tag (`v10` does not resolve): pin the release commit.
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3

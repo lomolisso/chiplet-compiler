@@ -225,12 +225,12 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
 
 - **Purpose.** Exactness-preserving cleanup and a fixed reduction order.
 - **Method.**
-  - DCE, CSE, folding of transpose/reshape chains, scalar-constant broadcast folding.
-  - Annotate ω (reduction order) on every `reduce`, `reduce_window`, `dot_general` and `convolution`: `seq(dims…)` or `tree(b)`, per dtype family (config).
-  - No reassociation of floating point.
+  - Rewrites to a fixpoint: DCE, CSE, collapse of transpose and reshape chains, removal of identity transposes, broadcasts and conversions (only where the labelled graph proves them), and folding of splat constants (directly or broadcast from a scalar) into the ports of element-wise ops. Nodes keep their input ids and class ids, so instance bindings apply unchanged; one normalized graph per component.
+  - Annotate ω (reduction order) on every `reduce`, `reduce_window`, `dot_general`, `convolution` and `scatter`: `seq` or `tree(b)` over the axes the op's spec definition reduces, per dtype family (config; floats must be set, default `seq`).
+  - No reassociation of floating point, no FMA contraction, no float algebra.
 - **Verification.**
-  - Every rewrite **rule** is proven once with SMT (QF_BV / QF_FP over symbolic scalars), Alive-style.
-  - Per run: invariant checks and an op-count ledger (removed, folded, kept).
+  - Every rewrite **rule** is proven once with SMT (QF_BV / QF_FP / uninterpreted functions over symbolic scalars and indices), Alive-style, by one solver and re-checked by the other; float reassociation must fail as a control.
+  - Per run: a ledger of every rewrite, replayed by an independent checker from the input graph to exactly the output; no rule matches the output; ω on every reduction; recomputed classes refine the stored ones.
 
 ### 4.5 `kernels`
 
@@ -522,3 +522,8 @@ build/         (ignored) build/.<pass>/ artifacts
 | Dims abstracted by spec-derived classes (every dim but 1 is a variable, symbolic or constant) | One variable per distinct value; symbols kept in the graph | Classes follow from the labelled graph, so certificates map them; coincidental equalities (square Dense) do not split components |
 | Component identity is the graph, not the composite name | Name + graph | Equal graphs from different modules or frameworks are one component; names are listed per component |
 | Size-attribute entries are parameters except 0 and 1; floats are (family `float`, format parameter) | All literal; convention in the family | Sizes must not enter identity; 0 and 1 mark degenerate structure; design §6.1 makes the format a parameter |
+| Reduction order ω defaults to `seq` for every family; `float` and `complex` must be set | `tree(b)` for floats | Systolic chains and single-accumulator MACs compute `seq`; adder latency is hidden by independent outputs, not by reordering one sum |
+| Normalized components keep the input ids (no new deduplication) and the input's node and class ids | Re-deduplicate; rewrite the instance records | Parents' call labels and every instance certificate stay valid; sharing across components is found at kernel level |
+| Rule proofs run when the pass runs (the image's solvers) and in CI (the same pinned releases on the runner); verify re-checks with the second solver | Proofs in deep tests only | The negative control and every obligation are checked on every change; a solver bug needs both solvers to agree |
+| Rules v1: DCE, CSE, transpose/reshape collapse, splat folding, and identities only where the graph proves them | Identities checked against every instance | A rewrite valid for the component must not depend on the instance set |
+| Index entries compared only for equality are 4-bit vectors in the obligations | 32-bit indices | At most 8 entries occur, so a counterexample renames into 4 bits; Z3 timed out on the 32-bit form |

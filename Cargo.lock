@@ -241,6 +241,7 @@ dependencies = [
  "cc-core",
  "cc-ir",
  "cc-pipeline",
+ "cc-smt",
  "postcard",
  "rayon",
  "schemars",
@@ -272,6 +273,8 @@ name = "cc-smt"
 version = "0.3.0"
 dependencies = [
  "cc-core",
+ "schemars",
+ "serde",
 ]
 
 [[package]]
@@ -1167,12 +1170,14 @@ dependencies = [
  "cc-ir",
  "cc-passes",
  "cc-pipeline",
+ "cc-smt",
  "clap",
  "insta",
  "postcard",
  "proptest",
  "serde_json",
  "tempfile",
+ "toml",
 ]
 
 [[package]]
