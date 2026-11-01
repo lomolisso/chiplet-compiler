@@ -71,8 +71,16 @@ Two machines share the NFS home, so the checkout has the same path on both.
 - **Orchestration host (iacoma227).** Editing, git and `gh`, reading results. Nothing
   compiles, builds an image, runs a container, runs `chipc` or runs a test there: its local scratch is ~95 % full
   with other users' data, and it is a Condor execute node.
-- **Build host (iacoma231).** Everything else, through `scripts/on-build-host <command>` (ssh, same checkout path,
-  the build environment below). Check it first with `scripts/on-build-host --status` (load, memory, free scratch).
+- **Build host (iacoma231 by default; iacoma232 is the other candidate).** Everything else, through
+  `scripts/on-build-host <command>` (ssh, same checkout path, the build environment below).
+- **Choosing the build host.** Before a piece of work starts, `scripts/on-build-host --status` lists every candidate
+  (`CC_BUILD_HOSTS`) with its load, available RAM, free scratch and whether our build area and image are there;
+  `--pick` prints the candidate with the most available RAM among those under the thresholds (1-minute load below
+  half the cores, available RAM at least `CC_PICK_MEMORY_GB` + 64 GB, at least 150 GB free scratch, build area
+  and image present). Keep one host for the whole piece of work (`CC_BUILD_HOST=<host>` for `on-build-host` and
+  `build-area`): its build area, image and runs live there. A host without a build area first needs one: run
+  `scripts/on-build-host` there once (it creates the layout below), copy the image (below), then
+  `cargo build` and `uv sync` through it, and copy `build/` from the other host if earlier artifacts are needed.
 - **Build area:** `/scratch/$USER/chiplet-compiler/` on the build host (local disk; `/scratch` = `/srv/scratch`, the
   same disk as Docker's `/srv`). `config.local.toml` points `paths.scratch_dir` and `paths.build_dir` there.
 
