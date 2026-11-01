@@ -9,6 +9,7 @@ mod dag;
 mod eda;
 mod env;
 mod export;
+mod import;
 mod pipeline;
 mod runners;
 mod schemas;

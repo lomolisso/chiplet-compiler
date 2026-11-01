@@ -1,13 +1,21 @@
 [package]
 name = "cc-ir"
-description = "chiplet-compiler IR types and op-semantics table (skeleton)"
+description = "chiplet-compiler IR types and op-semantics table"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
-cc-core.workspace = true
+blake3.workspace = true
+postcard.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
 
 [lints]
 workspace = true

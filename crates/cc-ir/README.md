@@ -1,4 +1,4 @@
 # cc-ir
 
-IR types (`Module`, `Func`, `Op`, `Value`, `TensorType`, symbolic `Dim`) and the op-semantics table (StableHLO
-semantics only). Skeleton for now; filled by the `import` pass (design §4.2).
+IR types with symbolic sizes and the op-semantics table (StableHLO semantics only); see
+[docs/framework/ir.md](../../docs/framework/ir.md).

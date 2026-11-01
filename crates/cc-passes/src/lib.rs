@@ -7,11 +7,14 @@ pub mod export;
 pub mod hello_a;
 pub mod hello_b;
 pub mod hello_c;
+pub mod import;
 pub mod registry;
 
 pub use registry::registry;
 
 /// `(file name, schema)` pairs of the passes' artifact kinds, committed under `docs/schemas/`.
 pub fn pass_schemas() -> Vec<(&'static str, serde_json::Value)> {
-    export::json::schemas()
+    let mut v = export::json::schemas();
+    v.extend(import::json::schemas());
+    v
 }

@@ -1,0 +1,159 @@
+{
+  "$defs": {
+    "Ledger": {
+      "additionalProperties": false,
+      "description": "What inlining removed, per op name: the inlined `func.call`s, the inlined composites and the\n`func.return`s of the inlined bodies (counted per executed call site, as the export census counts).",
+      "properties": {
+        "calls": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "composites": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "returns": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "calls",
+        "composites",
+        "returns"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`ir.postcard.summary.json`.",
+  "properties": {
+    "by_class": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Ops per class of the op table (the stored module, decompositions once).",
+      "type": "object"
+    },
+    "by_op": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Ops per name (the stored module).",
+      "type": "object"
+    },
+    "composites": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Component composites (`cc.*`) by name.",
+      "type": "object"
+    },
+    "config": {
+      "type": "string"
+    },
+    "constraints": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "dim_as_data": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Operand edges where a dimension value enters compute, per consuming op name.",
+      "type": "object"
+    },
+    "funcs": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "ir_hash": {
+      "description": "Structural hash of the module (`cc_ir::hash`): order- and numbering-independent.",
+      "type": "string"
+    },
+    "ledger": {
+      "$ref": "#/$defs/Ledger"
+    },
+    "model": {
+      "type": "string"
+    },
+    "ops": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "phase": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "size_ops": {
+      "description": "Size-computation ops and their share of all non-structural ops (rounded to 1e-4).",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "size_share": {
+      "format": "double",
+      "type": "number"
+    },
+    "symbolic_values": {
+      "description": "Values whose type has a symbolic dimension.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "symbols": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "values": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema",
+    "model",
+    "phase",
+    "config",
+    "ir_hash",
+    "symbols",
+    "constraints",
+    "funcs",
+    "ops",
+    "values",
+    "by_class",
+    "by_op",
+    "size_ops",
+    "size_share",
+    "dim_as_data",
+    "composites",
+    "symbolic_values",
+    "ledger"
+  ],
+  "title": "Summary",
+  "type": "object"
+}

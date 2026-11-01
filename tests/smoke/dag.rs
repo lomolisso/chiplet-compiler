@@ -81,10 +81,10 @@ fn unknown_target_is_rejected() {
 fn registry_dag_and_order() {
     let g = PassGraph::build(&cc_passes::registry()).unwrap();
     let order: Vec<&str> = g.topo_order().into_iter().map(|i| g.name(i)).collect();
-    assert_eq!(order, ["export", "hello_a", "hello_b", "hello_c"]);
+    assert_eq!(order, ["export", "hello_a", "hello_b", "hello_c", "import"]);
     assert_eq!(
         g.to_dot(),
-        "digraph passes {\n  rankdir=LR;\n  node [shape=box];\n  \"export\";\n  \"hello_a\";\n  \"hello_b\";\n  \"hello_c\";\n  \
-         \"hello_a\" -> \"hello_b\" [label=\"hello.a\"];\n}\n"
+        "digraph passes {\n  rankdir=LR;\n  node [shape=box];\n  \"export\";\n  \"hello_a\";\n  \"hello_b\";\n  \"hello_c\";\n  \"import\";\n  \
+         \"export\" -> \"import\" [label=\"export\"];\n  \"hello_a\" -> \"hello_b\" [label=\"hello.a\"];\n}\n"
     );
 }

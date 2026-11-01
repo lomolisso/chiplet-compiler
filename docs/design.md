@@ -188,15 +188,18 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
 
 ### 4.2 `import`
 
-- **Purpose.** JSON → the Rust IR.
+- **Purpose.** JSON → the Rust IR (`docs/framework/ir.md`).
 - **Method.**
-  - Build `Module/Func/Op/Value` with typed attributes and `Dim = Const | Sym(expr)`.
-  - Inline `func.call` (keeping provenance).
-  - Tag the size-computation subgraph (`get_dimension_size`, shape `reshape`/`concatenate`, `shape_assertion`, `dynamic_*` shape operands).
-  - Classify every op with the **op-semantics table** (`crates/cc-ir/ops.rs`), built from the measured inventory. It is data, not code paths.
+  - Build `Module/Func/Op/Value` (an arena with typed indices) with typed attributes and `Dim = Const | Sym(expr)`, `expr` in JAX's dimension algebra.
+  - Inline `func.call` and JAX's own composites (`chlo.*`), keeping provenance; `cc.*` composites stay component boundaries.
+  - Symbolic shape inference: the size computation is interpreted over symbolic expressions (case splits on undecided signs and comparisons, the floor-division identities, run-time integers opaque), and every `?` takes the dim the table's shape rule derives.
+  - Tag size computation: ops that compute small integer values from a dimension and feed only shape operands or other size ops (`get_dimension_size` and shape assertions by definition). A dimension value that enters compute is allowed and recorded (`dim_as_data`): size independence constrains the graph's structure, not the use of a size as a run-time scalar.
+  - Classify every op with the **op-semantics table** (`crates/cc-ir/src/ops/`), built from the measured inventory. It is data, not code paths.
 - **Verification.**
-  - SSA and type invariants.
-  - Per-function op census equal to `export`'s.
+  - SSA and type invariants; declared types agree.
+  - Symbolic dims re-evaluated by a concrete interpreter at sample sizes (translation validation).
+  - Op census equal to `export`'s minus what inlining removed; GEMM/conv signatures equal.
+  - Size tags recomputed independently.
   - Every op is covered by the table: an unknown op is a hard error that names the model and phase.
 
 ### 4.3 `components`
@@ -502,3 +505,7 @@ build/         (ignored) build/.<pass>/ artifacts
 | `exported.bin` kept; evaluation rewrites composites into calls | Drop it | Tiny-size reference evaluation later; XLA's shape refinement does not refine composite decompositions |
 | alphafold2 template slots stay concrete | Symbolic template count | AlphaFold feeds a fixed number of padded slots with a mask (a capacity, like multi-hot sizes); a symbolic count turns the stack into a `while` whose census differs from the recipe's counts |
 | Sizes that the network needs as multiples are written `32*H` (yolo11, unet3d, rtdetr_v2; sdxl UNet `4*HU`) | A bare symbol with a `mod` constraint | JAX cannot prove the skip-connection concat shapes equal for a bare symbol; the multiple is the true contract (upstream fails otherwise) |
+| Arena IR with typed `u32` indices; graph views built on demand | `petgraph::StableGraph` as the IR | Regions and multi-result ops map directly; plain vectors serialize deterministically |
+| Symbolic dims in JAX's dimension algebra (polynomials over symbols with `floordiv`, `mod`, `max`, `min`) | Polynomials only | The ports' sizes halve and pad (`floordiv(H + 1, 2)`, `-L mod 256`); it is the algebra the exporter used |
+| JAX's `chlo.*` composites are inlined | Keep them as components | They are lowering helpers (`top_k`, `erf`), not module boundaries (`passes.import.inline_composites`) |
+| A dimension value entering compute is allowed and recorded (`dim_as_data`) | Reject it | rtdetr_v2 anchors, llama positions, means over a symbolic axis use sizes as run-time scalars; the graph stays size-independent |
