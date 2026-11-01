@@ -23,6 +23,9 @@ scripts/on-build-host cargo nextest run --profile deep    # or: … chipc test -
 
 Deep tests build into the ephemeral `runs/` of the build area and remove what they built when they pass.
 
+Golden snapshots (`insta`, `tests/deep/snapshots/`) pin summary digests of deep runs. After an intended
+change, rerun with `INSTA_UPDATE=always` (or review with `cargo insta review`) and commit the new `.snap`.
+
 Profiles and test groups are in `.config/nextest.toml`: `smoke` = everything except the `deep` binary,
 `deep` = only the `deep` binary, in the `heavy` group (`max-threads = 1`). Plain `cargo test` also runs
 the deep binary; use nextest.

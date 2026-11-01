@@ -1,0 +1,57 @@
+{
+  "$defs": {
+    "InventoryRow": {
+      "additionalProperties": false,
+      "description": "One row of `op_inventory.json`.",
+      "properties": {
+        "count": {
+          "description": "Occurrences in the stored modules, summed over phases.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "entry": {
+          "description": "`null` when the op has no table entry (import then failed for that phase)."
+        },
+        "models": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "count",
+        "models"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`out/import/op_inventory.json`: every op seen across the model set (key `name` or `name@target`).",
+  "properties": {
+    "ops": {
+      "additionalProperties": {
+        "$ref": "#/$defs/InventoryRow"
+      },
+      "type": "object"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "unknown": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "ops",
+    "unknown"
+  ],
+  "title": "Inventory",
+  "type": "object"
+}

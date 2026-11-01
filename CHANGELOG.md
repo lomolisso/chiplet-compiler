@@ -6,6 +6,10 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `import` pass and `cc-ir`: typed IR with symbolic dimensions, inlined calls, size tagging and the op-semantics table.
+
 ## [0.3.0] - 2026-10-31
 
 ### Added

@@ -20,9 +20,13 @@ path = "deep/main.rs"
 [dependencies]
 cc-cli.workspace = true
 cc-core.workspace = true
+cc-ir.workspace = true
 cc-passes.workspace = true
 cc-pipeline.workspace = true
 clap.workspace = true
+insta.workspace = true
+postcard.workspace = true
+proptest.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
 

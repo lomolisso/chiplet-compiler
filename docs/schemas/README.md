@@ -11,6 +11,9 @@ JSON Schemas (draft 2020-12, generated with `schemars` from the Rust types) of e
 | `export_graph.schema.json` | `cc_passes::export::json::GraphFile` | `build/.export/out/export/<model>/<phase>/graph.json` |
 | `export_symbols.schema.json` | `cc_passes::export::json::SymbolsFile` | `build/.export/out/export/<model>/<phase>/symbols.json` |
 | `export_census.schema.json` | `cc_passes::export::json::CensusFile` | `build/.export/out/export/<model>/<phase>/census.json` |
+| `import_ir.schema.json` | `cc_ir::Module` | `build/.import/out/import/<model>/<phase>/ir.postcard` (postcard; the schema of its JSON form) |
+| `import_summary.schema.json` | `cc_passes::import::json::Summary` | `build/.import/out/import/<model>/<phase>/ir.postcard.summary.json` |
+| `import_op_inventory.schema.json` | `cc_passes::import::json::Inventory` | `build/.import/out/import/op_inventory.json` |
 | `run_summary.schema.json` | `cc_pipeline::RunSummary` | `build/.pipeline/run-<ts>.json` |
 
 The smoke test `schemas::committed_schemas_are_current` regenerates them and fails on drift. After

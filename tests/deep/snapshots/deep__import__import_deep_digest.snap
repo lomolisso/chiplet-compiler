@@ -1,0 +1,185 @@
+---
+source: tests/deep/import.rs
+expression: digest
+---
+{
+  "bert/forward": {
+    "dim_as_data": 0,
+    "funcs": 586,
+    "ir_hash": "abeaafd4b922376b14efffde6c20575c67a4f7b9fa6cfa33ba3604b71572b5ba",
+    "ledger": {
+      "calls": 490,
+      "composites": {},
+      "returns": 490
+    },
+    "ops": 16188,
+    "size_ops": 6468,
+    "symbolic_values": 6609
+  },
+  "centerpoint/forward": {
+    "dim_as_data": 998,
+    "funcs": 203,
+    "ir_hash": "1263c6e87a420f7e4dea50730f352657a6d187dde8ab456073ed57521012cf9b",
+    "ledger": {
+      "calls": 1183,
+      "composites": {},
+      "returns": 1183
+    },
+    "ops": 35519,
+    "size_ops": 7389,
+    "symbolic_values": 10146
+  },
+  "llama/decode_step": {
+    "dim_as_data": 128,
+    "funcs": 453,
+    "ir_hash": "704ea47dbe5a4788d2b43258f2714a0ac9b5994346e0ee69ed981d2770704c67",
+    "ledger": {
+      "calls": 417,
+      "composites": {},
+      "returns": 417
+    },
+    "ops": 20903,
+    "size_ops": 6421,
+    "symbolic_values": 8993
+  },
+  "llama/prefill": {
+    "dim_as_data": 129,
+    "funcs": 453,
+    "ir_hash": "2e94e09b6b6e17c60d6f8e8276774919802e14dd2657e0891f4b2f0c7a362e66",
+    "ledger": {
+      "calls": 417,
+      "composites": {},
+      "returns": 417
+    },
+    "ops": 22997,
+    "size_ops": 9171,
+    "symbolic_values": 9002
+  },
+  "mobilenetv4_conv_m/forward": {
+    "dim_as_data": 4,
+    "funcs": 193,
+    "ir_hash": "f49533a38acb6abc69d844f6c1a563a956efd7c3dd7868aa7e1fd319e1eb278c",
+    "ledger": {
+      "calls": 24391,
+      "composites": {},
+      "returns": 24391
+    },
+    "ops": 121035,
+    "size_ops": 77928,
+    "symbolic_values": 2040
+  },
+  "qwen3vl/decode_step": {
+    "dim_as_data": 1222,
+    "funcs": 1322,
+    "ir_hash": "b128995a1729a8eb8fcf70f0a5bb88934b92f8926a3ba9e6e44079fb054a0af6",
+    "ledger": {
+      "calls": 1975,
+      "composites": {
+        "chlo.top_k": 94
+      },
+      "returns": 2069
+    },
+    "ops": 120679,
+    "size_ops": 38940,
+    "symbolic_values": 47035
+  },
+  "qwen3vl/prefill": {
+    "dim_as_data": 2073,
+    "funcs": 1322,
+    "ir_hash": "785928b529725f980adf613560ce018c0de6ec1e8c5712ebcd4286361249fb1e",
+    "ledger": {
+      "calls": 1975,
+      "composites": {
+        "chlo.top_k": 94
+      },
+      "returns": 2069
+    },
+    "ops": 139091,
+    "size_ops": 56908,
+    "symbolic_values": 47060
+  },
+  "qwen3vl/vision_encoder": {
+    "dim_as_data": 0,
+    "funcs": 238,
+    "ir_hash": "01daa1888e17d5a423bb3af2179497fa99fbca51759822c13680d4dcd3b854f3",
+    "ledger": {
+      "calls": 71,
+      "composites": {
+        "chlo.erfc": 4
+      },
+      "returns": 75
+    },
+    "ops": 13857,
+    "size_ops": 6889,
+    "symbolic_values": 4586
+  },
+  "resnet50/forward": {
+    "dim_as_data": 4,
+    "funcs": 121,
+    "ir_hash": "316d199bc04a9d87a7a493321817e40df716a5785042624fc75873f3a6d78fc6",
+    "ledger": {
+      "calls": 11100,
+      "composites": {},
+      "returns": 11100
+    },
+    "ops": 56007,
+    "size_ops": 35863,
+    "symbolic_values": 1121
+  },
+  "sdxl/text_encoder_g": {
+    "dim_as_data": 2,
+    "funcs": 361,
+    "ir_hash": "0478a44578359d6cf2bc39819078ceca9feb987cc0757405ba3b195e9c7c0668",
+    "ledger": {
+      "calls": 7,
+      "composites": {
+        "chlo.erfc": 32
+      },
+      "returns": 39
+    },
+    "ops": 21453,
+    "size_ops": 11021,
+    "symbolic_values": 7407
+  },
+  "sdxl/text_encoder_l": {
+    "dim_as_data": 2,
+    "funcs": 140,
+    "ir_hash": "840716b33fa1f7c7c8c17b26167bf3f73d4cc7f8a3551f4688bc354e79ad0c25",
+    "ledger": {
+      "calls": 7,
+      "composites": {},
+      "returns": 7
+    },
+    "ops": 4382,
+    "size_ops": 1801,
+    "symbolic_values": 1752
+  },
+  "sdxl/unet_step": {
+    "dim_as_data": 184,
+    "funcs": 2144,
+    "ir_hash": "75754bda47e702e1fe74a87e0d846f3b6025f8d329313196ab456681f532278d",
+    "ledger": {
+      "calls": 1523,
+      "composites": {
+        "chlo.erfc": 70
+      },
+      "returns": 1593
+    },
+    "ops": 114193,
+    "size_ops": 58783,
+    "symbolic_values": 37333
+  },
+  "sdxl/vae_decode": {
+    "dim_as_data": 120,
+    "funcs": 95,
+    "ir_hash": "3a733aab85892d694b04b8c193096bbe819133733e3cf57ff73c8b41c938befe",
+    "ledger": {
+      "calls": 66,
+      "composites": {},
+      "returns": 66
+    },
+    "ops": 5634,
+    "size_ops": 2889,
+    "symbolic_values": 1683
+  }
+}

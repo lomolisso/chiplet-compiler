@@ -140,9 +140,12 @@ memory_gb = 32                   # declared for admission; each model process ge
 timeout_min = 60
 
 [passes.import]
+inline_composites = ["chlo.*"]   # composites inlined like calls (not component boundaries); `*` = prefix.
+                                 # JAX's own composites (chlo.top_k, chlo.erf, …) are not module boundaries
+views = true                     # write views/<model>/<phase>.dot (entry function, composites collapsed)
 [passes.import.resources]
-threads = 8
-memory_gb = 4
+threads = 8                      # phases imported in parallel
+memory_gb = 8                    # measured 2026-11-01: 4.4 GB peak for all models at full (largest phase 1.2 GB)
 timeout_min = 30
 
 [passes.components]
