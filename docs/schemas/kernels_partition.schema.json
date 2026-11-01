@@ -1,0 +1,407 @@
+{
+  "$defs": {
+    "ADim": {
+      "description": "An abstract dim: the literal 1, or a class variable.",
+      "oneOf": [
+        {
+          "enum": [
+            "one"
+          ],
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "var": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "var"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Boundary": {
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/BoundaryKind"
+        },
+        "node": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "owner": {
+          "description": "For a node of a boundary op's regions (e.g. a `sort` comparator): the owner.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "node",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "BoundaryKind": {
+      "description": "Why a node is in no kernel.",
+      "oneOf": [
+        {
+          "const": "interface",
+          "description": "`input`, `output`, `size_in`.",
+          "type": "string"
+        },
+        {
+          "const": "call",
+          "description": "A composite call: its child component has kernels of its own.",
+          "type": "string"
+        },
+        {
+          "const": "control",
+          "description": "`func.return` and other structure.",
+          "type": "string"
+        },
+        {
+          "const": "layout",
+          "description": "Index remapping (reshape, transpose, slice, pad, concatenate, …; broadcasts not absorbed).",
+          "type": "string"
+        },
+        {
+          "const": "data_movement",
+          "description": "Gather, dynamic slices, scatter without arithmetic update.",
+          "type": "string"
+        },
+        {
+          "const": "size",
+          "description": "Size computation.",
+          "type": "string"
+        },
+        {
+          "const": "constant",
+          "description": "`constant`, `iota`.",
+          "type": "string"
+        },
+        {
+          "const": "irregular",
+          "description": "`sort`, `fft`.",
+          "type": "string"
+        }
+      ]
+    },
+    "Crossing": {
+      "description": "One dataflow edge end crossing a kernel's border.",
+      "properties": {
+        "dst": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "end": {
+          "$ref": "#/$defs/EdgeEnd"
+        },
+        "src": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "src",
+        "dst",
+        "end"
+      ],
+      "type": "object"
+    },
+    "EdgeEnd": {
+      "properties": {
+        "port": {
+          "$ref": "#/$defs/PortLabel"
+        },
+        "res": {
+          "description": "Result index of the source.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "res",
+        "port"
+      ],
+      "type": "object"
+    },
+    "Kernel": {
+      "properties": {
+        "core": {
+          "description": "The core node, if any.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "domain": {
+          "description": "The dims of the core's (first) result, or of every map member.",
+          "items": {
+            "$ref": "#/$defs/ADim"
+          },
+          "type": "array"
+        },
+        "id": {
+          "description": "`k<i>`: kernels with a core first, in the SSA order of their cores, then map kernels.",
+          "type": "string"
+        },
+        "inputs": {
+          "description": "Edge ends entering the kernel, sorted.",
+          "items": {
+            "$ref": "#/$defs/Crossing"
+          },
+          "type": "array"
+        },
+        "members": {
+          "description": "Members in ascending node id.",
+          "items": {
+            "$ref": "#/$defs/Member"
+          },
+          "type": "array"
+        },
+        "outputs": {
+          "description": "Edge ends leaving the kernel, sorted.",
+          "items": {
+            "$ref": "#/$defs/Crossing"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "domain",
+        "members",
+        "inputs",
+        "outputs"
+      ],
+      "type": "object"
+    },
+    "Member": {
+      "properties": {
+        "node": {
+          "description": "Node of the normalized component.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "role": {
+          "$ref": "#/$defs/Role"
+        }
+      },
+      "required": [
+        "node",
+        "role"
+      ],
+      "type": "object"
+    },
+    "Part": {
+      "description": "One node of the quotient graph.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Index into `kernels`.",
+          "properties": {
+            "kernel": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kernel"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A boundary op (with its regions, if any), by its node.",
+          "properties": {
+            "boundary": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "boundary"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PortLabel": {
+      "description": "The destination side of one dataflow edge.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Operand port of the destination.",
+          "properties": {
+            "port": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "port"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "commutative",
+          "description": "An operand of a commutative op: the ports are an unordered multiset.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Region `region`, argument `index` of the source (the owner) feeds the destination (the argument).",
+          "properties": {
+            "region": {
+              "properties": {
+                "index": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "region": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "region",
+                "index"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "region"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The terminator of region `region` of the destination (the owner) yields to it.",
+          "properties": {
+            "yield": {
+              "properties": {
+                "region": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "region"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "yield"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Role": {
+      "description": "The role of a kernel member (docs/passes/kernels.md §4).",
+      "oneOf": [
+        {
+          "const": "core",
+          "description": "The contraction, reduction or scatter-reduce.",
+          "type": "string"
+        },
+        {
+          "const": "body",
+          "description": "A node of the core's regions (region arguments, the combiner, the terminator).",
+          "type": "string"
+        },
+        {
+          "const": "prologue",
+          "description": "Element-wise, on one core operand's path, with every consumer in the kernel.",
+          "type": "string"
+        },
+        {
+          "const": "epilogue",
+          "description": "Element-wise over the core result's domain.",
+          "type": "string"
+        },
+        {
+          "const": "map",
+          "description": "Element-wise member of a kernel without a core.",
+          "type": "string"
+        },
+        {
+          "const": "broadcast",
+          "description": "A `broadcast_in_dim` of a kernel input whose consumers are all in the kernel.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`components/<id>.json`.",
+  "properties": {
+    "boundaries": {
+      "description": "Boundary nodes in ascending id.",
+      "items": {
+        "$ref": "#/$defs/Boundary"
+      },
+      "type": "array"
+    },
+    "evictions": {
+      "description": "Members banned from a kernel to break a cycle of the quotient graph.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "id": {
+      "type": "string"
+    },
+    "kernels": {
+      "items": {
+        "$ref": "#/$defs/Kernel"
+      },
+      "type": "array"
+    },
+    "order": {
+      "description": "Every part once, in a topological order of the quotient graph: the acyclicity certificate.",
+      "items": {
+        "$ref": "#/$defs/Part"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "kernels",
+    "boundaries",
+    "order",
+    "evictions"
+  ],
+  "title": "KernelPartition",
+  "type": "object"
+}

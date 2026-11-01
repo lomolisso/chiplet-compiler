@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`summary.json`.",
+  "properties": {
+    "boundaries": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "type": "object"
+    },
+    "call_fed_maps": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "components": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "core_kernels": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "cores": {
+      "additionalProperties": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "Per `<op>/<family>`: kernels, and kernels × component instances.",
+      "type": "object"
+    },
+    "evictions": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "kernels": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "kernels_per_component": {
+      "additionalProperties": false,
+      "description": "Components per number of kernels.",
+      "patternProperties": {
+        "^\\d+$": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "low_rank_maps": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "map_kernels": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "models": {
+      "additionalProperties": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "Per model: kernels × instances, of which with a core.",
+      "type": "object"
+    },
+    "roles": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "type": "object"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "components",
+    "kernels",
+    "core_kernels",
+    "map_kernels",
+    "kernels_per_component",
+    "cores",
+    "roles",
+    "boundaries",
+    "call_fed_maps",
+    "low_rank_maps",
+    "evictions",
+    "models"
+  ],
+  "title": "KernelsSummary",
+  "type": "object"
+}

@@ -1,0 +1,95 @@
+---
+source: tests/deep/kernels.rs
+expression: digest
+---
+{
+  "boundaries": {
+    "call": 784,
+    "constant": 487,
+    "control": 184,
+    "data_movement": 438,
+    "interface": 17034,
+    "irregular": 28,
+    "layout": 1281
+  },
+  "call_fed_maps": 135,
+  "checks": 1625,
+  "components": 203,
+  "core_kernels": 412,
+  "cores": {
+    "convolution/float": [
+      6,
+      70
+    ],
+    "convolution/sint": [
+      19,
+      235
+    ],
+    "dot_general/float": [
+      89,
+      3905
+    ],
+    "dot_general/sint": [
+      90,
+      657
+    ],
+    "dynamic_reduce_window/sint": [
+      2,
+      188
+    ],
+    "reduce/bool": [
+      116,
+      1043
+    ],
+    "reduce/float": [
+      56,
+      5650
+    ],
+    "reduce/sint": [
+      6,
+      192
+    ],
+    "reduce_window/sint": [
+      1,
+      1
+    ],
+    "scatter/sint": [
+      27,
+      54
+    ]
+  },
+  "evictions": 0,
+  "kernels": 1629,
+  "kernels_per_component": {
+    "0": 39,
+    "1": 39,
+    "110": 1,
+    "14": 1,
+    "17": 2,
+    "183": 1,
+    "184": 2,
+    "190": 1,
+    "2": 30,
+    "22": 2,
+    "3": 22,
+    "31": 2,
+    "4": 25,
+    "45": 1,
+    "48": 2,
+    "5": 11,
+    "6": 10,
+    "7": 1,
+    "8": 3,
+    "9": 8
+  },
+  "low_rank_maps": 910,
+  "map_kernels": 1217,
+  "roles": {
+    "body": 844,
+    "broadcast": 1132,
+    "core": 412,
+    "epilogue": 326,
+    "map": 3329,
+    "prologue": 611
+  }
+}
