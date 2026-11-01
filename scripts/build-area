@@ -16,7 +16,10 @@ area="${CC_BUILD_AREA:-/scratch/$USER/chiplet-compiler}"
 main="$(cd "$(dirname "$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --path-format=absolute --git-common-dir)")" && pwd)"
 
 usage() { sed -n '2,11p' "$0" >&2; exit 2; }
-remote() { ssh -o BatchMode=yes "$host" "$@"; }
+# Run a command on the build host: directly on this machine, over ssh elsewhere.
+remote() {
+  if [[ "${host%%.*}" == "$(hostname -s)" ]]; then bash -c "$*"; else ssh -o BatchMode=yes "$host" "$@"; fi
+}
 check_name() {
   [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "build-area: bad name '$1'" >&2; exit 2; }
 }

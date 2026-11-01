@@ -10,7 +10,7 @@
    ```
    Submodules only when the change needs them: `git -C .worktrees/feat-import submodule update --init`
    (never `--recursive`).
-2. **Build and test on the build host** through `scripts/on-build-host`, never on the orchestration host (see
+2. **Build and test on the build host** through `scripts/on-build-host` (`--pick` chooses it; see
    [docs/development.md](docs/development.md)).
 3. **Push the branch for review:** `git push -u origin feat/import`. Review fixes are new commits on the same
    branch; never force-push a branch under review. To undo a commit, use `git revert <sha>`.
