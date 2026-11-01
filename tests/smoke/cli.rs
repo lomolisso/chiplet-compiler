@@ -37,8 +37,8 @@ fn run_status_verify_clean() {
     let env = env();
     let (code, out) = chipc(&env, &["status"]);
     assert_eq!(code, 0);
-    // the toy targets: hello_a, hello_b, hello_c; `export` and `import` are registered but not targets here
-    assert_eq!(out.matches("not run").count(), 5, "{out}");
+    // the toy targets: hello_a, hello_b, hello_c; the model passes are registered but not targets here
+    assert_eq!(out.matches("not run").count(), 6, "{out}");
 
     let (code, out) = chipc(&env, &["run"]);
     assert_eq!(code, 0, "{out}");

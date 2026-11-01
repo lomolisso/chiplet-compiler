@@ -4,6 +4,7 @@
 
 mod cache;
 mod cli;
+mod components;
 mod config;
 mod dag;
 mod eda;

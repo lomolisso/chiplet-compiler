@@ -622,3 +622,68 @@ mod identities {
         }
     }
 }
+
+/// The size values of a written module, recomputed as the builder computes them: dimension arguments are
+/// their symbol, other small integer arguments of functions (and region arguments) are opaque, and every
+/// op is evaluated in id order (definitions precede uses) with the floor-division identity on `select`.
+/// Used by later passes to recover what a `dim_as_data` operand carries; only the ops `wanted` depends on
+/// are evaluated (its backward cone), the other values stay `None`.
+pub fn interpret(m: &cc_ir::Module, wanted: &[cc_ir::ValueId]) -> Vec<Sv> {
+    use cc_ir::{Def, FuncKind, Owner};
+    let ctx = SymCtx::new(&m.symbols, &m.constraints);
+    let mut cone = vec![false; m.ops.len()];
+    let mut work: Vec<cc_ir::ValueId> = wanted.to_vec();
+    while let Some(v) = work.pop() {
+        if let Def::Result { op, .. } = m.value(v).def
+            && !std::mem::replace(&mut cone[op.index()], true)
+        {
+            work.extend(m.op(op).operands.iter().copied());
+        }
+    }
+    let mut sv: Vec<Sv> = vec![None; m.values.len()];
+    let ty = |v: cc_ir::ValueId| m.value(v).ty.tensor();
+    for reg in &m.regions {
+        let entry = matches!(reg.owner, Owner::Func(f) if m.func(f).kind == FuncKind::Entry);
+        for &a in &reg.args {
+            let val = m.value(a);
+            sv[a.index()] = match &val.dim_var {
+                Some(s) => Some(vec![single(SymExpr::var(s))]),
+                None if !entry => ty(a).and_then(tracked).and_then(|n| opaque(&a.0.to_string(), n)),
+                None => None,
+            };
+        }
+    }
+    for (i, op) in m.ops.iter().enumerate() {
+        if !cone[i] {
+            continue;
+        }
+        let types: Option<Vec<&TensorType>> = op.operands.iter().map(|&v| ty(v)).collect();
+        let res: Option<Vec<TensorType>> = op.results.iter().map(|&v| ty(v).cloned()).collect();
+        let (Some(types), Some(res)) = (types, res) else {
+            continue;
+        };
+        let vals: Vec<Sv> = op.operands.iter().map(|v| sv[v.index()].clone()).collect();
+        let mut out = eval(&op.name, &op.attrs, &types, &vals, &res, &ctx);
+        if op.name == "stablehlo.select" && out.first().is_some_and(|o| known(o).is_none()) {
+            let def = |v: cc_ir::ValueId| match m.value(v).def {
+                Def::Result { op, .. } => {
+                    let o = m.op(op);
+                    Some((o.name.clone(), o.operands.clone(), o.attrs.clone()))
+                }
+                Def::Arg { .. } => None,
+            };
+            let val =
+                |v: cc_ir::ValueId| known(&sv[v.index()]).and_then(|x| (x.len() == 1).then(|| x[0].clone()));
+            if let Some(e) = floor_identity(&op.operands, &def, &val, &ctx) {
+                out[0] = Some(vec![single(e)]);
+            }
+        }
+        for (&v, s) in op.results.iter().zip(out) {
+            sv[v.index()] = match s {
+                Some(s) => Some(s),
+                None => ty(v).and_then(tracked).and_then(|n| opaque(&v.0.to_string(), n)),
+            };
+        }
+    }
+    sv
+}

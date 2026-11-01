@@ -1,0 +1,157 @@
+---
+source: tests/deep/components.rs
+expression: digest
+---
+{
+  "components": 203,
+  "most_shared": [
+    {
+      "id": "cee261a61c9d4fdfb",
+      "models": {
+        "llama": 96,
+        "sdxl": 420
+      },
+      "nodes": 22
+    },
+    {
+      "id": "c30b83e64f12d8c10",
+      "models": {
+        "llama": 65,
+        "qwen3vl": 189
+      },
+      "nodes": 25
+    },
+    {
+      "id": "cfe9dceadd1aae63a",
+      "models": {
+        "llama": 65,
+        "qwen3vl": 189
+      },
+      "nodes": 25
+    },
+    {
+      "id": "c2bfb536fc9bb2d27",
+      "models": {
+        "qwen3vl": 188,
+        "sdxl": 1
+      },
+      "nodes": 4
+    },
+    {
+      "id": "c7a5e30d17d3a5317",
+      "models": {
+        "bert": 24,
+        "resnet50": 49
+      },
+      "nodes": 15
+    },
+    {
+      "id": "c9ec237949cf1204f",
+      "models": {
+        "centerpoint": 24,
+        "resnet50": 1
+      },
+      "nodes": 15
+    },
+    {
+      "id": "c495d592f70f5efc4",
+      "models": {
+        "bert": 2,
+        "sdxl": 4
+      },
+      "nodes": 29
+    },
+    {
+      "id": "c68783002c8b4fc2d",
+      "models": {
+        "llama": 2,
+        "qwen3vl": 3
+      },
+      "nodes": 2
+    },
+    {
+      "id": "c175ada965aed537c",
+      "models": {
+        "llama": 2,
+        "qwen3vl": 2
+      },
+      "nodes": 4
+    },
+    {
+      "id": "c34b7361aade145f0",
+      "models": {
+        "llama": 1,
+        "qwen3vl": 1
+      },
+      "nodes": 12
+    }
+  ],
+  "phases": {
+    "bert/forward": {
+      "anon": 2,
+      "components": 16,
+      "instances": 587
+    },
+    "centerpoint/forward": {
+      "anon": 1,
+      "components": 24,
+      "instances": 203
+    },
+    "llama/decode_step": {
+      "anon": 2,
+      "components": 13,
+      "instances": 454
+    },
+    "llama/prefill": {
+      "anon": 2,
+      "components": 13,
+      "instances": 454
+    },
+    "mobilenetv4_conv_m/forward": {
+      "anon": 21,
+      "components": 26,
+      "instances": 213
+    },
+    "qwen3vl/decode_step": {
+      "anon": 3,
+      "components": 14,
+      "instances": 1323
+    },
+    "qwen3vl/prefill": {
+      "anon": 3,
+      "components": 14,
+      "instances": 1323
+    },
+    "qwen3vl/vision_encoder": {
+      "anon": 2,
+      "components": 13,
+      "instances": 239
+    },
+    "resnet50/forward": {
+      "anon": 23,
+      "components": 14,
+      "instances": 143
+    },
+    "sdxl/text_encoder_g": {
+      "anon": 1,
+      "components": 12,
+      "instances": 361
+    },
+    "sdxl/text_encoder_l": {
+      "anon": 1,
+      "components": 11,
+      "instances": 140
+    },
+    "sdxl/unet_step": {
+      "anon": 7,
+      "components": 42,
+      "instances": 2150
+    },
+    "sdxl/vae_decode": {
+      "anon": 3,
+      "components": 22,
+      "instances": 97
+    }
+  },
+  "shared_by_two_or_more": 12
+}

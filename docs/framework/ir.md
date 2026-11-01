@@ -8,7 +8,7 @@ Nothing in this crate maps ops or models to hardware.
 
 An arena: plain vectors addressed by typed `u32` indices (`FuncId`, `RegionId`, `OpId`, `ValueId`), so a
 module serializes with serde (postcard on disk) and is deterministic. Graph algorithms build their views
-(users, petgraph or `vf2` adapters) on demand.
+(users, the `absgraph` graphs below) on demand.
 
 | Type | Fields |
 |---|---|
@@ -81,6 +81,45 @@ calls are keyed by target. `ops::lookup(name, target)` returns the entry or `Non
 | `elem` | result element type: `same_as(i)`, `bool`, `i32`, `component_of0` (`real`/`imag`), `complex_of0`, `free` (`convert`, `dot_general`'s preferred type, composites) |
 | `shape` | the result-shape rule (`ops/shape.rs`), transcribed from the spec's shape constraints and cited per rule; symbolic over `Dim`, with shape operands given as evaluated `SymExpr` vectors |
 | `iteration` | hook for the iteration-space semantics of core ops (filled by the iteration-space analysis) |
+| `dims` | the dimension and element-type equalities between operands and results (`ops/dims.rs`, below) |
+| `size_attrs` | attributes whose integers are sizes, offsets, strides or counts along axes, not axis numbers (`slice` bounds and strides, `pad` amounts, convolution and window strides, padding, dilations and group counts, window and slice sizes, `fft_length`) |
+
+`dims` and `size_attrs` are code and lists, not data, and are not in `op_inventory.json`.
+
+### Dimension relations (`ops/dims.rs`)
+
+A rule sees the rank of every operand and result, which of their axes are the literal 1 (a port that
+is not part of a graph, such as a shape operand, is absent) and the op's literal attributes, and returns
+pairs of equal axes and of equal element types, each transcribed from the spec's constraints and cited:
+element-wise ops (every operand of positive rank has the result's shape), `broadcast_in_dim` (operand
+axis `i` is result axis `broadcast_dimensions[i]` unless the operand dim is 1), `transpose`,
+`concatenate` (all axes but `dimension`), `dot_general` (batch and contracting dims agree; the result is
+batch, then lhs free, then rhs free), `convolution` (output batch and feature; the input feature when
+`feature_group_count` is 1), `reduce` (kept axes), `reduce_window` and `dynamic_reduce_window` (inputs
+agree), `scatter`, `sort`, `reverse`, `dynamic_update_slice`, `pad`, `fft` (leading axes). Every other op
+relates nothing (`fresh`): sound, with fewer shared classes. Axes of size 1 are never related.
+`dims::relations` adds the element rules of the entry: `same_as(i)` with one result, and for an
+element-wise op every operand of operand `i`'s family. The components pass groups the dims of an
+abstract graph into classes with these relations (docs/passes/components.md).
+
+## Graphs for matching (`absgraph.rs`)
+
+- `Graph<N>`: nodes with labels `N`; edges `u -> v` with the sorted list of their ends (`EdgeEnd`: the
+  result index of `u` and a `PortLabel`: an operand port, `Commutative` for an operand of a commutative
+  op, `Region {region, index}` from an owner to a region argument, `Yield {region}` from a region's
+  terminator to its owner). Parallel edges are one edge with several ends (`x * x`).
+- `wl`: 1-WL colour refinement on the directed, edge-labelled graph (Shervashidze et al., JMLR
+  12:2539-2561, 2011, for the undirected node-labelled form): colours from the node's colour and the
+  sorted multisets of `(edge label, neighbour colour)` over out- and in-edges, until the number of
+  colours stops growing. The graph hash covers the sorted colours and the node and edge counts. Stable
+  colours are isomorphism-invariant.
+- `isomorphism`: compares node and edge counts, then runs the `vf2` crate (Cordella et al., IEEE TPAMI
+  26(10), 2004) in isomorphism mode through an adapter that implements `vf2::Graph` for `Graph` (the
+  crate's petgraph integration targets petgraph 0.6). The caller's predicate gets node indices; a
+  `budget` bounds the candidate pairs.
+- `check_isomorphism`: an O(V + E log d) check of a stored map (bijection, node predicate, every edge to
+  an edge with an equal label, equal counts), independent of the search.
+- `UnionFind`: deterministic roots (the smaller index wins), classes numbered by first occurrence.
 
 Adding an op: one entry in `TABLE` (with its spec anchor and shape rule), a unit test of the rule, and the
 op then appears with its entry in `op_inventory.json`.

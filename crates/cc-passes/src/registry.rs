@@ -12,5 +12,6 @@ pub fn registry() -> Vec<Box<dyn Pass>> {
         // Model passes.
         Box::new(crate::export::Export),
         Box::new(crate::import::Import),
+        Box::new(crate::components::Components),
     ]
 }

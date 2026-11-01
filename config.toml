@@ -149,9 +149,12 @@ memory_gb = 8                    # measured 2026-11-01: 4.4 GB peak for all mode
 timeout_min = 30
 
 [passes.components]
+wl_max_rounds = 64               # upper bound on WL refinement rounds (stops earlier once the colours are stable)
+vf2_budget = 200000000           # candidate pairs one VF2 search may test; a search over it fails the pass
+views = true                     # write views/components.md (components x models)
 [passes.components.resources]
-threads = 8
-memory_gb = 4
+threads = 8                      # phases in parallel
+memory_gb = 4                    # measured 2026-11-01: 3.3 GB peak for all models at full (run + verify)
 timeout_min = 30
 
 [passes.normalize]
