@@ -1,7 +1,7 @@
 # Copy to config.local.toml (untracked) and adjust. Values here override config.toml.
-# Two machines share this NFS home: the orchestration host (iacoma227: editing, git) and the build host
-# (iacoma231: every build, container, chipc run and test, through scripts/on-build-host). chipc runs only on the
-# build host, so the paths below are on its local disk (docs/development.md, "Build host and scratch").
+# Three machines share this NFS home (iacoma227, iacoma231, iacoma232). Every build, container, chipc run and test
+# runs on the build host chosen with `scripts/on-build-host --pick`, through scripts/on-build-host, so the paths
+# below are on that host's local disk (docs/development.md, "Build host and scratch").
 # scripts/on-build-host sets CARGO_TARGET_DIR, the uv venv and TMPDIR under /scratch/$USER/chiplet-compiler.
 # EDA, PDK and /software paths were verified on 2026-10-30 and are the same on both machines.
 
@@ -13,7 +13,7 @@ nangate45_lef = "/home/rid2/pdks/FreePDK45/Nangate45_OpenCellLib/stdcells.lef"
 asap7_root = "/home/rid2/pdks/asap7"
 asap7_nldm_dir = "/home/rid2/pdks/asap7/asap7sc7p5t_28/LIB/NLDM"
 asap7_lef_dir = "/home/rid2/pdks/asap7/asap7sc7p5t_28/LEF"
-scratch_dir = "/scratch/rid2/chiplet-compiler"    # build area on the build host (iacoma231); tmp/ = EDA temp
+scratch_dir = "/scratch/rid2/chiplet-compiler"    # build area on the build host; tmp/ = EDA temp
 build_dir = "/scratch/rid2/chiplet-compiler/build"  # pass artifacts on the build host's local disk, not the NFS home
                                                      # (a worktree gets its own: scripts/build-area init <name>)
 synopsys_root = "/software/Synopsys-2024_x86_64"

@@ -19,6 +19,10 @@ The table above is the orchestration host, iacoma227 (2026-10-30). Since 2026-10
 the **build host, iacoma231** (docs/development.md, "Build host and scratch"), checked on 2026-10-31: 96 CPUs,
 376 GiB; Docker 26.1.3, cgroup v1, root dir `/srv/docker`; user `rid2` in `docker`; `/scratch` = `/srv/scratch` on the
 1.7 T `/srv` disk shared with Docker (998 G free); same NFS home, `/software` and `~/pdks` as iacoma227.
+Since 2026-11-01 all three machines are build-host candidates (`scripts/on-build-host --pick`). iacoma232, checked
+on 2026-11-01, has the same layout as iacoma231 (96 CPUs, 376 GiB, Docker 26.1.3, `/scratch` on `/srv`, 191 G free).
+iacoma227, re-checked on 2026-11-01: `/scratch` is its own 894 G disk (590 G free); Docker stays on `/srv` (476 G
+free); its single Condor slot claims all 64 CPUs, so Condor jobs can load it at any time.
 
 ## 2. Resource flags (`docker run`)
 
@@ -96,7 +100,7 @@ whose outputs are copied into the final image (multi-stage build) so the final i
 
 ## 5. Disk notes
 
-- Everything below happens on the build host (iacoma231). Image layers and the legacy builder's stage images
+- Everything below happens on the build host. Image layers and the legacy builder's stage images
   land in its `/srv/docker`, on the same disk as `/scratch`: `docker/build.sh` refuses to start below 100 GB free.
 - Do not put build trees on `/home` (NFS, 97 % full) or `/tmp` (8 G). All build output goes to the build area
   `/scratch/$USER/chiplet-compiler/` (`target/`, `venv/`, `build/`, `logs/`, ephemeral `runs/` and `tmp/`;

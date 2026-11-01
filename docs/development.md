@@ -66,23 +66,27 @@ docs/passes/<pass>.md   required (below)
 
 ## Build host and scratch
 
-Two machines share the NFS home, so the checkout has the same path on both.
+Three machines share the NFS home, so the checkout has the same path on all of them: iacoma227 (64 cores,
+502 GB; where editing, git and `gh` happen), iacoma231 and iacoma232 (96 cores, 376 GB each). All three are shared
+with other users, and iacoma227 is also a Condor execute node, so its load can rise while a run is going.
 
-- **Orchestration host (iacoma227).** Editing, git and `gh`, reading results. Nothing
-  compiles, builds an image, runs a container, runs `chipc` or runs a test there: its local scratch is ~95 % full
-  with other users' data, and it is a Condor execute node.
-- **Build host (iacoma231 by default; iacoma232 is the other candidate).** Everything else, through
-  `scripts/on-build-host <command>` (ssh, same checkout path, the build environment below).
+- **The build host** is whichever of them is chosen for a piece of work. Every compile, image build, container,
+  `chipc` run and test goes through `scripts/on-build-host <command>`: over ssh, or directly when the build host is
+  the machine the command is typed on, always with the build environment below.
 - **Choosing the build host.** Before a piece of work starts, `scripts/on-build-host --status` lists every candidate
-  (`CC_BUILD_HOSTS`) with its load, available RAM, free scratch and whether our build area and image are there;
-  `--pick` prints the candidate with the most available RAM among those under the thresholds (1-minute load below
-  half the cores, available RAM at least `CC_PICK_MEMORY_GB` + 64 GB, at least 150 GB free scratch, build area
-  and image present). Keep one host for the whole piece of work (`CC_BUILD_HOST=<host>` for `on-build-host` and
-  `build-area`): its build area, image and runs live there. A host without a build area first needs one: run
-  `scripts/on-build-host` there once (it creates the layout below), copy the image (below), then
-  `cargo build` and `uv sync` through it, and copy `build/` from the other host if earlier artifacts are needed.
-- **Build area:** `/scratch/$USER/chiplet-compiler/` on the build host (local disk; `/scratch` = `/srv/scratch`, the
-  same disk as Docker's `/srv`). `config.local.toml` points `paths.scratch_dir` and `paths.build_dir` there.
+  (`CC_BUILD_HOSTS`, default all three) with its cores, load, idle cores, available RAM, free scratch (the smaller
+  of `/scratch` and Docker's root directory when they are different disks), whether our build area and image are
+  there, and a headroom score; `--pick` prints the ready candidate with the highest score. A candidate is ready when
+  its 1-minute load is below half its cores, it has at least `CC_PICK_THREADS` (16) idle cores, at least
+  `CC_PICK_MEMORY_GB` (32) + 64 GB available RAM and at least 150 GB free disk, and the build area and the image are
+  present. The score is the scarcest of the three resources relative to that need (idle cores / threads, RAM /
+  (memory + 64 GB), disk / 150 GB): the host whose worst resource is best wins. Keep one host for the whole piece
+  of work (`CC_BUILD_HOST=<host>` for `on-build-host` and `build-area`): its build area, image and runs live there.
+  A host without a build area first needs one: run `scripts/on-build-host` there once (it creates the layout
+  below), copy the image (below), then `cargo build` and `uv sync` through it, and copy `build/` from another host
+  if earlier artifacts are needed.
+- **Build area:** `/scratch/$USER/chiplet-compiler/` on the build host (local disk; on iacoma231 and iacoma232
+  `/scratch` = `/srv/scratch`, the same disk as Docker's `/srv`; on iacoma227 they are separate disks). `config.local.toml` points `paths.scratch_dir` and `paths.build_dir` there.
 
 | Path | Kind | Holds |
 |---|---|---|
