@@ -5,14 +5,18 @@
 # tests; everything heavy runs on the build host over ssh. The NFS home is shared, so the checkout path is the
 # same there. Build outputs live in the build host's local scratch (docs/development.md, "Build host and scratch").
 #
-#   scripts/on-build-host --status                        load, memory and free scratch of the build host
+#   scripts/on-build-host --status                        load, memory, free scratch and build-area state of
+#                                                         every candidate host
+#   scripts/on-build-host --pick                          print the candidate with the most headroom (exit 1 if none)
 #   scripts/on-build-host cargo build -p cc-cli
 #   scripts/on-build-host cargo nextest run --profile smoke
 #   scripts/on-build-host chipc run --only export         (chipc = the built binary, on PATH there)
 #   scripts/on-build-host uv run --frozen python -m pytest python/tests -q
 #   scripts/on-build-host docker/build.sh
 #
-# Environment: CC_BUILD_HOST (default iacoma231), CC_BUILD_AREA (default /scratch/$USER/chiplet-compiler).
+# Environment: CC_BUILD_HOST (default iacoma231), CC_BUILD_HOSTS (candidates for --status and --pick, default
+# "iacoma231 iacoma232"), CC_BUILD_AREA (default /scratch/$USER/chiplet-compiler), CC_PICK_MEMORY_GB (the run's
+# memory budget for --pick, default 32).
 set -euo pipefail
 
 host="${CC_BUILD_HOST:-iacoma231}"
@@ -20,12 +24,52 @@ area="${CC_BUILD_AREA:-/scratch/$USER/chiplet-compiler}"
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 if [[ $# -eq 0 ]]; then
-  sed -n '2,15p' "$0" >&2
+  sed -n '2,20p' "$0" >&2
   exit 2
 fi
 
-if [[ "$1" == "--status" ]]; then
-  exec ssh -o BatchMode=yes "$host" "hostname; cat /proc/loadavg; free -g | head -2; df -h /scratch | tail -1; du -sh '$area'/* 2>/dev/null"
+# One line per host: name, cores, 1-minute load, available RAM (GB), free scratch (GB), build area (yes/no),
+# toolchain image (yes/no). "unreachable" when ssh fails.
+probe() {
+  ssh -o BatchMode=yes -o ConnectTimeout=10 "$1" "
+    echo \$(hostname -s) \$(nproc) \$(cut -d' ' -f1 /proc/loadavg) \
+      \$(awk '/MemAvailable/ {printf \"%d\", \$2 / 1048576}' /proc/meminfo) \
+      \$(df -Pk /scratch | awk 'NR == 2 {printf \"%d\", \$4 / 1048576}') \
+      \$([ -d '$area/target' ] && echo yes || echo no) \
+      \$([ -n \"\$(docker images -q chiplet-compiler/toolchain 2>/dev/null)\" ] && echo yes || echo no)" \
+    2>/dev/null || echo "$1 unreachable"
+}
+
+if [[ "$1" == "--status" || "$1" == "--pick" ]]; then
+  need_mem="${CC_PICK_MEMORY_GB:-32}"
+  best="" best_mem=-1
+  printf '%-12s %5s %6s %8s %9s %10s %6s  %s\n' host cores load ram_gb scratch_gb build_area image verdict >&2
+  for h in ${CC_BUILD_HOSTS:-iacoma231 iacoma232}; do
+    read -r name cores load mem free area_ok image_ok <<<"$(probe "$h")"
+    if [[ "$cores" == unreachable ]]; then
+      printf '%-12s %s\n' "$h" unreachable >&2
+      continue
+    fi
+    why=()
+    awk -v l="$load" -v c="$cores" 'BEGIN {exit !(l >= 0.5 * c)}' && why+=("load >= half the cores")
+    (( mem < need_mem + 64 )) && why+=("RAM < ${need_mem}+64 GB")
+    (( free < 150 )) && why+=("scratch < 150 GB")
+    [[ "$area_ok" == yes ]] || why+=("no build area")
+    [[ "$image_ok" == yes ]] || why+=("no image")
+    if (( ${#why[@]} == 0 )); then
+      verdict=ok
+      if (( mem > best_mem )); then best="$h" best_mem="$mem"; fi
+    else
+      verdict="skip: ${why[0]}"
+      for w in "${why[@]:1}"; do verdict+=", $w"; done
+    fi
+    printf '%-12s %5s %6s %8s %9s %10s %6s  %s\n' "$h" "$cores" "$load" "$mem" "$free" "$area_ok" "$image_ok" "$verdict" >&2
+  done
+  if [[ "$1" == "--pick" ]]; then
+    [[ -n "$best" ]] || { echo "on-build-host: no candidate passes the thresholds" >&2; exit 1; }
+    echo "$best"
+  fi
+  exit 0
 fi
 
 cmd="$(printf '%q ' "$@")"
