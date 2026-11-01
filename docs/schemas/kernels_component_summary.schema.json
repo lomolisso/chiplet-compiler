@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`kernels/<id>.postcard.summary.json`.",
+  "properties": {
+    "boundaries": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Boundary nodes per kind.",
+      "type": "object"
+    },
+    "call_fed_maps": {
+      "description": "Map kernels that read a composite call's result (an epilogue across a component border).",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "core_kernels": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "cores": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Kernels with a core, per `<op>/<family>` of the core.",
+      "type": "object"
+    },
+    "evictions": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "id": {
+      "type": "string"
+    },
+    "instances": {
+      "description": "Instances of the component.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "kernels": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "low_rank_maps": {
+      "description": "Map kernels whose domain has rank at most 1 (parameter arithmetic).",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "map_kernels": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "models": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Instances per model.",
+      "type": "object"
+    },
+    "nodes": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "roles": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Members per role.",
+      "type": "object"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "nodes",
+    "kernels",
+    "core_kernels",
+    "map_kernels",
+    "cores",
+    "roles",
+    "boundaries",
+    "call_fed_maps",
+    "low_rank_maps",
+    "evictions",
+    "instances",
+    "models"
+  ],
+  "title": "PartitionSummary",
+  "type": "object"
+}

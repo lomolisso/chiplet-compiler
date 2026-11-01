@@ -1,0 +1,81 @@
+digraph "cf52289c029b85337" {
+  rankdir=TB;
+  node [shape=box, fontsize=10];
+  subgraph cluster_k0 {
+    label="k0 core convolution/sint";
+    n8 [label="convolution\n[d2,d5,d6,d0]\ncore", style=filled, fillcolor="#f4c27a"];
+    n11 [label="broadcast_in_dim\n[1,1,1,d0]\nbroadcast", style=dotted];
+    n12 [label="dynamic_broadcast_in_dim\n[d2,d5,d6,d0]\nbroadcast", style=dotted];
+    n13 [label="add\n[d2,d5,d6,d0]\nepilogue", style=filled, fillcolor="#d7efd2"];
+    n14 [label="convert\n[d2,d5,d6,d0]\nepilogue", style=filled, fillcolor="#d7efd2"];
+    n17 [label="broadcast_in_dim\n[1,1,1,d0]\nbroadcast", style=dotted];
+    n18 [label="dynamic_broadcast_in_dim\n[d2,d5,d6,d0]\nbroadcast", style=dotted];
+    n19 [label="multiply\n[d2,d5,d6,d0]\nepilogue", style=filled, fillcolor="#d7efd2"];
+    n20 [label="round_nearest_even\n[d2,d5,d6,d0]\nepilogue", style=filled, fillcolor="#d7efd2"];
+    n22 [label="dynamic_broadcast_in_dim\n[d2,d5,d6,d0]\nbroadcast", style=dotted];
+    n23 [label="add\n[d2,d5,d6,d0]\nepilogue", style=filled, fillcolor="#d7efd2"];
+    n25 [label="dynamic_broadcast_in_dim\n[d2,d5,d6,d0]\nbroadcast", style=dotted];
+    n26 [label="maximum\n[d2,d5,d6,d0]\nepilogue", style=filled, fillcolor="#d7efd2"];
+    n28 [label="dynamic_broadcast_in_dim\n[d2,d5,d6,d0]\nbroadcast", style=dotted];
+    n29 [label="minimum\n[d2,d5,d6,d0]\nepilogue", style=filled, fillcolor="#d7efd2"];
+    n30 [label="convert\n[d2,d5,d6,d0]\nepilogue", style=filled, fillcolor="#d7efd2"];
+  }
+  subgraph cluster_k1 {
+    label="k1 map";
+    n9 [label="broadcast_in_dim\n[d0]\nbroadcast", style=dotted];
+    n10 [label="multiply\n[d0]\nmap", style=filled, fillcolor="#eadcf3"];
+    n15 [label="broadcast_in_dim\n[d0]\nbroadcast", style=dotted];
+    n16 [label="divide\n[d0]\nmap", style=filled, fillcolor="#eadcf3"];
+  }
+  subgraph cluster_k2 {
+    label="k2 map";
+    n21 [label="convert\nmap", style=filled, fillcolor="#eadcf3"];
+  }
+  subgraph cluster_k3 {
+    label="k3 map";
+    n24 [label="convert +1 splat\nmap", style=filled, fillcolor="#eadcf3"];
+  }
+  subgraph cluster_k4 {
+    label="k4 map";
+    n27 [label="convert +1 splat\nmap", style=filled, fillcolor="#eadcf3"];
+  }
+  n0 [label="input 0\n[d0]\ninterface", style=filled, fillcolor="#e6e6e6", color="#888888"];
+  n1 [label="input 1\n[1,1,d1,d0]\ninterface", style=filled, fillcolor="#e6e6e6", color="#888888"];
+  n2 [label="input 2\n[d0]\ninterface", style=filled, fillcolor="#e6e6e6", color="#888888"];
+  n3 [label="input 3\ninterface", style=filled, fillcolor="#e6e6e6", color="#888888"];
+  n4 [label="input 4\ninterface", style=filled, fillcolor="#e6e6e6", color="#888888"];
+  n5 [label="input 5\n[d2,d3,d4,d1]\ninterface", style=filled, fillcolor="#e6e6e6", color="#888888"];
+  n6 [label="input 6\ninterface", style=filled, fillcolor="#e6e6e6", color="#888888"];
+  n7 [label="input 7\ninterface", style=filled, fillcolor="#e6e6e6", color="#888888"];
+  n31 [label="func.return\ncontrol", style=filled, fillcolor="#e6e6e6", color="#888888"];
+  n0 -> n11 [label="0:0", fontsize=8];
+  n1 -> n8 [label="0:1", fontsize=8];
+  n2 -> n10 [label="0:*", fontsize=8];
+  n3 -> n15 [label="0:0", fontsize=8];
+  n4 -> n21 [label="0:0", fontsize=8];
+  n5 -> n8 [label="0:0", fontsize=8];
+  n6 -> n9 [label="0:0", fontsize=8];
+  n8 -> n13 [label="0:*", fontsize=8];
+  n9 -> n10 [label="0:*", fontsize=8];
+  n10 -> n16 [label="0:0", fontsize=8];
+  n11 -> n12 [label="0:0", fontsize=8];
+  n12 -> n13 [label="0:*", fontsize=8];
+  n13 -> n14 [label="0:0", fontsize=8];
+  n14 -> n19 [label="0:*", fontsize=8];
+  n15 -> n16 [label="0:1", fontsize=8];
+  n16 -> n17 [label="0:0", fontsize=8];
+  n17 -> n18 [label="0:0", fontsize=8];
+  n18 -> n19 [label="0:*", fontsize=8];
+  n19 -> n20 [label="0:0", fontsize=8];
+  n20 -> n23 [label="0:*", fontsize=8];
+  n21 -> n22 [label="0:0", fontsize=8];
+  n22 -> n23 [label="0:*", fontsize=8];
+  n23 -> n26 [label="0:*", fontsize=8];
+  n24 -> n25 [label="0:0", fontsize=8];
+  n25 -> n26 [label="0:*", fontsize=8];
+  n26 -> n29 [label="0:*", fontsize=8];
+  n27 -> n28 [label="0:0", fontsize=8];
+  n28 -> n29 [label="0:*", fontsize=8];
+  n29 -> n30 [label="0:0", fontsize=8];
+  n30 -> n31 [label="0:0", fontsize=8];
+}

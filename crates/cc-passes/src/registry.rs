@@ -14,5 +14,6 @@ pub fn registry() -> Vec<Box<dyn Pass>> {
         Box::new(crate::import::Import),
         Box::new(crate::components::Components),
         Box::new(crate::normalize::Normalize),
+        Box::new(crate::kernels::Kernels),
     ]
 }

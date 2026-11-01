@@ -174,7 +174,7 @@ memory_gb = 2
 timeout_min = 30
 
 [passes.kernels]
-tie_break = "ssa_order"
+views = true                     # write views/kernels.md and views/<component>.dot
 [passes.kernels.resources]
 threads = 8
 memory_gb = 2

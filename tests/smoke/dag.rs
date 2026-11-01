@@ -90,13 +90,15 @@ fn registry_dag_and_order() {
             "hello_c",
             "import",
             "components",
-            "normalize"
+            "normalize",
+            "kernels"
         ]
     );
     assert_eq!(
         g.to_dot(),
-        "digraph passes {\n  rankdir=LR;\n  node [shape=box];\n  \"components\";\n  \"export\";\n  \"hello_a\";\n  \"hello_b\";\n  \"hello_c\";\n  \"import\";\n  \"normalize\";\n  \
+        "digraph passes {\n  rankdir=LR;\n  node [shape=box];\n  \"components\";\n  \"export\";\n  \"hello_a\";\n  \"hello_b\";\n  \"hello_c\";\n  \"import\";\n  \"kernels\";\n  \"normalize\";\n  \
          \"components\" -> \"normalize\" [label=\"components\"];\n  \"export\" -> \"import\" [label=\"export\"];\n  \
-         \"hello_a\" -> \"hello_b\" [label=\"hello.a\"];\n  \"import\" -> \"components\" [label=\"import\"];\n}\n"
+         \"hello_a\" -> \"hello_b\" [label=\"hello.a\"];\n  \"import\" -> \"components\" [label=\"import\"];\n  \
+         \"normalize\" -> \"kernels\" [label=\"normalize\"];\n}\n"
     );
 }

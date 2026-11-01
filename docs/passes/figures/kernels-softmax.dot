@@ -1,0 +1,82 @@
+digraph "cc1623e29123abec0" {
+  rankdir=TB;
+  node [shape=box, fontsize=10];
+  subgraph cluster_k0 {
+    label="k0 core reduce/float";
+    n6 [label="reduce\n[d4,d5,d6]\ncore", style=filled, fillcolor="#f4c27a"];
+    n7 [label="arg 0.0\nbody", style=dashed];
+    n8 [label="arg 0.1\nbody", style=dashed];
+    n9 [label="maximum\nbody", style=dashed];
+    n10 [label="return\nbody", style=dashed];
+    n11 [label="maximum +1 splat\n[d4,d5,d6]\nepilogue", style=filled, fillcolor="#d7efd2"];
+  }
+  subgraph cluster_k1 {
+    label="k1 core reduce/float";
+    n16 [label="convert\n[d4,d5,d6,d0]\nprologue", style=filled, fillcolor="#cfe3f7"];
+    n17 [label="reduce\n[d4,d5,d6]\ncore", style=filled, fillcolor="#f4c27a"];
+    n18 [label="arg 0.0\nbody", style=dashed];
+    n19 [label="arg 0.1\nbody", style=dashed];
+    n20 [label="add\nbody", style=dashed];
+    n21 [label="return\nbody", style=dashed];
+  }
+  subgraph cluster_k2 {
+    label="k2 map";
+    n12 [label="dynamic_broadcast_in_dim\n[d4,d5,d6,1]\nbroadcast", style=dotted];
+    n13 [label="dynamic_broadcast_in_dim\n[d4,d5,d6,d0]\nbroadcast", style=dotted];
+    n14 [label="subtract\n[d4,d5,d6,d0]\nmap", style=filled, fillcolor="#eadcf3"];
+    n15 [label="exponential\n[d4,d5,d6,d0]\nmap", style=filled, fillcolor="#eadcf3"];
+  }
+  subgraph cluster_k3 {
+    label="k3 map";
+    n22 [label="dynamic_broadcast_in_dim\n[d4,d5,d6,1]\nbroadcast", style=dotted];
+    n23 [label="convert\n[d4,d5,d6,1]\nmap", style=filled, fillcolor="#eadcf3"];
+  }
+  subgraph cluster_k4 {
+    label="k4 map";
+    n24 [label="dynamic_broadcast_in_dim\n[d4,d5,d6,d0]\nbroadcast", style=dotted];
+    n25 [label="divide\n[d4,d5,d6,d0]\nmap", style=filled, fillcolor="#eadcf3"];
+  }
+  n0 [label="input 0\n[1,1,d0,1]\ninterface", style=filled, fillcolor="#e6e6e6", color="#888888"];
+  n1 [label="input 1\n[d1,d2,d3]\ninterface", style=filled, fillcolor="#e6e6e6", color="#888888"];
+  n2 [label="constant\nconstant", style=filled, fillcolor="#e6e6e6", color="#888888"];
+  n3 [label="constant\nconstant", style=filled, fillcolor="#e6e6e6", color="#888888"];
+  n4 [label="dynamic_reshape\n[d4,d5,d0,d6]\nlayout", style=filled, fillcolor="#e6e6e6", color="#888888"];
+  n5 [label="transpose\n[d4,d5,d6,d0]\nlayout", style=filled, fillcolor="#e6e6e6", color="#888888"];
+  n26 [label="composite c781f73fd7873343b\n[d4,d7,d8,1]\ncall", style=filled, fillcolor="#e6e6e6", color="#888888"];
+  n27 [label="dynamic_reshape\n[d9,d10,d11]\nlayout", style=filled, fillcolor="#e6e6e6", color="#888888"];
+  n28 [label="func.return\ncontrol", style=filled, fillcolor="#e6e6e6", color="#888888"];
+  n0 -> n26 [label="0:0", fontsize=8];
+  n1 -> n4 [label="0:0", fontsize=8];
+  n2 -> n17 [label="0:1", fontsize=8];
+  n3 -> n6 [label="0:1", fontsize=8];
+  n4 -> n5 [label="0:0", fontsize=8];
+  n5 -> n6 [label="0:0", fontsize=8];
+  n5 -> n14 [label="0:0", fontsize=8];
+  n6 -> n7 [label="r0.0", fontsize=8];
+  n6 -> n8 [label="r0.1", fontsize=8];
+  n6 -> n11 [label="0:*", fontsize=8];
+  n7 -> n9 [label="0:*", fontsize=8];
+  n8 -> n9 [label="0:*", fontsize=8];
+  n9 -> n10 [label="0:0", fontsize=8];
+  n10 -> n6 [label="y0", fontsize=8];
+  n11 -> n12 [label="0:0", fontsize=8];
+  n12 -> n13 [label="0:0", fontsize=8];
+  n13 -> n14 [label="0:1", fontsize=8];
+  n14 -> n15 [label="0:0", fontsize=8];
+  n15 -> n16 [label="0:0", fontsize=8];
+  n15 -> n25 [label="0:0", fontsize=8];
+  n16 -> n17 [label="0:0", fontsize=8];
+  n17 -> n18 [label="r0.0", fontsize=8];
+  n17 -> n19 [label="r0.1", fontsize=8];
+  n17 -> n22 [label="0:0", fontsize=8];
+  n18 -> n20 [label="0:*", fontsize=8];
+  n19 -> n20 [label="0:*", fontsize=8];
+  n20 -> n21 [label="0:0", fontsize=8];
+  n21 -> n17 [label="y0", fontsize=8];
+  n22 -> n23 [label="0:0", fontsize=8];
+  n23 -> n24 [label="0:0", fontsize=8];
+  n24 -> n25 [label="0:1", fontsize=8];
+  n25 -> n26 [label="0:1", fontsize=8];
+  n26 -> n27 [label="0:0", fontsize=8];
+  n27 -> n28 [label="0:0", fontsize=8];
+}

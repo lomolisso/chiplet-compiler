@@ -235,14 +235,16 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
 ### 4.5 `kernels`
 
 - **Purpose.** Partition each component into kernels.
-- **Method.** Op classes come from the op-semantics table: core (contraction/reduction), elementwise, layout, data movement, size compute, irregular. A kernel is a set K with:
+- **Method.** Op classes come from the op-semantics table: core (contraction/reduction), elementwise, layout, data movement, size compute, irregular. **Scatter-reduce** (a scatter whose update computation yields a computed value, not its update argument) is a core. A kernel is a set K with:
   - **K1:** at most one core;
   - **K2:** convex (no path leaves K and re-enters);
-  - **K3:** no escaping intermediates;
-  - **K4:** domain alignment of prologue/epilogue members (shape equality and broadcast structure).
+  - **K3:** no escaping intermediates (a value consumed inside K has all its consumers inside);
+  - **K4:** domain alignment: an epilogue member has a core result's dims; a prologue member feeds exactly one core operand, has its dims and has all its consumers in K; a map kernel has one domain.
 
-  Deterministic algorithm: seed cores, absorb epilogues to a fixpoint, then prologues, then group the remaining elementwise ops into map kernels, with ties broken by SSA order. **Scatter-reduce** (scatter whose update computation is arithmetic) is a core. Pure data movement and size computation are boundaries.
-- **Verification.** An independent checker re-verifies K1–K4, the partition property, **acyclicity of the quotient graph** (convex parts can still form a cyclic quotient), and that the union of kernels plus boundary ops equals the component.
+  Shapes are compared on the components' dimension classes (§4.3), so one partition holds for every instance. Element-wise operands from outside K are allowed while K stays convex (a residual add); a `broadcast_in_dim` (static or dynamic) of a K input whose consumers are all in K joins K. Every other layout op, data movement, size computation, constants, `sort`/`fft` and composite calls are boundaries: kernels do not cross component borders.
+
+  Deterministic algorithm, on the DAG with each region-owning op contracted with its regions: seed cores, absorb epilogues to a fixpoint (a member's whole consumer set or nothing), then prologues, then group the remaining elementwise ops into map kernels, then absorb broadcasts; ties go to the earlier core in SSA order. A cyclic quotient bans the latest kernel's last member and recomputes. Every kernel is also written as a graph of its own.
+- **Verification.** An independent checker re-verifies K1–K4, the partition property, **acyclicity of the quotient graph** (convex parts can still form a cyclic quotient), and that the kernel graphs plus boundary ops rebuild the component exactly.
 
 ### 4.6 `kernel_classes`
 
@@ -527,3 +529,9 @@ build/         (ignored) build/.<pass>/ artifacts
 | Rule proofs run when the pass runs (the image's solvers) and in CI (the same pinned releases on the runner); verify re-checks with the second solver | Proofs in deep tests only | The negative control and every obligation are checked on every change; a solver bug needs both solvers to agree |
 | Rules v1: DCE, CSE, transpose/reshape collapse, splat folding, and identities only where the graph proves them | Identities checked against every instance | A rewrite valid for the component must not depend on the instance set |
 | Index entries compared only for equality are 4-bit vectors in the obligations | 32-bit indices | At most 8 entries occur, so a counterexample renames into 4 bits; Z3 timed out on the 32-bit form |
+| Kernels are cut per component; composite calls are boundaries | Partition the expanded graph | Components stay compositions of kernels and each partition serves every instance; activations in a parent module become map kernels there (counted) |
+| Kernel shapes compared on dimension classes | Symbolic dims with SMT per instance | Classes are the spec-forced equalities, equal in every instance; a partition must hold for all instances, so coincidental equalities must not count |
+| Requantization chains are their producer's epilogue | Their own map kernel | Epilogues are absorbed before prologues; the requantization variant (§6.3) is a property of the GEMM's class |
+| Epilogue operands may be outside tensors of the core's domain (residual adds) and absorbed broadcasts | Broadcasts of lower-rank inputs only | Element-wise operands have the result's shape; convexity is the real constraint |
+| Layout ops are boundaries, except broadcasts of kernel inputs | Layout ops in map kernels | A kernel keeps one iteration space; broadcasts are projections that `iteration_space` folds into the access maps |
+| Ties broken by SSA order only | A selectable tie-break | One deterministic rule; the checker is independent of it |
