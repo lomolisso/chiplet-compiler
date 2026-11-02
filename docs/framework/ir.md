@@ -80,11 +80,27 @@ calls are keyed by target. `ops::lookup(name, target)` returns the entry or `Non
 | `shape_operands` | ports that carry shapes: `ports([…])`, `last(n)`, `all`, or `dim_var_args` (composite ports bound to dimension arguments) |
 | `elem` | result element type: `same_as(i)`, `bool`, `i32`, `component_of0` (`real`/`imag`), `complex_of0`, `free` (`convert`, `dot_general`'s preferred type, composites) |
 | `shape` | the result-shape rule (`ops/shape.rs`), transcribed from the spec's shape constraints and cited per rule; symbolic over `Dim`, with shape operands given as evaluated `SymExpr` vectors |
-| `iteration` | hook for the iteration-space semantics of core ops (filled by the iteration-space analysis) |
+| `iteration` | the iteration-space semantics (`ops/iter.rs`, below): set for every core, element-wise op, broadcast and `scatter` |
 | `dims` | the dimension and element-type equalities between operands and results (`ops/dims.rs`, below) |
 | `size_attrs` | attributes whose integers are sizes, offsets, strides or counts along axes, not axis numbers (`slice` bounds and strides, `pad` amounts, convolution and window strides, padding, dilations and group counts, window and slice sizes, `fft_length`) |
 
-`dims` and `size_attrs` are code and lists, not data, and are not in `op_inventory.json`.
+`dims`, `size_attrs` and `iteration` are code and lists, not data, and are not in `op_inventory.json`.
+
+### Iteration semantics (`ops/iter.rs`)
+
+A hook sees the ranks of the data operands and results, the literal attributes, which attributes are
+present, the operand axes a broadcast expands and whether the op's group counts are 1, and returns the
+op's iteration dims (parallel or reduction, where each extent comes from, the dim's position in ω's axis
+space) and, per operand and result, an affine map from the iteration vector to the element: one row
+`(Σ k · Π factors · i_dim) / divisor` per axis, a factor being a size-attribute entry, a shape-operand
+entry or a dim's extent, with flags for padding guards and data-dependent indices. Every formula is the
+spec's index formula, cited per op: `dot_general` (result axes, then the contracting pairs),
+`convolution` and `dynamic_conv` (strides, rhs and lhs dilation, padding, `window_reversal`, and the
+group split of `feature_group_count`), `reduce`, `reduce_window` and `dynamic_reduce_window` (window
+strides, dilations, base dilations, padding), `scatter` (window and batching parts affine, the start
+index data), `broadcast_in_dim` (projections), and every element-wise op (identity; rank-0 operands read
+whole). The maps are parametric, so one map serves every instance of a kernel class; the
+`iteration_space` pass composes them over a kernel (docs/passes/iteration_space.md).
 
 ### Dimension relations (`ops/dims.rs`)
 

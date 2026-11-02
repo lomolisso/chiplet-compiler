@@ -11,6 +11,7 @@ mod eda;
 mod env;
 mod export;
 mod import;
+mod iteration_space;
 mod kernel_classes;
 mod kernels;
 mod normalize;

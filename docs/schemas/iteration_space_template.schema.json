@@ -1,0 +1,212 @@
+{
+  "$defs": {
+    "Candidate": {
+      "description": "One valid space-time mapping (λ, u).",
+      "properties": {
+        "array": {
+          "description": "Array dims as functions of the group extents (`E(m)`, `E(m) + E(k) - 1`, …).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "dataflow": {
+          "description": "`output_stationary`, `weight_stationary`, `input_stationary` or `systolic` (nothing stationary).",
+          "type": "string"
+        },
+        "lambda": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "link_bits": {
+          "description": "Workload-weighted inter-PE link bits per PE per step.",
+          "format": "double",
+          "type": "number"
+        },
+        "links": {
+          "items": {
+            "$ref": "#/$defs/Link"
+          },
+          "type": "array"
+        },
+        "rank": {
+          "description": "0 = best.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "s": {
+          "description": "Allocation: `S u = 0`, PE coordinates `S z`.",
+          "items": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "stationary": {
+          "description": "The operand whose dependence does not move (`S d = 0`), if any.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "u": {
+          "description": "Projection direction: iterations on one line `z + t·u` share a PE.",
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "utilization": {
+          "description": "Workload-weighted PE utilization |D| / (#PE · T) at the rows' extents.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "lambda",
+        "u",
+        "s",
+        "links",
+        "dataflow",
+        "array",
+        "utilization",
+        "link_bits",
+        "rank"
+      ],
+      "type": "object"
+    },
+    "Group": {
+      "description": "Which operands index an iteration dim, for a contraction (`a`, `b` the core inputs, `c` the result).",
+      "oneOf": [
+        {
+          "const": "batch",
+          "description": "a, b, c: an outer loop.",
+          "type": "string"
+        },
+        {
+          "const": "m",
+          "description": "a, c.",
+          "type": "string"
+        },
+        {
+          "const": "n",
+          "description": "b, c.",
+          "type": "string"
+        },
+        {
+          "const": "k",
+          "description": "a, b: the reduction.",
+          "type": "string"
+        },
+        {
+          "const": "par",
+          "description": "Reduction: the kept dims.",
+          "type": "string"
+        },
+        {
+          "const": "red",
+          "description": "Reduction: the reduced dims.",
+          "type": "string"
+        }
+      ]
+    },
+    "Link": {
+      "description": "One link of a mapping: the dependence's displacement on the array and its delay.",
+      "properties": {
+        "delay": {
+          "description": "`λ · d` registers.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "operand": {
+          "type": "string"
+        },
+        "step": {
+          "description": "`S d`.",
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "operand",
+        "step",
+        "delay"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`templates/<z>.json` (template classes only).",
+  "properties": {
+    "candidates": {
+      "items": {
+        "$ref": "#/$defs/Candidate"
+      },
+      "type": "array"
+    },
+    "families": {
+      "description": "Element families of the core inputs and result.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "groups": {
+      "additionalProperties": {
+        "items": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": "array"
+      },
+      "description": "Per space group: its dims (its extent is their product).",
+      "type": "object"
+    },
+    "id": {
+      "type": "string"
+    },
+    "proof": {
+      "description": "The mapping proof (`smt/<file>`).",
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "selected": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "space": {
+      "items": {
+        "$ref": "#/$defs/Group"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "space",
+    "groups",
+    "candidates",
+    "selected",
+    "families",
+    "proof"
+  ],
+  "title": "TemplateFile",
+  "type": "object"
+}

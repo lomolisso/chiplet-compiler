@@ -1,0 +1,171 @@
+{
+  "$defs": {
+    "Reuse": {
+      "description": "The numbers behind a contraction's routing.",
+      "properties": {
+        "lhs": {
+          "description": "Workload-weighted mean reuse factor of each input.",
+          "format": "double",
+          "type": "number"
+        },
+        "rhs": {
+          "format": "double",
+          "type": "number"
+        },
+        "share": {
+          "description": "Share of the weighted workload in rows where both inputs reach `min_reuse`.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "share",
+        "lhs",
+        "rhs"
+      ],
+      "type": "object"
+    },
+    "Route": {
+      "enum": [
+        "template",
+        "datapath"
+      ],
+      "type": "string"
+    },
+    "Routed": {
+      "properties": {
+        "class": {
+          "$ref": "#/$defs/SkelClass"
+        },
+        "core": {
+          "type": "string"
+        },
+        "dataflow": {
+          "description": "Template classes: the selected candidate's dataflow.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "reuse": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reuse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "route": {
+          "$ref": "#/$defs/Route"
+        },
+        "stages": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Stages"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Template classes: the stages handed to `datapaths`."
+        },
+        "workload": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "route",
+        "class",
+        "core",
+        "reason",
+        "workload"
+      ],
+      "type": "object"
+    },
+    "SkelClass": {
+      "description": "What a class computes, from its accesses (design §4.7).",
+      "oneOf": [
+        {
+          "const": "map",
+          "description": "No reduction dim.",
+          "type": "string"
+        },
+        {
+          "const": "reduce",
+          "description": "Reduction dims, and every core input is indexed by every parallel dim (no reuse).",
+          "type": "string"
+        },
+        {
+          "const": "contraction",
+          "description": "Reduction dims, and some core input is not indexed by some parallel dim (reuse).",
+          "type": "string"
+        }
+      ]
+    },
+    "Stages": {
+      "description": "Element-wise stages around a template's core (handed to `datapaths` like map kernels).",
+      "properties": {
+        "epilogue": {
+          "description": "The epilogue members (once per element of the result).",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "prologue": {
+          "additionalProperties": false,
+          "description": "Per core input port: the prologue members on its path (once per element of that operand).",
+          "patternProperties": {
+            "^\\d+$": {
+              "items": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "prologue",
+        "epilogue"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`routing.json`.",
+  "properties": {
+    "classes": {
+      "items": {
+        "$ref": "#/$defs/Routed"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "classes"
+  ],
+  "title": "Routing",
+  "type": "object"
+}

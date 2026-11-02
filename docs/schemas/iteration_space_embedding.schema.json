@@ -1,0 +1,204 @@
+{
+  "$defs": {
+    "Factor": {
+      "description": "A symbolic factor of a coefficient, bound to the class: a value column of the instance table\n(`n<node>.<attribute>`, entry `index`), an entry of a shape operand (known only at run time), or the\nextent of an iteration dim.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "column": {
+              "properties": {
+                "column": {
+                  "type": "string"
+                },
+                "index": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "column",
+                "index"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "column"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "runtime": {
+              "properties": {
+                "index": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "node": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "port": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "node",
+                "port",
+                "index"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "runtime"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "extent": {
+              "properties": {
+                "dim": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "dim"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "extent"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Pair": {
+      "description": "One pair `guest ⊑ host`.",
+      "properties": {
+        "dims": {
+          "description": "Host dim of every guest dim (φ); host dims outside the image have extent 1.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "guest": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "operands": {
+          "description": "Host operand index of every guest operand (π, over the embedding operands).",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "params": {
+          "description": "Host factors and their values (others: unused).",
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "$ref": "#/$defs/Factor"
+              },
+              {
+                "$ref": "#/$defs/Value"
+              }
+            ],
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "rows": {
+          "description": "Per guest operand: the host row of each guest row (other host rows vanish).",
+          "items": {
+            "items": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "guest",
+        "host",
+        "dims",
+        "operands",
+        "rows",
+        "params"
+      ],
+      "type": "object"
+    },
+    "Value": {
+      "description": "A host parameter's value in an embedding.",
+      "oneOf": [
+        {
+          "enum": [
+            "zero",
+            "one"
+          ],
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The guest's factor.",
+          "properties": {
+            "guest": {
+              "$ref": "#/$defs/Factor"
+            }
+          },
+          "required": [
+            "guest"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`embedding.json`.",
+  "properties": {
+    "pairs": {
+      "description": "Skeleton operands that take part, per class: core operands, or the interface of a map.",
+      "items": {
+        "$ref": "#/$defs/Pair"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "pairs"
+  ],
+  "title": "Embedding",
+  "type": "object"
+}

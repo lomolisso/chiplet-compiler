@@ -1,0 +1,1868 @@
+---
+source: tests/deep/iteration_space.rs
+expression: digest
+---
+{
+  "checks": 952,
+  "routing": [
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z036424d17c97a2c5",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/float",
+      "dataflow": null,
+      "id": "z04834d61b2ac3689",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z0493dba8ab3268de",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "scatter/sint",
+      "dataflow": null,
+      "id": "z0680d8b9a1f05aa7",
+      "reason": "scatter-reduce",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z0993ef684255df6c",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/sint",
+      "dataflow": "weight_stationary",
+      "id": "z0a8e23d8a0216f94",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z0ae08f49bc07dec6",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z0d1d3bc525b7d6a2",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z0d6b98b5a2f15ca0",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z0fcead5845e47174",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/sint",
+      "dataflow": "input_stationary",
+      "id": "z100f1dab3f92cda9",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": "input_stationary",
+      "id": "z1032c1f02ac3d613",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z11a4bd9c2bb4f8ca",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": "input_stationary",
+      "id": "z11a50280f205f2a7",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z12d475672379a39b",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z13bfb7bb639e3360",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/sint",
+      "dataflow": null,
+      "id": "z15ac7dc2a22e1550",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/float",
+      "dataflow": null,
+      "id": "z15dabc3325156f48",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z16094aa2c6fd7bcd",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z1613be008c1f80c9",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z164c0b798cc8c144",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/sint",
+      "dataflow": null,
+      "id": "z1698be84d2bc58e6",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z172e005fa9a1180d",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z17ff6facbd23a62b",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z183eec193cb26eac",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z197a820e8e0b3d6b",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z19b4e33f031eaf14",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "convolution/sint",
+      "dataflow": null,
+      "id": "z1a9cfd54d134855e",
+      "reason": "contraction: rows where both",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z1b0028ee94d7d97e",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z1ca767097f30c940",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "convolution/sint",
+      "dataflow": "output_stationary",
+      "id": "z1cbd4a79272ba109",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z2025dc5d80d41568",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z2072f4f5f5830292",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z22f6558209be27ae",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z248462ea5e172480",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z24e918e4078a110a",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z27ca5dad04f9f845",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/float",
+      "dataflow": null,
+      "id": "z2ac68a011a1328c5",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z2b490bdd72a445d7",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": "output_stationary",
+      "id": "z2bb8e08ba71ebbc8",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z2c282eaf6e30a5f3",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z2d348b63894385ec",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z2e339b745e2c0fb7",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z2e776013462da1ae",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z2ea36606cb90008f",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z2fd49a2f840e1d24",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z309058a8d8eae3b0",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "scatter/sint",
+      "dataflow": null,
+      "id": "z33366ad6c0e5e44b",
+      "reason": "scatter-reduce",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "convolution/sint",
+      "dataflow": "weight_stationary",
+      "id": "z34c6d7dd1813967b",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z3700419432d36f59",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z378d9c75cc53d5ed",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/bool",
+      "dataflow": null,
+      "id": "z39c63809a109ae20",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z3aba4ba5fa059ae9",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": "output_stationary",
+      "id": "z3c898d4b8b5e3e4a",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z3cd1314f2036ed95",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": null,
+      "id": "z3d47550670f28944",
+      "reason": "contraction: rows where both",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": "input_stationary",
+      "id": "z3d7f058408e90c1f",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z3e0a4cff6078ea19",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": "input_stationary",
+      "id": "z3ef72557bae59ce7",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": "input_stationary",
+      "id": "z3f1107117b42779d",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z3f5e945d6ca55d49",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z3f5f574e4341896c",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z40928e5a4555926c",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": "input_stationary",
+      "id": "z4117f7ba293b5eed",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z439b3365ee5a41ca",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z44c81c80ccf4e852",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/bool",
+      "dataflow": null,
+      "id": "z45a4f1d8501ef8aa",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z471ed2d7ec49f549",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z47b0ec0fed98bfd8",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z4878e32eacb61249",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z4b76229d70b8aeef",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z4c3e695df5e903fd",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z4d7a882d628a3ef5",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "convolution/float",
+      "dataflow": "output_stationary",
+      "id": "z5059a0d542ccd5d2",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z51ad949a7a203d10",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z51f1d93d4d1a8b85",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": "output_stationary",
+      "id": "z5270d80f6723fa84",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "contraction",
+      "core": "convolution/float",
+      "dataflow": "weight_stationary",
+      "id": "z53132c2a683cb1d0",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z543c11528f99b2cd",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "convolution/float",
+      "dataflow": "weight_stationary",
+      "id": "z56959defbc7254a9",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z583927023059a418",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/float",
+      "dataflow": null,
+      "id": "z587b422921aa3c68",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "dynamic_reduce_window/sint",
+      "dataflow": null,
+      "id": "z5e466b5b6eded565",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z5fcc8850c7cdffa4",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z624a1fc58204dae1",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z62ddced2a64b798e",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": "input_stationary",
+      "id": "z641f72b73f7f8cdf",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/float",
+      "dataflow": null,
+      "id": "z673c1102ec66b226",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/sint",
+      "dataflow": null,
+      "id": "z675223debe3ddfd6",
+      "reason": "contraction: rows where both",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z675edb4abe554f17",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/bool",
+      "dataflow": null,
+      "id": "z67d8f5d7db1e0f70",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z68a0026ef3f41e57",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z693e6f2fd46d2e2a",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/float",
+      "dataflow": null,
+      "id": "z6952d65188e7fea1",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/float",
+      "dataflow": null,
+      "id": "z6a359b89b93f496a",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z6bfe03b3dfba7b0b",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": "input_stationary",
+      "id": "z6cb60880729dc7b8",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z6da7e62c817bf66b",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z717aa202a631bb6b",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z7418bb5b00269b7b",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z74308927d261314f",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z744fe537042a9d3c",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z74cb717ecb42a058",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z750e6e7ab17b8e58",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z76502fdfde009651",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z76d88b7d2f5e1742",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/sint",
+      "dataflow": "weight_stationary",
+      "id": "z7867554ca6734db7",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z78aee78d4677a99d",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z7dfa581d8578629c",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z7e0393e4c84187e3",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/sint",
+      "dataflow": null,
+      "id": "z7e98a68a7e689971",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z7eb1756f0d7c629c",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/sint",
+      "dataflow": "output_stationary",
+      "id": "z84ba21230e4b8840",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "contraction",
+      "core": "convolution/sint",
+      "dataflow": "weight_stationary",
+      "id": "z84c55e7c5605a9a2",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z85db92483889a78b",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z87c0ad74361f63a9",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z895a4658b40b257d",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/float",
+      "dataflow": null,
+      "id": "z8a24e05517c0ada0",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z8a62750ced1b61b3",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z8c06880a255e454b",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z8fd9957bc4a239e0",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/sint",
+      "dataflow": null,
+      "id": "z8feb9298343b3c43",
+      "reason": "contraction: rows where both",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/float",
+      "dataflow": null,
+      "id": "z904ae047dd71cb12",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z9077129bc774bc37",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z91a34645bef009ec",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z93c91c9a972e97c3",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z95bcef552047d7e7",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": "input_stationary",
+      "id": "z966717d239e49f70",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z9773c9d6c6879b67",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/sint",
+      "dataflow": null,
+      "id": "z97b972c26c24e7b0",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z985a4622d26e26af",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": "weight_stationary",
+      "id": "z988b316a8bf17a34",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/float",
+      "dataflow": null,
+      "id": "z98ecce9d08800b63",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z9ac56cc631bd2265",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z9afeb8be284a806a",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": "output_stationary",
+      "id": "z9cdba80687d25800",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "z9ed5b4b50e8c3bac",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "za00b14b4cc3053bb",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": "input_stationary",
+      "id": "za03a087f511b4f1d",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "za27d0a3db93bbeb4",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "za352b8f5a1736f05",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce_window/sint",
+      "dataflow": null,
+      "id": "za555e364d25264fc",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "za65a80f2766aeb93",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "za6cfb7d5ba8a40c6",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "za6f7f45175b0d22c",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "za810cdaf14d9db51",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/float",
+      "dataflow": null,
+      "id": "za92060e2ca06b4ed",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zac52d2a9c58a93f3",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zae88bdf59e972bf3",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/sint",
+      "dataflow": "weight_stationary",
+      "id": "zae9f52bf90a2f8aa",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zaf52768b9d88c9a6",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zb1a161405ba5ec74",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zb52d49f36c2d58f9",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zb554abaafdbb4cff",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/float",
+      "dataflow": null,
+      "id": "zb65965ba574ae777",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zb72312de5454b4c2",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zb87c6f16d10c37de",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": "input_stationary",
+      "id": "zb883870404cf3ff5",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zbae5fa5406eefcee",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zbc5894077c6ece44",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zbce12cd3467d326e",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/sint",
+      "dataflow": "weight_stationary",
+      "id": "zbce5b47f46656fe2",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zbe40f6861518e92d",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zbf06ff896cf37d3c",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zbf8866fb581d5533",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zc0dd388138168556",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/float",
+      "dataflow": null,
+      "id": "zc19b00ed2c958954",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zc2d54dd92d7e0491",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zc2d5625cda83b35a",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zc37f7123809dffb5",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": "weight_stationary",
+      "id": "zc753ffec0e2097d6",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zc7c36324cb2a624d",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zca0786a92478a25a",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/float",
+      "dataflow": null,
+      "id": "zcae3e9adb8e7fd92",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": "output_stationary",
+      "id": "zcb6672554ac07871",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/float",
+      "dataflow": null,
+      "id": "zcbc52e6cc55288f7",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zccdf13bbadabf22d",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/sint",
+      "dataflow": null,
+      "id": "zcd5b22ed0e129469",
+      "reason": "contraction: rows where both",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": "input_stationary",
+      "id": "zcd7a1c91eb56e56c",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zce19a515ec2f1e5e",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zcf9fba220a7ca2c4",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zd168e6f9211cd985",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zd31fd0a4df111891",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": null,
+      "id": "zd508e3449f1baa6d",
+      "reason": "contraction: rows where both",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zd50f5bc8cce0dc67",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zd6b9e15c3a7afdb1",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/float",
+      "dataflow": null,
+      "id": "zd6f8eefd0cfc9292",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zd761a834358b4df0",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zd8e753cf3f6e333e",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/sint",
+      "dataflow": "weight_stationary",
+      "id": "zd9052b35fc79dfaf",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zdb6947e4b365964a",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zdb8e6251d2f9fe9a",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zdc5f586e672b84e8",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/bool",
+      "dataflow": null,
+      "id": "zdc676f557c55a007",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zdce4f44d792b05b3",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "ze1bf6ed56799b549",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "ze2332e321be15bda",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "ze4419260a761787f",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": null,
+      "id": "ze751170d93c088b7",
+      "reason": "contraction: rows where both",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "convolution/sint",
+      "dataflow": null,
+      "id": "ze88b07cc8ff2ada1",
+      "reason": "contraction: rows where both",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/float",
+      "dataflow": null,
+      "id": "zea0f6025f68fc166",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/float",
+      "dataflow": null,
+      "id": "zea5ab30c4a1fb96a",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zec075138126bb5fb",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zeca300c38d5f7c80",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/float",
+      "dataflow": null,
+      "id": "zecabab501f520e4c",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": "input_stationary",
+      "id": "zed43c205efb01eca",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/float",
+      "dataflow": "output_stationary",
+      "id": "zed7acd766e3723f8",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zeeffd11c4cc8fd69",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zef6c8728306c43ab",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zf186c92a6d6068c1",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zf254ab28cd0df6b3",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "dot_general/sint",
+      "dataflow": "output_stationary",
+      "id": "zf25a0f99b2bc96b9",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zf3776eb839fe65d8",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zf4eb97d0f126d662",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "convolution/sint",
+      "dataflow": "weight_stationary",
+      "id": "zf5420b732a717e51",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "reduce",
+      "core": "reduce/float",
+      "dataflow": null,
+      "id": "zf640e410683472a6",
+      "reason": "reduction",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zf70692b6d7956699",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zf811530642501ef7",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "convolution/sint",
+      "dataflow": "weight_stationary",
+      "id": "zf82570a4a82cb44f",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zf87d507dcea4cff8",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "contraction",
+      "core": "convolution/float",
+      "dataflow": "output_stationary",
+      "id": "zfab55eee260f008a",
+      "reason": "contraction, uniform over (m, n, k)",
+      "route": "template"
+    },
+    {
+      "class": "contraction",
+      "core": "convolution/sint",
+      "dataflow": null,
+      "id": "zfb8a78dfed3ce0a0",
+      "reason": "contraction: rows where both",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zfbb2df811222ea43",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zfc838aec599afaf3",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zfd345a2b12588ded",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zfd5bb8e6ab8d4f48",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zfd9b8bf7078d496a",
+      "reason": "map",
+      "route": "datapath"
+    },
+    {
+      "class": "map",
+      "core": "map",
+      "dataflow": null,
+      "id": "zfeeb1bfcf2e81d4d",
+      "reason": "map",
+      "route": "datapath"
+    }
+  ],
+  "summary": {
+    "classes": 228,
+    "classes_by_kind": {
+      "contraction -> contraction": 47,
+      "map -> map": 149,
+      "reduction -> reduce": 30,
+      "scatter_reduce -> reduce": 2
+    },
+    "dataflows": {
+      "input_stationary": 14,
+      "output_stationary": 11,
+      "weight_stationary": 13
+    },
+    "datapath_reasons": {
+      "contraction: rows where both": 9,
+      "map": 149,
+      "reduction": 30,
+      "scatter-reduce": 2
+    },
+    "datapath_workload": 3342573311382,
+    "datapaths": 190,
+    "embedding_over_budget": 0,
+    "embedding_pairs": 8466,
+    "proofs": 266,
+    "schema": "cc.iteration_space.summary/1",
+    "template_cores": {
+      "convolution/float": 4,
+      "convolution/sint": 5,
+      "dot_general/float": 21,
+      "dot_general/sint": 8
+    },
+    "template_workload": 436502360473600,
+    "templates": 38,
+    "uniform": 226
+  }
+}

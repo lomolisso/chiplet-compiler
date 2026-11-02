@@ -1,0 +1,142 @@
+{
+  "$defs": {
+    "Group": {
+      "description": "Which operands index an iteration dim, for a contraction (`a`, `b` the core inputs, `c` the result).",
+      "oneOf": [
+        {
+          "const": "batch",
+          "description": "a, b, c: an outer loop.",
+          "type": "string"
+        },
+        {
+          "const": "m",
+          "description": "a, c.",
+          "type": "string"
+        },
+        {
+          "const": "n",
+          "description": "b, c.",
+          "type": "string"
+        },
+        {
+          "const": "k",
+          "description": "a, b: the reduction.",
+          "type": "string"
+        },
+        {
+          "const": "par",
+          "description": "Reduction: the kept dims.",
+          "type": "string"
+        },
+        {
+          "const": "red",
+          "description": "Reduction: the reduced dims.",
+          "type": "string"
+        }
+      ]
+    },
+    "Vector": {
+      "description": "One dependence vector over the space (grouped, linearized dims).",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/VectorKind"
+        },
+        "operand": {
+          "description": "The skeleton operand it carries.",
+          "type": "string"
+        },
+        "v": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "operand",
+        "kind",
+        "v"
+      ],
+      "type": "object"
+    },
+    "VectorKind": {
+      "oneOf": [
+        {
+          "const": "propagate",
+          "description": "A reused input passed on to the next iteration along the vector (localization).",
+          "type": "string"
+        },
+        {
+          "const": "accumulate",
+          "description": "The accumulator chain of ω.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`dependences/<z>.json`.",
+  "properties": {
+    "groups": {
+      "additionalProperties": {
+        "items": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": "array"
+      },
+      "description": "Iteration dims per group, in linearization order (ω's order for the reduction).",
+      "type": "object"
+    },
+    "id": {
+      "type": "string"
+    },
+    "other": {
+      "description": "Dims that fit no group (e.g. a reduction dim indexing one input only).",
+      "items": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "type": "array"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "space": {
+      "description": "The space: the groups the recurrence runs over, in order (batch dims are outer loops).",
+      "items": {
+        "$ref": "#/$defs/Group"
+      },
+      "type": "array"
+    },
+    "uniform": {
+      "description": "The dependences are constant vectors (a uniform recurrence, Karp, Miller and Winograd 1967).",
+      "type": "boolean"
+    },
+    "vectors": {
+      "items": {
+        "$ref": "#/$defs/Vector"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "uniform",
+    "reason",
+    "groups",
+    "other",
+    "space",
+    "vectors"
+  ],
+  "title": "Dependences",
+  "type": "object"
+}

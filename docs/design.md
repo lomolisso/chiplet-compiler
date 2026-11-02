@@ -278,14 +278,15 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
 
 - **Purpose.** Iteration domain, access functions and dependence structure per class; template eligibility.
 - **Method.**
-  - From the core's StableHLO semantics (dot_general, convolution, reduce, reduce_window, scatter-reduce), derive:
+  - From the StableHLO semantics of the kernel's ops (the op table's iteration hooks: dot_general, convolution, reduce, reduce_window, scatter, broadcasts, element-wise ops), derive:
     - iteration dims tagged parallel or reduction;
-    - affine access functions per operand;
-    - the map / reduce / contraction class (contraction ⇔ some operand is not indexed by some dim, i.e. reuse exists).
+    - affine access functions of every value, parametric in strides, dilations, padding and window sizes, composed from the core outward (prologues through the operand they feed, epilogues on the result's domain, broadcasts as projections);
+    - the map / reduce / contraction class (contraction ⇔ a reduction dim exists and some core input is not indexed by some parallel dim, i.e. reuse exists).
+  - Dependences under ω: contraction dims grouped by the core operands that index them (batch, M, N, K), K linearized in ω's order; reuse localized into propagation (lhs along N, rhs along M), the accumulation along K.
   - Embedding relation ⊑ between skeletons: injective, tag- and incidence-preserving (e.g. matmul ⊑ conv). Used by `merge`.
-  - **Template eligibility (section 7).**
+  - **Template eligibility (section 7).** Prologues and epilogues of a template class are per-element stages handed to `datapaths`.
 - **Verification.**
-  - Access functions are checked symbolically against the StableHLO spec's index formulas (SMT over integer index variables).
+  - Access functions are checked symbolically against the StableHLO spec's index formulas, transcribed independently of the hooks (SMT; a polynomial identity proven on a grid, Alon 1999).
   - Every claimed space-time mapping is checked by SMT: the schedule respects every dependence and the allocation is conflict-free.
 
 ### 4.8 `datapaths`
@@ -446,8 +447,8 @@ Every float FU uses the `softfloat` library: FP8 E4M3FN, bf16, fp16 and fp32 (E5
 Dense GEMMs are, in practice, computed on systolic arrays or tensor cores. chiplet-compiler reaches that conclusion **by proof, not by op name**:
 
 1. **Detect uniform recurrences.** `iteration_space` checks whether a class's core is a *uniform recurrence*: an affine iteration domain with constant dependence vectors after fixing the reduction order (Karp, Miller & Winograd 1967).
-2. **Search for a space-time mapping.** For uniform recurrences it searches for a linear schedule λ (λ·d ≥ 1 for every dependence d) and an allocation (projection) giving a systolic array (Kung & Leiserson 1979; Quinton 1984). The search space is small: λ and projections with entries in {-1, 0, 1} over at most 7 dims. A satisfying assignment is checked by SMT.
-3. **Generate a template.** If a mapping exists and the kernel's reuse makes it worthwhile (config thresholds on extents and reuse factor), the class is routed to a **parameterized array template**: dims, dataflow (weight-, output- or input-stationary per the projection), dtype family, width and precision decomposition. The template is generated from the mapping, not chosen from a list.
+2. **Search for a space-time mapping.** For uniform recurrences it searches for a linear schedule λ (λ·d ≥ 1 for every dependence d) and an allocation (projection) giving a systolic array (Kung & Leiserson 1979; Quinton 1984). The search space is small: λ and projections with entries in {-1, 0, 1} over the grouped space (at most 3 dims). Every valid mapping is kept, ranked by PE utilization and then inter-PE link width; each is checked by SMT.
+3. **Generate a template.** If a mapping exists and the kernel's reuse makes it worthwhile (both inputs reused at least `min_reuse` times in the recurrence, in rows holding at least `min_share` of the class's workload), the class is routed to a **parameterized array template**: dims, dataflow (weight-, output- or input-stationary per the projection), dtype family, width and precision decomposition. The template is generated from the mapping, not chosen from a list.
    - Output-stationary tiled MAC arrays (tensor-core style) and weight-stationary arrays (TPU style) are two projections of the same recurrence.
 4. **Fall back to mining.** Classes without a valid mapping (elementwise chains, softmax, norms, scatter-reduce, …) go to `datapaths → mine → merge`.
 
@@ -559,4 +560,11 @@ build/         (ignored) build/.<pass>/ artifacts
 | Workload = the size of the iteration domain (MACs for contractions); checked against a census of the concrete lowering | Against the symbolic census | The symbolic census has no FLOPs (its dims are `?`) |
 | `export` records each symbol's integer size | Use the config field's value | A field need not be a size (graphcast's `resolution`) |
 | Size-independent classes reported apart (`activation` variant) | Leave them out of Z | Every kernel is classified; parameter arithmetic is constant work per invocation and would inflate sharing |
+| Contraction dims grouped by operand incidence (batch, M, N, K), K linearized in ω's order | Search on raw dims (single-reduction contractions only) | ω `seq` is one chain over the lexicographic order, which is the unit step of the linearized K; convolutions become uniform (im2col view) |
+| Mappings ranked by PE utilization, then inter-PE link bits; every valid one kept | One template per class; an I/O model at a nominal array size | Quinton's PE count and schedule length, Kung's local-communication argument; no hardware parameter; alternatives stay for later passes |
+| Template if both inputs are reused >= `min_reuse` times in the recurrence in rows holding >= `min_share` of the workload | Every row passes; a weighted mean | Classes shared by prefill and decode route by where their work is; reuse counted as the array realizes it (not sliding-window reuse) |
+| Templates cover the core only; prologue and epilogue are per-element stages for `datapaths` | Stages in the PE | A prologue runs once per element at the array edge, not once per MAC |
+| Block-scaled GEMMs are batched contractions (block index as batch) with a scale epilogue | A separate class kind; cross-kernel fusion now | The partition already separates the block sum; fusing it into the array is a later cross-kernel step |
+| Window and padding values from shape operands are run-time parameters of the maps | Lift them into attributes upstream | The proofs are parametric anyway; the affected classes are reductions or keep their template eligibility |
+| Access proofs over variables in {0, …, 7} in 32-bit vectors | Integer arithmetic (QF_NIA) | Both sides are polynomials of low degree, so the grid proves the identity (Alon 1999, Lemma 2.1); Bitwuzla has no integer theory and both solvers must answer |
 
