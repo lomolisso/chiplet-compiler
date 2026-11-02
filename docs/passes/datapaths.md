@@ -143,8 +143,8 @@
 
 7. **Resources.** Model set at `full` (25 models, 830 classes, 2026-11-02, iacoma231, debug build,
    16 threads): 703 datapath and 127 template classes, 5 499 vertices with 55 labels, 920 tuples and
-   proofs, 155 order queries (57 free, 98 bound), 8 encoding lemmas. The pass takes about 106 s and its
-   verify about 120 s, both dominated by the two bf16 lemmas that bit-blast a multiplier and a divider
+   proofs, 155 order queries (57 free, 98 bound), 8 encoding lemmas. The pass takes about 106 s and pass
+   plus verify 228 s, both dominated by the two bf16 lemmas that bit-blast a multiplier and a divider
    (66 s and 98 s in Z3); every equivalence proof takes milliseconds. Peak RSS 0.32 GB; outputs 15 MB.
 
 8. **Limitations.**
