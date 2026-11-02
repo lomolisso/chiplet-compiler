@@ -330,7 +330,9 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
 - **Verification.**
   - Synthesis logs are free of errors, unresolved references and latches; netlists use only library
     cells.
-  - Formality/Conformal LEC (Yosys' equivalence flow for Yosys) of netlist vs RTL for every primitive.
+  - Formality/Conformal LEC (Yosys' equivalence flow for Yosys) of netlist vs RTL for every primitive,
+    bounded per design; a check that runs out of time with no failing point passes only with every
+    sanity check (ports and flip-flops as in the RTL, library cells only) and is reported.
   - Sanity: area is monotone in width, multipliers grow about quadratically and adders linearly
     (flagged, not failed).
   - Coverage: every vertex of the datapaths maps to a primitive.
@@ -600,4 +602,7 @@ build/         (ignored) build/.<pass>/ artifacts
 | The primitive set is every element-wise op at every configured type the SMT semantics defines | A hand-written primitive list | No hard-coded op set; a new op or type in the semantics enters the library by itself |
 | ASAP7's group libraries merged into one Liberty and `.db` by `chipc doctor` | DC on the five group `.db` files | DC's library analysis leaves placeholders per group (no inverters or flops) and repeats about 100 s on every compile; Yosys' ABC reads one file (OpenROAD's `mergeLib.pl` does the same) |
 | Characterization jobs are directories named by the hash of their scripts, RTL and libraries, reused by later runs | Pass-level caching only | A full run takes hours; an interrupted or partly changed run redoes only what changed |
+| Every primitive synthesized in its own DC/Genus session | Several designs per session | A session that synthesized one design gives the next another netlist (a 32-bit divider after a 16-bit one: 15 614 against 9 340 µm²): results depended on batch order |
+| DesignWare parts kept as blocks (`compile_ultra_ungroup_dw false`) | Flattened netlists | Formality then proves a DesignWare divider against its model in seconds; flattened it stayed unverified for hours |
+| LEC bounded at 2 minutes per design; a check that runs out of time with no failing point passes with clean sanity checks and is reported | A hand-kept allow-list; unbounded LEC | Everything else proves in at most 47 s; some timing-driven 32-bit dividers do not finish at all (general-purpose engines need hours to never at this width); the sanity checks catch what LEC does not (they found accumulators whose register DC had removed) |
 

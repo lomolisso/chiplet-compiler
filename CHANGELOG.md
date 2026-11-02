@@ -14,11 +14,13 @@ All notable changes to this project are listed here. The format follows
 - `kernels` pass: every component partitioned into convex single-core kernels and map kernels, with an independently checked partition and kernel graphs.
 - `kernel_classes` pass: kernels grouped into position-, width- and size-free classes with certificates, instance tables with workloads, and the component vs kernel sharing report.
 - `datapaths` pass and the SMT harness: every class's scalar datapath, proven equal to the kernel's StableHLO semantics for every width tuple.
+- `characterize` pass: area, delay and leakage of every element-wise op at every type the SMT semantics defines, multiplexers, registers, accumulators and split multipliers, on Nangate45 and ASAP7 at two timing points, each netlist checked by LEC and sanity checks.
 - `iteration_space` pass and the op table's iteration semantics: per class its affine accesses proven against the spec, dependences, the embedding relation, and routing of uniform contractions to systolic templates by a proven space-time mapping.
 
 ### Changed
 
 - `export` records each symbol's integer size at the exported config and a census of the phase lowered on concrete shapes (`census_concrete.json`, integer FLOPs).
+- `chipc doctor` also merges the ASAP7 group libraries into one Liberty file and `.db`.
 - `scripts/on-build-host --pick` chooses among iacoma227, iacoma231 and iacoma232 by their scarcest resource (idle cores, RAM, disk); both scripts run directly on the local host.
 
 ### Fixed

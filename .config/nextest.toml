@@ -23,3 +23,9 @@ slow-timeout = { period = "300s", terminate-after = 4 }
 [[profile.deep.overrides]]
 filter = "binary(deep)"
 test-group = "heavy"
+
+# characterize on every flow: doctor, then DC + Formality, Genus + Conformal and Yosys on a reduced
+# catalog at both kits and timing points (about 45 minutes).
+[[profile.deep.overrides]]
+filter = "binary(deep) and test(characterize)"
+slow-timeout = { period = "600s", terminate-after = 9 }

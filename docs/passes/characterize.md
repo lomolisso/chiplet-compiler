@@ -133,9 +133,8 @@
    `fast_fraction = 0.05`, `int_widths = [2, 4, 8, 16, 32]`, `float_formats = ["f32", "f16", "bf16",
    "f8e4m3fn"]`, `mux_inputs = [2 … 8]`, `mux_widths = [1, 2, 4, 8, 16, 32]`, `register_widths = [1, 2, 4,
    8, 16, 32]`, `split_multipliers = [[8, 4], [16, 8], [32, 8], [32, 16]]`, `driving_cell = { nangate45 =
-   "BUF_X1", asap7 = "BUFx2_ASAP7_75t_R" }`, `load_fanout = 4`, `lec_timeout_min = 10`, `lec_strategies = []`,
-   `allow_inconclusive = [{ key = "divide@ui32", reason = … }]`, `batch = 24`, `cores = 2`, `views =
-   true`. The corner is the one doctor compiled: Nangate45's only corner (typical) and ASAP7
+   "BUF_X1", asap7 = "BUFx2_ASAP7_75t_R" }`, `load_fanout = 4`, `lec_timeout_min = 2`, `lec_strategies = []`, `batch = 24`,
+   `cores = 2`, `views = true`. The corner is the one doctor compiled: Nangate45's only corner (typical) and ASAP7
    `[tools.pdk] asap7_vt`/`asap7_corner` (RVT, TT). Resources: `threads = 2`, `memory_gb = 8`,
    `timeout_min = 600`.
 
@@ -146,16 +145,22 @@
    - `complete`: exactly one row per primitive with RTL, kit and target, none for anything else; the
      coverage states each primitive as the catalog does, every pending one with its reason.
    - `<kit>:libraries`: the `.lib` and `.db` the rows were measured on are the ones there now.
-   - `<kit>:<target>:lec`: every equivalence report, re-read, proves the netlist equal to its RTL. An
-     aborted or unverified point is a failure, except for a primitive in `allow_inconclusive` whose
-     check found no failing point (each such row carries the reason, counted as
-     `allowed_inconclusive`); a failing point is never allowed.
-   - `<kit>:<target>:log`: in every design's log, report and netlist: no error line, no unresolved
-     reference, no latch cell (cells with a `latch` group in the Liberty file), no cell outside the
-     library (no generic cells left).
+   - `<kit>:<target>:lec`: every equivalence report, re-read, proves the netlist equal to its RTL. A
+     failing point always fails. A check that ran out of time (`lec_timeout_min`) with no failing point
+     and some unverified ones passes only when every sanity check of that design passes; the row is
+     marked `inconclusive`, counted and listed (in the view too).
+   - `<kit>:<target>:sanity`: per design, from its log, reports, netlist and RTL: the netlist's top
+     module has exactly the RTL's ports (names, directions, widths); it has as many flip-flops (cells with
+     an `ff` group in the Liberty file) as the RTL describes (a register's or accumulator's width,
+     otherwise none); no latch cell; no cell outside the library (no generic cells left); cells unless
+     the RTL is only wiring; an area and (except a Yosys register) a delay in the reports; no tool error
+     line and no unresolved reference. These checks catch a netlist that is not the design that was
+     meant, which the equivalence check alone does not: the first full run found every multiply
+     accumulator with no flip-flops (no start value, so DC assumed one and removed the register) while
+     Formality called them equivalent.
    - `<kit>:<target>:rows`: every value of `library.json` equals the one re-read from its report copies;
      every netlist hash matches.
-   - `sanity`: area against width per series (integer and bit-vector primitives): a decrease, or a growth
+   - `trends`: area against width per series (integer and bit-vector primitives): a decrease, or a growth
      exponent off the expected one (multiply about 2, add and subtract about 1), is a note, not a
      failure.
    - `coverage.datapaths`: when `build/.datapaths/out` exists, every vertex of every datapath (template
@@ -164,20 +169,46 @@
      the check; without the datapaths it is skipped. The datapaths manifest's hash is recorded.
 
    Negative tests (`tests/smoke/characterize.rs`, on stand-in tools): a failed equivalence report, a
-   latch, a cell outside the library, an unresolved reference, a tool error, an edited value, a missing
-   row, an edited catalog or RTL file, a datapath type the catalog lacks; an off-trend point must stay a
-   note.
+   latch, a cell outside the library, an unresolved reference, a tool error, a port of another width, a
+   missing or extra flip-flop, an edited value, a missing row, an edited catalog or RTL file, a datapath
+   type the catalog lacks; an inconclusive check passes with clean sanity checks and fails with a wrong
+   port; an off-trend point must stay a note.
 
-7. **Resources.** See the measurements below (full catalog, both kits, both targets).
+7. **Resources.** Full catalog at the defaults (2026-11-02, iacoma227, DC + Formality W-2024.09, 2
+   parallel sessions): 681 primitives, 635 with RTL, 2 540 rows. Synthesis about 5.3 h of wall time (one
+   DC session per design: median 7.7 s, a 32-bit divider 7 to 20 minutes, the fast target slower than the
+   clock target); the equivalence checks of every row about 39 minutes (median 1 s per design, the slowest
+   proven 47 s, 7 rows stopped at 2 minutes). chipc's peak RSS 0.87 GB, one DC or Formality session
+   about 0.5 to 0.8 GB; `out/library/` 226 MB. Results: 2 533 rows proven equivalent, 7 inconclusive
+   (divide@ui32 on both kits and targets, remainder@i32 on Nangate45, remainder@ui32 on Nangate45 fast,
+   each with 0 failing points), 0 sanity problems, 256 area-against-width series without a flag; the
+   datapaths of 830 classes use 111 library keys (59 provisional, 20 pending), no gap. Examples (area
+   µm² / delay ps):
+
+   | primitive | Nangate45 clock | Nangate45 fast | ASAP7 clock | ASAP7 fast |
+   |---|---|---|---|---|
+   | `add@i32` | 261.5 / 1760 | 297.4 / 420 | 10.4 / 994 | 25.8 / 161 |
+   | `multiply@i32` | 2183.6 / 2000 | 2245.3 / 1200 | 136.8 / 999 | 214.8 / 461 |
+   | `split@w32n8` | 2802.6 / 2000 | 3349.7 / 1440 | 166.9 / 996 | 308.2 / 535 |
+   | `divide@i32` | 9339.5 / 8880 | 9111.6 / 9150 | 752.5 / 3443 | 772.0 / 3402 |
+   | `add@f32` | 1888.9 / 2660 | 1996.9 / 2500 | 144.4 / 1000 | 151.4 / 966 |
+   | `multiply@f32` | 3206.4 / 2270 | 3186.1 / 2140 | 248.1 / 1000 | 296.0 / 812 |
+   | `multiply@bf16` | 550.6 / 1990 | 713.9 / 1390 | 42.0 / 983 | 58.5 / 540 |
+   | `mux4@w32` | 117.0 / 500 | 196.3 / 290 | 7.8 / 247 | 8.8 / 98 |
+   | `register@w32` | 144.7 / 120 | 195.8 / 100 | 10.7 / 54 | 14.6 / 44 |
+   | `accumulator.add@i32` | 380.6 / 1910 | 531.2 / 520 | 24.8 / 981 | 39.9 / 219 |
 
 8. **Limitations.**
    - Float rows are provisional (XLS `apfloat`: subnormals flushed, IEEE special values for E4M3FN) and
      12 float ops are pending until the soft-float library exists; `merge` must treat pending
      primitives as unpriced.
-   - Formality does not finish a timing-driven DesignWare 32-bit unsigned divider (DC builds it to cut a
-     6.7 ns path toward the 2 ns Nangate45 clock): 22 of its 32 outputs pass, 10 stay unverified, none
-     fails, with the default strategy, s1 to s3, and datapath effort `high` and `unlimited` (30 minutes
-     each). The row is measured and allowed (`allow_inconclusive`), not proven. Every other divider,
+   - Formality does not finish some timing-driven DesignWare 32-bit dividers and remainders
+     (divide@ui32, remainder@i32, remainder@ui32): for divide@ui32 20 of 32 outputs pass, 12 stay
+     unverified, none fails, with the default strategy, s1 to s3, and datapath effort `high` and
+     `unlimited` (30 minutes each). Those rows are measured, sanity-checked and marked `inconclusive`,
+     not proven. Equivalence checking of dividers is known to be hard for general-purpose engines: ABC's
+     `cec` needs 172 s for a 32-bit textbook divider and more than 72 h at 48 bits (Scholl and Konrad,
+     DATE 2020); the methods that scale exploit the divider's layer structure. Every other divider,
      the signed 32-bit one included, is proven.
    - One corner per kit (Nangate45 has only typical; other ASAP7 corners need doctor to compile them).
    - Areas are cell areas from the Liberty files at 1x scale (ASAP7 also ships 4x LEFs for P&R tools;
@@ -185,10 +216,10 @@
    - Leakage only: dynamic power needs switching activity, which a primitive alone does not have.
    - Delays are those of a primitive with ideal clocking and fixed driving cell and load; a merged unit
      re-synthesized as a whole will differ.
-   - The Yosys flow's equivalence check is SAT-based (`equiv_simple`/`equiv_induct`, 600 s): it proves
-     the integer, multiplexer, register and accumulator primitives, but not the float primitives (f32
-     add and multiply leave hundreds of unproven signal pairs) nor every split multiplier (16 from 8 on
-     ASAP7), and an unproven row fails the pass. Formality, with DC's guidance file, proves all of them
+   - The Yosys flow's equivalence check is SAT-based (`equiv_simple`/`equiv_induct`, `lec_timeout_min`):
+     it proves the integer, multiplexer, register and accumulator primitives, but not the float
+     primitives (f32 add and multiply leave hundreds of unproven signal pairs) nor every split multiplier
+     (16 from 8 on ASAP7); those rows end inconclusive. Formality, with DC's guidance file, proves all of them
      in seconds; the Yosys flow is a license-free estimate for integer and structural primitives.
    - Design Compiler may map arithmetic to DesignWare parts (recorded per row); another site without the
      DesignWare license gets other numbers.
