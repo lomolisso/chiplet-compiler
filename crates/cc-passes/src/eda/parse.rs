@@ -120,7 +120,7 @@ pub struct Measured {
     pub slack_ps: Option<f64>,
     /// Cell leakage, nW.
     pub leakage_nw: Option<f64>,
-    /// Area per child instance (hierarchy kept), µm².
+    /// Area per direct child instance (hierarchy kept: split pieces, DesignWare parts), µm².
     pub children: BTreeMap<String, f64>,
 }
 
@@ -165,7 +165,8 @@ fn dc_children(area: &str) -> BTreeMap<String, f64> {
                     && let Ok(a) = w[1].parse::<f64>()
                 {
                     rows += 1;
-                    if rows > 1 {
+                    // Direct children only (a DesignWare part has its own nested rows).
+                    if rows > 1 && !w[0].contains('/') {
                         out.insert(w[0].to_string(), a);
                     }
                 }

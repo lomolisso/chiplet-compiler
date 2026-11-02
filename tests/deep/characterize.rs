@@ -117,12 +117,14 @@ fn characterize_reduced_catalog_on_every_flow() {
                     .iter()
                     .find(|r| r.key == "split@w16n8" && r.kit == kit && r.target == "clock")
                     .unwrap();
-                assert_eq!(
-                    split.measured.children.len(),
-                    3,
-                    "{kit}: {:?}",
-                    split.measured.children
-                );
+                // The three piece instances (u<i>_<j>), besides any DesignWare block of the sum.
+                let pieces = split
+                    .measured
+                    .children
+                    .keys()
+                    .filter(|k| k.starts_with('u'))
+                    .count();
+                assert_eq!(pieces, 3, "{kit}: {:?}", split.measured.children);
             }
             let fast = lib
                 .rows

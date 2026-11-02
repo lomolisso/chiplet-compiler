@@ -142,7 +142,7 @@
             "format": "double",
             "type": "number"
           },
-          "description": "Area per child instance (hierarchy kept), µm².",
+          "description": "Area per direct child instance (hierarchy kept: split pieces, DesignWare parts), µm².",
           "type": "object"
         },
         "delay_ps": {

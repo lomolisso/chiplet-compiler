@@ -36,7 +36,7 @@
      tool versions, the kits (library name, corner, time unit, driving cell, load, the `.lib` and `.db`
      hashes), the targets (kit, target, period), and one row per (primitive, kit, target):
      `measured` (`area_um2`, `seq_area_um2`, `delay_ps`, `slack_ps`, `leakage_nw`, `children`: the area of
-     each kept instance), `estimator`, `lec_tool`, `lec` (verdict and compare point counts),
+     each direct child instance: split pieces, DesignWare blocks), `estimator`, `lec_tool`, `lec` (verdict and compare point counts),
      `designware`, `provisional`, the netlist path and hash, the report paths.
    - `out/library/coverage.json` (`Coverage`): each primitive `measured`, `provisional` or `pending`
      (with its reason) and its row count.
@@ -87,14 +87,18 @@
       input and output delays 0, every input driven by `driving_cell`, every output loaded with
       `load_fanout` times that cell's input capacitance (read from the Liberty file).
       - Design Compiler: `compile_ultra -no_autoungroup` (hierarchy kept, so a split multiplier reports
-        its pieces), with `alib_library_analysis_path` on `alib/`. The ASAP7 group libraries are merged
+        its pieces) with DesignWare parts kept as blocks (`compile_ultra_ungroup_dw false`), and
+        `alib_library_analysis_path` on `alib/`. The ASAP7 group libraries are merged
         into one by doctor because DC's library analysis needs one library with inverters and flops: on
         the five group `.db` files it leaves placeholders and repeats the analysis (about 100 s) on every
         compile. Formality then checks RTL against netlist with the SVF, one design after the other in
         one session, each verification stopped after `lec_timeout_min`; a design not proven is verified
         again with each of `lec_strategies` (Formality's alternate strategies,
         `verification_alternate_strategy`), and fails if none proves it. The default strategy alone
-        left 32-bit integer dividers unverified after an hour (Formality's own limit is 36 hours).
+        left a flattened 32-bit integer divider unverified after an hour (Formality's own limit is 36
+        hours), and strategies s2 and s3 after 5 minutes each; with the DesignWare divider kept as a
+        block Formality proves it in 8 s. Keeping the blocks costs DC the optimization across their
+        boundaries.
       - Genus: `syn_generic`, `syn_map`, `syn_opt`; Conformal LEC (`-XL`, `analyze datapath`) per design.
       - Yosys: `synth -flatten`, `dfflibmap`, ABC mapping at the period (`map -D`, then `stime -p`),
         `stat -liberty`; then Yosys' equivalence flow between the RTL and the netlist (`equiv_make` pairs
