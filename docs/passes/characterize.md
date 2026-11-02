@@ -164,10 +164,10 @@
    - Leakage only: dynamic power needs switching activity, which a primitive alone does not have.
    - Delays are those of a primitive with ideal clocking and fixed driving cell and load; a merged unit
      re-synthesized as a whole will differ.
-   - The Yosys flow's equivalence check is SAT-based (ABC `cec`, 600 s): it proves the integer
-     primitives in seconds but leaves an f32 multiplier undecided (ABC's new and old engines both, more
-     than 15 minutes), and an undecided check fails the row. Formality, with DC's guidance file, proves
-     the same design in seconds; the Yosys flow is a license-free estimate for integer and structural
-     primitives.
+   - The Yosys flow's equivalence check is SAT-based (`equiv_simple`/`equiv_induct`, 600 s): it proves
+     the integer, multiplexer, register and accumulator primitives, but not the float primitives (f32
+     add and multiply leave hundreds of unproven signal pairs) nor every split multiplier (16 from 8 on
+     ASAP7), and an unproven row fails the pass. Formality, with DC's guidance file, proves all of them
+     in seconds; the Yosys flow is a license-free estimate for integer and structural primitives.
    - Design Compiler may map arithmetic to DesignWare parts (recorded per row); another site without the
      DesignWare license gets other numbers.

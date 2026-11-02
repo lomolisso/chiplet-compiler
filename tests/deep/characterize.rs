@@ -2,7 +2,7 @@
 //! ephemeral `runs/deep-characterize/`, then `characterize` on a reduced catalog (`add` and `multiply` at
 //! 8 bits and f32, their accumulators, a 2-input mux, a register, a 16-from-8 split multiplier) on both
 //! kits at both timing points, through each flow: Design Compiler + Formality, Genus + Conformal, Yosys +
-//! ABC (without the f32 rows, which ABC's `cec` cannot decide). Every check of `verify` passes for each, a golden snapshot keeps the keys, and the directory is
+//! ABC (without the f32 and split rows, which its equivalence flow cannot prove). Every check of `verify` passes for each, a golden snapshot keeps the keys, and the directory is
 //! removed when the test passes.
 
 use cc_core::runner::Runners;
@@ -65,11 +65,12 @@ fn characterize_reduced_catalog_on_every_flow() {
 
     let mut digest = Vec::new();
     for tool in ["dc", "genus", "yosys"] {
-        // ABC's `cec` does not decide an f32 multiplier against Yosys' own netlist in 600 s (docs/passes/
-        // characterize.md §8): the Yosys flow runs without float formats.
+        // Yosys' equivalence flow proves integer and structural primitives but not the float ones or a
+        // split multiplier within its 600 s (docs/passes/characterize.md §8): it runs without them.
         let mut extra = vec![format!("passes.characterize.tool=\"{tool}\"")];
         if tool == "yosys" {
             extra.push("passes.characterize.float_formats=[]".into());
+            extra.push("passes.characterize.split_multipliers=[]".into());
         }
         let cfg = load(&extra);
         let p = Pipeline::new(cc_passes::registry(), cfg).unwrap();
