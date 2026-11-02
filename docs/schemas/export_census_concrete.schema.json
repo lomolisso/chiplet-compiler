@@ -1,0 +1,88 @@
+{
+  "$defs": {
+    "SigSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "flops": {
+          "description": "`null` when a dim is symbolic.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "count"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`out/export/<model>/<phase>/census_concrete.json`: the census (`verify/hlo.py`) of the phase lowered\non its concrete input shapes, so every FLOP count is an integer. One execution of the phase.",
+  "properties": {
+    "config": {
+      "type": "string"
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "flops": {
+      "description": "Total FLOPs (2 × MACs) of every dot_general and convolution; `null` if any is unknown.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "model": {
+      "type": "string"
+    },
+    "ops": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "phase": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "summary": {
+      "additionalProperties": {
+        "$ref": "#/$defs/SigSummary"
+      },
+      "description": "`\"<kind> <sig>\"` → count and FLOPs.",
+      "type": "object"
+    },
+    "unknown": {
+      "description": "Ops whose FLOPs are unknown (0 when the lowering is concrete).",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema",
+    "model",
+    "phase",
+    "config",
+    "summary",
+    "ops",
+    "unknown"
+  ],
+  "title": "CensusConcreteFile",
+  "type": "object"
+}

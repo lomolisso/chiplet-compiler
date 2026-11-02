@@ -15,6 +15,7 @@ All notable changes to this project are listed here. The format follows
 
 ### Changed
 
+- `export` records each symbol's integer size at the exported config and a census of the phase lowered on concrete shapes (`census_concrete.json`, integer FLOPs).
 - `scripts/on-build-host --pick` chooses among iacoma227, iacoma231 and iacoma232 by their scarcest resource (idle cores, RAM, disk); both scripts run directly on the local host.
 
 ### Fixed

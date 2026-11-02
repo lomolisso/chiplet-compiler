@@ -1,0 +1,15 @@
+{
+ "config": "reduced",
+ "flops": 21504,
+ "model": "toy",
+ "ops": 7,
+ "phase": "forward_b1",
+ "schema": "cc.export.census_concrete/1",
+ "summary": {
+  "dot_general f32xf32->f32": {
+   "count": 7,
+   "flops": 21504
+  }
+ },
+ "unknown": 0
+}

@@ -2,7 +2,8 @@
 
 Nothing executes: `jax.export` traces and lowers on `ShapeDtypeStruct`s only (no `init`, no `apply` on
 data, no calls). Per phase, `<out>/<phase>/` receives `module.mlir`, `exported.bin`, `graph.json`,
-`symbols.json` and `census.json`; `<out>/export.json` holds the model-level summary and self-checks.
+`symbols.json`, `census.json` and `census_concrete.json`; `<out>/export.json` holds the model-level summary
+and self-checks.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from . import analysis, composite, flax_adapter, graph, haiku_adapter, keras_ada
 SCHEMA_EXPORT = "cc.export.model/1"
 SCHEMA_SYMBOLS = "cc.export.symbols/1"
 SCHEMA_CENSUS = "cc.export.census/1"
+SCHEMA_CENSUS_CONCRETE = "cc.export.census_concrete/1"
 PLATFORMS = ("cpu",)
 
 
@@ -73,6 +75,7 @@ def trace_phase(spec, ph, exclude, sym_fields=None) -> dict[str, Any]:
 
     flat = jax.tree_util.tree_flatten_with_path(sym_args)[0]
     paths = [jax.tree_util.keystr(p) for p, _ in flat]
+    concrete = {jax.tree_util.keystr(p): tuple(x.shape) for p, x in jax.tree_util.tree_flatten_with_path(args)[0]}
     kinds = ["param" if p[0] == jax.tree_util.SequenceKey(0) else "input" for p, _ in flat]
     kept = list(exp.module_kept_var_idx)
     inputs = [
@@ -95,6 +98,7 @@ def trace_phase(spec, ph, exclude, sym_fields=None) -> dict[str, Any]:
         "hash": analysis.canonical_hash(module),
         "inputs": inputs,
         "paths": paths,
+        "concrete": concrete,
         "kinds": kinds,
         "constraints": cons,
         "roots": list(roots),
@@ -120,6 +124,26 @@ def _census_crosscheck(text: str, summary: dict) -> dict:
 
     theirs = hlo.summarize(hlo.census(text))
     return {"ok": theirs == summary, "verify_hlo": theirs}
+
+
+def census_concrete(spec, ph) -> dict:
+    """`verify/hlo.py`'s census of the phase lowered on its concrete input shapes (the scenario sizes):
+    integer FLOPs (2 * MACs) of every executed dot_general / convolution, for one execution of the phase.
+    Lowering only, without component composites; nothing runs."""
+    from verify import hlo
+
+    jax.clear_caches()
+    text = jax.jit(_fresh(ph.fn)).lower(*_phase_args(spec, ph)).as_text()
+    jax.clear_caches()
+    ops = hlo.census(text)
+    summary = hlo.summarize(ops)
+    unknown = sum(1 for o in ops if o.flops is None)
+    return {
+        "summary": summary,
+        "flops": None if unknown else sum(o.flops for o in ops),
+        "ops": len(ops),
+        "unknown": unknown,
+    }
 
 
 def _input_diff(a: list[dict], b: list[dict]) -> list[dict]:
@@ -187,6 +211,7 @@ def export_model(
 
         cen = analysis.census(r["module"])
         where, concrete = symbols.input_axes(r["paths"], list(r["exp"].in_avals), r["kinds"])
+        sizes, size_errors = symbols.solve_sizes(where, r["concrete"])
         _dump(
             pdir / "graph.json",
             {
@@ -210,7 +235,10 @@ def export_model(
                 "model": key,
                 "phase": ph.name,
                 "shapes": ph.shapes,
-                "symbols": {n: summary["symbols"][n] | {"inputs": where.get(n, [])} for n in sorted(used & declared)},
+                "symbols": {
+                    n: summary["symbols"][n] | {"inputs": where.get(n, []), "size": sizes.get(n)}
+                    for n in sorted(used & declared)
+                },
                 "constraints": list(r["constraints"]),
                 "concrete_input_axes": concrete,
                 "trip_count": ph.trip_count,
@@ -218,6 +246,14 @@ def export_model(
             },
         )
         _dump(pdir / "census.json", {"schema": SCHEMA_CENSUS, "model": key, "phase": ph.name, **cen}, compact=True)
+        try:
+            cc = census_concrete(spec, ph)
+        except Exception as e:  # noqa: BLE001 - recorded; the phase fails verify
+            cc = {"summary": {}, "flops": None, "ops": 0, "unknown": 0, "error": f"{type(e).__name__}: {e}"[:4000]}
+        _dump(
+            pdir / "census_concrete.json",
+            {"schema": SCHEMA_CENSUS_CONCRETE, "model": key, "phase": ph.name, "config": cfg_name, **cc},
+        )
 
         checks: dict[str, Any] = {}
         reparsed = graph.walk(r["text"])[1]
@@ -233,6 +269,11 @@ def export_model(
         checks["symbols_declared"] = {"ok": not undeclared, "undeclared": undeclared}
         absent = sorted(n for n in used if n not in where)
         checks["symbols_in_inputs"] = {"ok": not absent, "absent": absent}
+        checks["symbol_sizes"] = {"ok": not size_errors, "errors": size_errors}
+        checks["census_concrete"] = {
+            "ok": cc["flops"] is not None and "error" not in cc,
+            **({"error": cc["error"]} if "error" in cc else {}),
+        }
         if alt_spec is not None:
             alt_ph = next((p for p in alt_spec.phases if p.name == ph.name), None)
             if alt_ph is None:
@@ -266,7 +307,14 @@ def export_model(
                 "seconds": round(time.monotonic() - t0, 2),
                 "files": {
                     f: (pdir / f).stat().st_size
-                    for f in ("module.mlir", "exported.bin", "graph.json", "symbols.json", "census.json")
+                    for f in (
+                        "module.mlir",
+                        "exported.bin",
+                        "graph.json",
+                        "symbols.json",
+                        "census.json",
+                        "census_concrete.json",
+                    )
                 },
             }
         )

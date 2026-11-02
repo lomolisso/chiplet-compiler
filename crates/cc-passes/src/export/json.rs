@@ -336,6 +336,10 @@ pub struct SymbolDecl {
     /// Where the symbol appears among the phase's inputs (`symbols.json` only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inputs: Option<Vec<SymbolSite>>,
+    /// The symbol's integer size at the exported config, solved from the concrete input axes
+    /// (`symbols.json` only; `value` is the config field, which need not be a size).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
 }
 
 /// `out/export/<model>/<phase>/symbols.json`.
@@ -390,6 +394,26 @@ pub struct CensusFile {
     pub ops: Vec<CoreOp>,
     /// Executed op-name multiset.
     pub executed: BTreeMap<String, u64>,
+}
+
+/// `out/export/<model>/<phase>/census_concrete.json`: the census (`verify/hlo.py`) of the phase lowered
+/// on its concrete input shapes, so every FLOP count is an integer. One execution of the phase.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CensusConcreteFile {
+    pub schema: String,
+    pub model: String,
+    pub phase: String,
+    pub config: String,
+    /// `"<kind> <sig>"` → count and FLOPs.
+    pub summary: BTreeMap<String, SigSummary>,
+    /// Total FLOPs (2 × MACs) of every dot_general and convolution; `null` if any is unknown.
+    pub flops: Option<u64>,
+    pub ops: u64,
+    /// Ops whose FLOPs are unknown (0 when the lowering is concrete).
+    pub unknown: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 /// Allowed signatures: `{signature: why}` or a plain list.
@@ -501,6 +525,10 @@ pub fn schemas() -> Vec<(&'static str, serde_json::Value)> {
         (
             "export_census.schema.json",
             serde_json::to_value(schemars::schema_for!(CensusFile)).unwrap_or_default(),
+        ),
+        (
+            "export_census_concrete.schema.json",
+            serde_json::to_value(schemars::schema_for!(CensusConcreteFile)).unwrap_or_default(),
         ),
         (
             "export_model.schema.json",

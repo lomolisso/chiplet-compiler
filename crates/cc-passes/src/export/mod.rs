@@ -20,15 +20,16 @@ use rayon::prelude::*;
 pub use config::{ExportConfig, ExportRunner};
 
 /// `out/export/<model>/{export.json, <phase>/{module.mlir, exported.bin, graph.json, symbols.json,
-/// census.json}}`.
+/// census.json, census_concrete.json}}`.
 pub const EXPORT: ArtifactKind = ArtifactKind("export");
 pub const MODEL_FILE: &str = "export.json";
-pub const PHASE_FILES: [&str; 5] = [
+pub const PHASE_FILES: [&str; 6] = [
     "module.mlir",
     "exported.bin",
     "graph.json",
     "symbols.json",
     "census.json",
+    "census_concrete.json",
 ];
 
 /// Exit status of `python -m cc_export` when a phase failed to export (recorded in `export.json`).

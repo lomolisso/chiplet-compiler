@@ -30,6 +30,9 @@
     }
    },
    "checks": {
+    "census_concrete": {
+     "ok": true
+    },
     "census_crosscheck": {
      "ok": true,
      "verify_hlo": {
@@ -57,6 +60,10 @@
      "ok": true
     },
     "roundtrip": {
+     "ok": true
+    },
+    "symbol_sizes": {
+     "errors": [],
      "ok": true
     },
     "symbols_declared": {
@@ -92,14 +99,15 @@
    },
    "files": {
     "census.json": 1687,
-    "exported.bin": 9480,
-    "graph.json": 90266,
-    "module.mlir": 27579,
-    "symbols.json": 604
+    "census_concrete.json": 235,
+    "exported.bin": 9500,
+    "graph.json": 90626,
+    "module.mlir": 27648,
+    "symbols.json": 632
    },
    "hash": "blake2b:10f141c652fddf454753e5981be5d6899116966cfb2be94db452cab0bcdd07ac",
    "roots": [],
-   "seconds": 1.58,
+   "seconds": 3.76,
    "size_variant_of": null,
    "trip_count": 1
   },
@@ -111,6 +119,9 @@
     }
    },
    "checks": {
+    "census_concrete": {
+     "ok": true
+    },
     "census_crosscheck": {
      "ok": true,
      "verify_hlo": {
@@ -138,6 +149,10 @@
      "ok": true
     },
     "roundtrip": {
+     "ok": true
+    },
+    "symbol_sizes": {
+     "errors": [],
      "ok": true
     },
     "symbols_declared": {
@@ -173,14 +188,15 @@
    },
    "files": {
     "census.json": 1690,
-    "exported.bin": 9484,
-    "graph.json": 90278,
-    "module.mlir": 27582,
-    "symbols.json": 607
+    "census_concrete.json": 238,
+    "exported.bin": 9504,
+    "graph.json": 90638,
+    "module.mlir": 27651,
+    "symbols.json": 635
    },
    "hash": "blake2b:10f141c652fddf454753e5981be5d6899116966cfb2be94db452cab0bcdd07ac",
    "roots": [],
-   "seconds": 0.34,
+   "seconds": 0.44,
    "size_variant_of": "forward",
    "trip_count": 1
   }
