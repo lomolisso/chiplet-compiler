@@ -211,28 +211,38 @@ pub fn parse(text: &str) -> Netlist {
     n
 }
 
+/// The text without comments. An escaped identifier (`\\u_div/*Logic0*`, from `\\` to the next
+/// whitespace) is kept whole: comment markers inside it are part of the name.
 fn strip(text: &str) -> String {
+    let b = text.as_bytes();
     let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    loop {
-        let line = rest.find("//");
-        let block = rest.find("/*");
-        match (line, block) {
-            (None, None) => {
-                out.push_str(rest);
-                break;
+    let mut i = 0;
+    let mut from = 0;
+    while i < b.len() {
+        match b[i] {
+            b'\\' => {
+                while i < b.len() && !b[i].is_ascii_whitespace() {
+                    i += 1;
+                }
+                continue;
             }
-            (Some(l), b) if b.is_none_or(|b| l < b) => {
-                out.push_str(&rest[..l]);
-                rest = rest[l..].find('\n').map_or("", |e| &rest[l + e..]);
+            b'/' if b.get(i + 1) == Some(&b'/') => {
+                out.push_str(&text[from..i]);
+                i = text[i..].find('\n').map_or(b.len(), |e| i + e);
+                from = i;
+                continue;
             }
-            (_, Some(b)) => {
-                out.push_str(&rest[..b]);
-                rest = rest[b + 2..].find("*/").map_or("", |e| &rest[b + 2 + e + 2..]);
+            b'/' if b.get(i + 1) == Some(&b'*') => {
+                out.push_str(&text[from..i]);
+                i = text[i + 2..].find("*/").map_or(b.len(), |e| i + 2 + e + 2);
+                from = i;
+                continue;
             }
-            _ => unreachable!(),
+            _ => {}
         }
+        i += 1;
     }
+    out.push_str(&text[from..]);
     out
 }
 
@@ -241,6 +251,16 @@ mod tests {
     use super::*;
 
     const NET: &str = "// generated\nmodule piece ( a, p );\n  input [1:0] a;\n  output [3:0] p;\n  wire n1;\n  NAND2_X1 U1 ( .A1(a[0]), .A2(a[1]), .ZN(n1) );\n  INV_X1 U2 ( .A(n1), .ZN(p[0]) );\n  assign p[3:1] = 3'b0;\nendmodule\n\nmodule top ( a, p );\n  input [1:0] a;\n  output [3:0] p;\n  piece u0 ( .a(a), .p(p) );\n  DHLx1_ASAP7_75t_R l0 ( .D(a[0]), .CLK(a[1]), .Q() );\n  GTECH_AND2 g0 ( .A(a[0]), .B(a[1]), .Z() );\nendmodule\n";
+
+    #[test]
+    fn escaped_names_with_comment_markers_are_names() {
+        let net = "// header\nmodule p ( a, y );\n  input a;\n  output y;\n  wire \\u_div/*Logic0* ;\n  TIELOx1 U1 ( .L(\\u_div/*Logic0* ) );\n  INVx1 U2 ( .A(a), .Y(y) ); /* a comment */\nendmodule\nmodule top ( a, y );\n  input a;\n  output y;\n  p u0 ( .a(a), .y(y) );\nendmodule\n";
+        let n = parse(net);
+        assert_eq!(n.modules.iter().collect::<Vec<_>>(), ["p", "top"]);
+        assert_eq!(n.instances.get("INVx1"), Some(&1));
+        assert_eq!(n.instances.get("TIELOx1"), Some(&1));
+        assert!(ports(net, "top").is_some());
+    }
 
     #[test]
     fn ports_in_both_styles() {
