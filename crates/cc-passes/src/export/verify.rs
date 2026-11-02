@@ -1,19 +1,23 @@
 //! Independent checks of the export (design §4.1, §5). Per model (check names `<model>:<check>`):
 //!
 //! - `exported`: `export.json` parses and every phase exported.
-//! - `schema`: every `graph.json` / `symbols.json` / `census.json` parses into the strict types.
+//! - `schema`: every `graph.json` / `symbols.json` / `census.json` / `census_concrete.json` parses into the
+//!   strict types.
 //! - `mlir_verifier`: a fresh process (`python -m cc_export.facts`) re-parses each `module.mlir` and runs
 //!   the MLIR verifier.
 //! - `roundtrip`: the op-name multiset of `graph.json` (counted here) equals the one of `module.mlir`
 //!   (counted by that fresh process).
 //! - `census`: the GEMM/conv census recomputed here from `graph.json` (calls and composites expanded)
 //!   equals `census.json`.
+//! - `census_concrete`: the census of the concrete lowering has an integer FLOP total, and its signature
+//!   counts equal `census.json`'s (both lowerings have the same GEMMs and convolutions).
 //! - `recipe_audit`: the census meets the recipe's audit (`audit.rs`, the rules of `verify/dtype_audit.py`).
 //! - `decompositions`: every composite decomposition and call target is a function of the module.
 //! - `components`: no interception failure; the coverage recomputed here equals `graph.json`'s; every op
 //!   is inside a composite or counted `anon`.
 //! - `symbols`: the model declares input-dependent sizes; every symbol of every phase's shapes is declared,
-//!   appears in some input, and every declared symbol is used.
+//!   appears in some input, and every declared symbol is used; every symbol of a phase has its size at the
+//!   config, and the sizes satisfy the phase's constraints.
 //! - `invariance`: re-exported with every symbol's config field perturbed, every phase gave the identical
 //!   graph and no input shape changed (the exporter's certificate: both hashes and the perturbation).
 //! - `size_variants`: phases declared as size variants of another have its graph.
@@ -27,7 +31,7 @@ use cc_pipeline::{PassContext, PassError};
 use rayon::prelude::*;
 use serde::Deserialize;
 
-use super::json::{CensusFile, GraphFile, ModelFile, SymbolsFile};
+use super::json::{CensusConcreteFile, CensusFile, GraphFile, ModelFile, SymbolsFile};
 use super::{EXPORT, ExportConfig, MODEL_FILE, analysis, audit, invocation, model_runner};
 
 #[derive(Debug, Deserialize)]
@@ -177,6 +181,7 @@ fn verify_model(
     let mut schema = Acc::new(model, "schema");
     let mut roundtrip = Acc::new(model, "roundtrip");
     let mut census = Acc::new(model, "census");
+    let mut concrete = Acc::new(model, "census_concrete");
     let mut decomp = Acc::new(model, "decompositions");
     let mut comps = Acc::new(model, "components");
     let mut syms = Acc::new(model, "symbols");
@@ -197,6 +202,7 @@ fn verify_model(
         };
         let sy: Result<SymbolsFile, _> = read(&pdir.join("symbols.json"));
         let ce: Result<CensusFile, _> = read(&pdir.join("census.json"));
+        let cc: Result<CensusConcreteFile, _> = read(&pdir.join("census_concrete.json"));
 
         match facts.get(ph) {
             Some(f) if f.verified => {
@@ -236,6 +242,28 @@ fn verify_model(
                 per_phase_census.insert(ph.clone(), c.summary.clone());
             }
             Err(e) => schema.fail(format!("{ph}/census.json: {e}")),
+        }
+        match (&cc, &ce) {
+            (Ok(c), Ok(sym)) => {
+                if let Some(e) = &c.error {
+                    concrete.fail(format!("{ph}: {e}"));
+                } else if c.flops.is_none() || c.unknown > 0 {
+                    concrete.fail(format!("{ph}: {} ops without FLOPs", c.unknown));
+                }
+                let counts = |m: &BTreeMap<String, super::json::SigSummary>| -> BTreeMap<String, u64> {
+                    m.iter().map(|(k, v)| (k.clone(), v.count)).collect()
+                };
+                if counts(&c.summary) != counts(&sym.summary) {
+                    concrete.fail(format!(
+                        "{ph}: concrete counts {:?} != symbolic {:?}",
+                        counts(&c.summary),
+                        counts(&sym.summary)
+                    ));
+                }
+                *concrete.counts.entry("flops".into()).or_default() += c.flops.unwrap_or(0);
+            }
+            (Err(e), _) => schema.fail(format!("{ph}/census_concrete.json: {e}")),
+            _ => {}
         }
         let cov = &g.coverage;
         let mine = (
@@ -285,9 +313,23 @@ fn verify_model(
                         syms.fail(format!("{ph}: symbol `{n}` of the shapes is not declared"));
                     }
                 }
+                let mut env = BTreeMap::new();
                 for (n, d) in &s.symbols {
                     if d.inputs.as_ref().is_none_or(Vec::is_empty) {
                         syms.fail(format!("{ph}: symbol `{n}` appears in no input"));
+                    }
+                    match d.size.and_then(|v| i64::try_from(v).ok()) {
+                        Some(v) => {
+                            env.insert(n.clone(), v);
+                        }
+                        None => syms.fail(format!("{ph}: symbol `{n}` has no size")),
+                    }
+                }
+                for c in &s.constraints {
+                    match cc_ir::sym::Constraint::parse(c).map(|k| k.holds(&env)) {
+                        Ok(Ok(true)) => {}
+                        Ok(r) => syms.fail(format!("{ph}: constraint `{c}` at the sizes: {r:?}")),
+                        Err(e) => syms.fail(format!("{ph}: constraint `{c}`: {e}")),
                     }
                 }
                 used_symbols.extend(in_shapes);
@@ -349,6 +391,7 @@ fn verify_model(
         verifier.done(),
         roundtrip.done(),
         census.done(),
+        concrete.done(),
         recipe.done(),
         decomp.done(),
         comps.done(),

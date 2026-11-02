@@ -1,0 +1,1855 @@
+{
+  "$defs": {
+    "Atom": {
+      "description": "An atom of a monomial.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "var": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "var"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "floor_div": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "$ref": "#/$defs/SymExpr"
+                },
+                {
+                  "$ref": "#/$defs/SymExpr"
+                }
+              ],
+              "type": "array"
+            }
+          },
+          "required": [
+            "floor_div"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "mod": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "$ref": "#/$defs/SymExpr"
+                },
+                {
+                  "$ref": "#/$defs/SymExpr"
+                }
+              ],
+              "type": "array"
+            }
+          },
+          "required": [
+            "mod"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "max": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "$ref": "#/$defs/SymExpr"
+                },
+                {
+                  "$ref": "#/$defs/SymExpr"
+                }
+              ],
+              "type": "array"
+            }
+          },
+          "required": [
+            "max"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "min": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "$ref": "#/$defs/SymExpr"
+                },
+                {
+                  "$ref": "#/$defs/SymExpr"
+                }
+              ],
+              "type": "array"
+            }
+          },
+          "required": [
+            "min"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Attr": {
+      "description": "A typed attribute.",
+      "oneOf": [
+        {
+          "enum": [
+            "unit"
+          ],
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "int": {
+              "properties": {
+                "ty": {
+                  "type": "string"
+                },
+                "value": {
+                  "format": "int128",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "value",
+                "ty"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "int"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "float": {
+              "properties": {
+                "ty": {
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/$defs/Scalar"
+                }
+              },
+              "required": [
+                "value",
+                "ty"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "float"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "bool": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "bool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "str": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "str"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "symbol": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "symbol"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "ints": {
+              "items": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "ints"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "bools": {
+              "items": {
+                "type": "boolean"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "bools"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Dense elements: the values when the export kept them (at most 1024), else a content digest.",
+          "properties": {
+            "dense": {
+              "properties": {
+                "digest": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "splat": {
+                  "type": "boolean"
+                },
+                "ty": {
+                  "$ref": "#/$defs/Type"
+                },
+                "values": {
+                  "items": {
+                    "$ref": "#/$defs/Scalar"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "ty",
+                "splat"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "dense"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "array": {
+              "items": {
+                "$ref": "#/$defs/Attr"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "array"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "dict": {
+              "additionalProperties": {
+                "$ref": "#/$defs/Attr"
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "dict"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "$ref": "#/$defs/Type"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A StableHLO enum (`comparison_direction`, `comparison_type`, `fft_type`, `precision`, …).",
+          "properties": {
+            "enum": {
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "value"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "enum"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "dot_dims": {
+              "$ref": "#/$defs/DotDims"
+            }
+          },
+          "required": [
+            "dot_dims"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "conv_dims": {
+              "$ref": "#/$defs/ConvDims"
+            }
+          },
+          "required": [
+            "conv_dims"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "gather_dims": {
+              "$ref": "#/$defs/GatherDims"
+            }
+          },
+          "required": [
+            "gather_dims"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "scatter_dims": {
+              "$ref": "#/$defs/ScatterDims"
+            }
+          },
+          "required": [
+            "scatter_dims"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No structured form: the printed attribute.",
+          "properties": {
+            "opaque": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "opaque"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ClassKind": {
+      "description": "What a class's core is.",
+      "oneOf": [
+        {
+          "enum": [
+            "scatter_reduce"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "contraction",
+          "description": "`dot_general`, `convolution`, `dynamic_conv`.",
+          "type": "string"
+        },
+        {
+          "const": "reduction",
+          "description": "`reduce`, `reduce_window`, `dynamic_reduce_window`.",
+          "type": "string"
+        },
+        {
+          "const": "map",
+          "description": "No core.",
+          "type": "string"
+        }
+      ]
+    },
+    "ConvDims": {
+      "description": "`stablehlo.convolution` dimension numbers (spec `#convolution`).",
+      "properties": {
+        "input_batch": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "input_feature": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "input_spatial": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "kernel_input_feature": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "kernel_output_feature": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "kernel_spatial": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "output_batch": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "output_feature": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "output_spatial": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "input_batch",
+        "input_feature",
+        "input_spatial",
+        "kernel_input_feature",
+        "kernel_output_feature",
+        "kernel_spatial",
+        "output_batch",
+        "output_feature",
+        "output_spatial"
+      ],
+      "type": "object"
+    },
+    "Dim": {
+      "description": "A dimension: a constant or a symbolic expression over the model's size symbols. A `Sym` is never a\nconstant expression (constructors fold it into `Const`).",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "const": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "const"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "sym": {
+              "$ref": "#/$defs/SymExpr"
+            }
+          },
+          "required": [
+            "sym"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "DotDims": {
+      "description": "`stablehlo.dot_general` dimension numbers (spec `#dot_general`).",
+      "properties": {
+        "lhs_batching": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "lhs_contracting": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "rhs_batching": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "rhs_contracting": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "lhs_batching",
+        "rhs_batching",
+        "lhs_contracting",
+        "rhs_contracting"
+      ],
+      "type": "object"
+    },
+    "EdgeEnd": {
+      "properties": {
+        "port": {
+          "$ref": "#/$defs/PortLabel"
+        },
+        "res": {
+          "description": "Result index of the source.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "res",
+        "port"
+      ],
+      "type": "object"
+    },
+    "Elem": {
+      "description": "An element type. MLIR signless `iN` (N > 1) is a signed two's-complement integer in StableHLO\n(spec \"Types\": `si`/`i` are signed, `ui` unsigned); `i1` is the boolean.",
+      "oneOf": [
+        {
+          "enum": [
+            "bool"
+          ],
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "int": {
+              "properties": {
+                "signed": {
+                  "type": "boolean"
+                },
+                "width": {
+                  "format": "uint16",
+                  "maximum": 65535,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "signed",
+                "width"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "int"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "float": {
+              "properties": {
+                "exp": {
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "flavour": {
+                  "$ref": "#/$defs/FloatFlavour"
+                },
+                "mant": {
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "exp",
+                "mant",
+                "flavour"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "float"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "complex": {
+              "$ref": "#/$defs/Elem"
+            }
+          },
+          "required": [
+            "complex"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Family": {
+      "description": "An element-type family (design §6.1): the part of a type in a component's identity.",
+      "oneOf": [
+        {
+          "enum": [
+            "bool",
+            "sint",
+            "uint",
+            "float"
+          ],
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "complex": {
+              "$ref": "#/$defs/Family"
+            }
+          },
+          "required": [
+            "complex"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "FloatFlavour": {
+      "description": "Special-value convention of a binary float format.",
+      "oneOf": [
+        {
+          "const": "ieee",
+          "description": "IEEE 754 style: infinities and NaNs.",
+          "type": "string"
+        },
+        {
+          "const": "finite_nan",
+          "description": "`FN`: finite, NaN only, no infinities (OCP OFP8 E4M3, MLIR `f8E4M3FN`).",
+          "type": "string"
+        },
+        {
+          "const": "finite_nan_unsigned_zero",
+          "description": "`FNUZ`: finite, one NaN encoding (negative zero), no infinities (MLIR `f8E4M3FNUZ`, `f8E5M2FNUZ`).",
+          "type": "string"
+        },
+        {
+          "const": "finite_nan_unsigned",
+          "description": "`FNU`: finite, NaN only, unsigned (MLIR `f8E8M0FNU`).",
+          "type": "string"
+        },
+        {
+          "const": "finite_nan_unsigned_zero_bias11",
+          "description": "`FN` with exponent bias 11 (MLIR `f8E4M3B11FNUZ`).",
+          "type": "string"
+        }
+      ]
+    },
+    "GatherDims": {
+      "description": "`stablehlo.gather` dimension numbers (spec `#gather`).",
+      "properties": {
+        "collapsed_slice_dims": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "index_vector_dim": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "offset_dims": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "operand_batching_dims": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "start_index_map": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "start_indices_batching_dims": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "offset_dims",
+        "collapsed_slice_dims",
+        "operand_batching_dims",
+        "start_indices_batching_dims",
+        "start_index_map",
+        "index_vector_dim"
+      ],
+      "type": "object"
+    },
+    "Graph": {
+      "description": "A directed graph with labelled nodes and merged, labelled edges. Adjacency lists are sorted by the\nneighbour index.",
+      "properties": {
+        "inc": {
+          "items": {
+            "items": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/ZNode"
+          },
+          "type": "array"
+        },
+        "out": {
+          "items": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "items": {
+                    "$ref": "#/$defs/EdgeEnd"
+                  },
+                  "type": "array"
+                }
+              ],
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "nodes",
+        "out",
+        "inc"
+      ],
+      "type": "object"
+    },
+    "Group": {
+      "description": "The reuse structure of a convolution's group count (design: kept in identity because it changes the\nreuse): 1, one group per input feature (depthwise), or anything between.",
+      "enum": [
+        "one",
+        "depthwise",
+        "grouped"
+      ],
+      "type": "string"
+    },
+    "Kind": {
+      "description": "What a node is.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Argument `k` (dimension arguments not counted) of a decomposition; `None` for an external value\nof an anon region (unordered).",
+          "properties": {
+            "input": {
+              "properties": {
+                "index": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "input"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "output",
+          "description": "A value of an anon region used outside it.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Argument `index` of region `region` of the owner op.",
+          "properties": {
+            "region_arg": {
+              "properties": {
+                "index": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "region": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "region",
+                "index"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "region_arg"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "size_in",
+          "description": "A dimension value entering compute.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "LocalClasses": {
+      "description": "The local classes of a kernel graph: per node, per result, per axis its dim class; per node, per result\nits element class.",
+      "properties": {
+        "dims": {
+          "items": {
+            "items": {
+              "items": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "elems": {
+          "items": {
+            "items": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "nd": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ne": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "unit": {
+          "description": "Per dim class: it holds an axis that a broadcast expands (extent 1 in every instance).",
+          "items": {
+            "type": "boolean"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "dims",
+        "elems",
+        "nd",
+        "ne",
+        "unit"
+      ],
+      "type": "object"
+    },
+    "MemberKey": {
+      "description": "A member kernel: one kernel of one component, and the group kinds it is classified with (a kernel\nwhose instances differ in group kind is a member once per kind).",
+      "properties": {
+        "component": {
+          "type": "string"
+        },
+        "groups": {
+          "additionalProperties": false,
+          "patternProperties": {
+            "^\\d+$": {
+              "additionalProperties": {
+                "$ref": "#/$defs/Group"
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "kernel": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "component",
+        "kernel",
+        "groups"
+      ],
+      "type": "object"
+    },
+    "Mono": {
+      "description": "A product of atoms with powers (sorted by atom; the empty monomial is 1).",
+      "items": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "$ref": "#/$defs/Atom"
+          },
+          {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        ],
+        "type": "array"
+      },
+      "type": "array"
+    },
+    "Order": {
+      "description": "A reduction order ω (docs/passes/normalize.md §4).",
+      "oneOf": [
+        {
+          "const": "seq",
+          "description": "One accumulator: the init value, then the elements in ascending lexicographic order of `axes`.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The elements in the same order, grouped by `fan_in` (each group left to right), level by level;\nthe init value is combined at the root.",
+          "properties": {
+            "tree": {
+              "properties": {
+                "fan_in": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "fan_in"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "tree"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Params": {
+      "description": "One parameter of a class: an axis class (extent), an element class (width or format), or a value of\na member node (a size attribute, a folded constant).",
+      "properties": {
+        "axes": {
+          "description": "Axis classes, with whether each is an expanded unit axis (always 1).",
+          "items": {
+            "type": "boolean"
+          },
+          "type": "array"
+        },
+        "elems": {
+          "description": "Element classes: their family.",
+          "items": {
+            "$ref": "#/$defs/Family"
+          },
+          "type": "array"
+        },
+        "values": {
+          "description": "Value columns of the instance table: `n<node>.<attribute>` or `n<node>.splat<port>`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "axes",
+        "elems",
+        "values"
+      ],
+      "type": "object"
+    },
+    "PortLabel": {
+      "description": "The destination side of one dataflow edge.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Operand port of the destination.",
+          "properties": {
+            "port": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "port"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "commutative",
+          "description": "An operand of a commutative op: the ports are an unordered multiset.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Region `region`, argument `index` of the source (the owner) feeds the destination (the argument).",
+          "properties": {
+            "region": {
+              "properties": {
+                "index": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "region": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "region",
+                "index"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "region"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The terminator of region `region` of the destination (the owner) yields to it.",
+          "properties": {
+            "yield": {
+              "properties": {
+                "region": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "region"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "yield"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Scalar": {
+      "description": "One element of a dense constant.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "int": {
+              "format": "int128",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "int"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "float": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "float"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "bool": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "bool"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Non-finite floats (`inf`, `-inf`, `nan`) and anything without a numeric form.",
+          "properties": {
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A complex number `(re, im)`.",
+          "properties": {
+            "complex": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "$ref": "#/$defs/Scalar"
+                },
+                {
+                  "$ref": "#/$defs/Scalar"
+                }
+              ],
+              "type": "array"
+            }
+          },
+          "required": [
+            "complex"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ScatterDims": {
+      "description": "`stablehlo.scatter` dimension numbers (spec `#scatter`).",
+      "properties": {
+        "index_vector_dim": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "input_batching_dims": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "inserted_window_dims": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "scatter_indices_batching_dims": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "scattered_dims_to_operand_dims": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "update_window_dims": {
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "update_window_dims",
+        "inserted_window_dims",
+        "input_batching_dims",
+        "scatter_indices_batching_dims",
+        "scattered_dims_to_operand_dims",
+        "index_vector_dim"
+      ],
+      "type": "object"
+    },
+    "SymExpr": {
+      "description": "A canonical sum of terms `(monomial, coefficient)`, sorted by monomial, coefficients non-zero.",
+      "properties": {
+        "terms": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "$ref": "#/$defs/Mono"
+              },
+              {
+                "format": "int64",
+                "type": "integer"
+              }
+            ],
+            "type": "array"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "terms"
+      ],
+      "type": "object"
+    },
+    "Tags": {
+      "description": "Tags of a class (docs/passes/kernel_classes.md §4).",
+      "properties": {
+        "call_fed": {
+          "description": "Members that read a composite call's result.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "low_rank": {
+          "description": "The domain has rank at most 1.",
+          "type": "boolean"
+        },
+        "positional": {
+          "description": "The identity graph uses positional roles.",
+          "type": "boolean"
+        },
+        "size_independent": {
+          "description": "No instance's axis extent depends on an input symbol: constant work per invocation.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "size_independent",
+        "low_rank",
+        "call_fed",
+        "positional"
+      ],
+      "type": "object"
+    },
+    "TensorType": {
+      "properties": {
+        "elem": {
+          "$ref": "#/$defs/Elem"
+        },
+        "shape": {
+          "items": {
+            "$ref": "#/$defs/Dim"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "shape",
+        "elem"
+      ],
+      "type": "object"
+    },
+    "Type": {
+      "description": "A value type. Only tensors occur in the exported modules; anything else is kept by its printed form.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "tensor": {
+              "$ref": "#/$defs/TensorType"
+            }
+          },
+          "required": [
+            "tensor"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "other": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "other"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ZNode": {
+      "description": "A node of a kernel's identity graph: the kernel's nodes without positions, widths or values, plus one\nnode per axis class and per element class, joined through role nodes (vertex colouring and edge\nsubdivision; McKay and Piperno, \"Practical graph isomorphism, II\", J. Symbolic Computation\n60:94-112, 2014).",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "A member: its op (or region argument), identity attributes, result families, ω's order, folded\noperands (port and family) and group kinds.",
+          "properties": {
+            "op": {
+              "properties": {
+                "attrs": {
+                  "additionalProperties": {
+                    "$ref": "#/$defs/Attr"
+                  },
+                  "type": "object"
+                },
+                "groups": {
+                  "additionalProperties": {
+                    "$ref": "#/$defs/Group"
+                  },
+                  "type": "object"
+                },
+                "kind": {
+                  "$ref": "#/$defs/Kind"
+                },
+                "order": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/Order"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "results": {
+                  "items": {
+                    "$ref": "#/$defs/Family"
+                  },
+                  "type": "array"
+                },
+                "splats": {
+                  "items": {
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "prefixItems": [
+                      {
+                        "$ref": "#/$defs/PortLabel"
+                      },
+                      {
+                        "$ref": "#/$defs/Family"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "kind",
+                "attrs",
+                "results",
+                "splats",
+                "groups"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A value read from outside the kernel.",
+          "properties": {
+            "input": {
+              "properties": {
+                "family": {
+                  "$ref": "#/$defs/Family"
+                }
+              },
+              "required": [
+                "family"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "input"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "output",
+          "description": "A value used outside the kernel.",
+          "type": "string"
+        },
+        {
+          "const": "axis",
+          "description": "One class of axes (equal extents in every instance).",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One class of element types.",
+          "properties": {
+            "elem": {
+              "properties": {
+                "family": {
+                  "$ref": "#/$defs/Family"
+                }
+              },
+              "required": [
+                "family"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "elem"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A role edge, subdivided; `pos` is the axis position when the kernel needs positional roles (two\naxes of one value in one class).",
+          "properties": {
+            "role": {
+              "properties": {
+                "pos": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "role": {
+                  "$ref": "#/$defs/ZRole"
+                }
+              },
+              "required": [
+                "role"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "role"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "window",
+          "description": "One window (spatial dimension).",
+          "type": "string"
+        }
+      ]
+    },
+    "ZRole": {
+      "description": "What a role node of the identity graph says about the axis class (or window) it points to.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "An axis of result `res` of the source node.",
+          "properties": {
+            "axis": {
+              "properties": {
+                "res": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "res"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "axis"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The element type of result `res` of the source node.",
+          "properties": {
+            "elem": {
+              "properties": {
+                "res": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "res"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "elem"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "batch",
+          "description": "`dot_general`: a batching axis (of the lhs; the rhs axis has the same class).",
+          "type": "string"
+        },
+        {
+          "const": "contract",
+          "description": "`dot_general`: a contracting axis.",
+          "type": "string"
+        },
+        {
+          "const": "reduced",
+          "description": "`reduce`: a reduced axis.",
+          "type": "string"
+        },
+        {
+          "const": "expand",
+          "description": "`broadcast_in_dim`: a result axis that no operand axis maps to.",
+          "type": "string"
+        },
+        {
+          "const": "known_expanding",
+          "description": "`dynamic_broadcast_in_dim`: an operand axis in `known_expanding_dimensions`.",
+          "type": "string"
+        },
+        {
+          "const": "known_nonexpanding",
+          "description": "`dynamic_broadcast_in_dim`: an operand axis in `known_nonexpanding_dimensions`.",
+          "type": "string"
+        },
+        {
+          "const": "in_batch",
+          "description": "Convolution: the input's batch axis.",
+          "type": "string"
+        },
+        {
+          "const": "in_feature",
+          "description": "Convolution: the input's feature axis.",
+          "type": "string"
+        },
+        {
+          "const": "kernel_in",
+          "description": "Convolution: the kernel's input-feature axis.",
+          "type": "string"
+        },
+        {
+          "const": "kernel_out",
+          "description": "Convolution: the kernel's output-feature axis.",
+          "type": "string"
+        },
+        {
+          "const": "out_batch",
+          "description": "Convolution: the output's batch axis.",
+          "type": "string"
+        },
+        {
+          "const": "out_feature",
+          "description": "Convolution: the output's feature axis.",
+          "type": "string"
+        },
+        {
+          "const": "spatial",
+          "description": "A window (one spatial dimension of a convolution, one axis of a windowed reduction).",
+          "type": "string"
+        },
+        {
+          "const": "win_in",
+          "description": "The window's input (operand) axis.",
+          "type": "string"
+        },
+        {
+          "const": "win_kernel",
+          "description": "The window's kernel axis (convolution).",
+          "type": "string"
+        },
+        {
+          "const": "win_out",
+          "description": "The window's output axis.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The `k`-th axis of the reduction order ω.",
+          "properties": {
+            "omega": {
+              "properties": {
+                "k": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "k"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "omega"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Scatter dimension numbers: entry `i` of list `list` (`update_window_dims`, `inserted_window_dims`,\n`input_batching_dims`, `scatter_indices_batching_dims`, `scattered_dims_to_operand_dims`,\n`index_vector_dim`, in that order).",
+          "properties": {
+            "scatter": {
+              "properties": {
+                "i": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "list": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "list",
+                "i"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "scatter"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`classes/<z>.json`.",
+  "properties": {
+    "core": {
+      "description": "`<op>/<family>` of the core, or `map`.",
+      "type": "string"
+    },
+    "hash": {
+      "description": "WL hash of the identity graph (hex).",
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "identity": {
+      "$ref": "#/$defs/Graph"
+    },
+    "instances": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "iteration": {
+      "description": "Axis classes of the iteration domain, with multiplicity: workload = their extents' product\n(times the window sizes of a windowed reduction).",
+      "items": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "type": "array"
+    },
+    "kernel_nodes": {
+      "description": "The identity graph; nodes `0..kernel_nodes` are the representative's kernel nodes.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "kind": {
+      "$ref": "#/$defs/ClassKind"
+    },
+    "local": {
+      "$ref": "#/$defs/LocalClasses"
+    },
+    "members": {
+      "items": {
+        "$ref": "#/$defs/MemberKey"
+      },
+      "type": "array"
+    },
+    "models": {
+      "description": "Models with an instance.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "params": {
+      "$ref": "#/$defs/Params"
+    },
+    "representative": {
+      "$ref": "#/$defs/MemberKey",
+      "description": "The representative: the first member."
+    },
+    "roles": {
+      "description": "Member roles of the representative's nodes (`input`/`output` for interface nodes).",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "tags": {
+      "$ref": "#/$defs/Tags"
+    },
+    "workload": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "hash",
+    "kind",
+    "core",
+    "tags",
+    "representative",
+    "roles",
+    "local",
+    "params",
+    "iteration",
+    "kernel_nodes",
+    "identity",
+    "members",
+    "models",
+    "instances",
+    "workload"
+  ],
+  "title": "ClassFile",
+  "type": "object"
+}

@@ -1,0 +1,136 @@
+{
+  "$defs": {
+    "Level": {
+      "description": "Sharing at one level (components or kernel classes).",
+      "properties": {
+        "coverage": {
+          "additionalProperties": {
+            "format": "double",
+            "type": "number"
+          },
+          "description": "Per model: the share of its weighted workload in items used by at least two models.",
+          "type": "object"
+        },
+        "coverage_mean": {
+          "description": "The mean of the per-model shares (every model counts once).",
+          "format": "double",
+          "type": "number"
+        },
+        "coverage_total": {
+          "description": "The same over all models' workload together (dominated by the heaviest models).",
+          "format": "double",
+          "type": "number"
+        },
+        "items": {
+          "description": "Distinct items.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "jaccard": {
+          "description": "Pairwise Jaccard index of the models' item sets, rows and columns in `models` order.",
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "mean_jaccard": {
+          "description": "Mean of the Jaccard index over all model pairs.",
+          "format": "double",
+          "type": "number"
+        },
+        "per_model": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "Items per model.",
+          "type": "object"
+        },
+        "shared": {
+          "description": "Items used by at least two models.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "per_model",
+        "items",
+        "shared",
+        "jaccard",
+        "mean_jaccard",
+        "coverage",
+        "coverage_total",
+        "coverage_mean"
+      ],
+      "type": "object"
+    },
+    "Variant": {
+      "description": "One view of the sharing analysis (all kernels, or activation kernels only).",
+      "properties": {
+        "components": {
+          "$ref": "#/$defs/Level"
+        },
+        "kernels": {
+          "$ref": "#/$defs/Level"
+        },
+        "workload": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "Weighted workload per model.",
+          "type": "object"
+        }
+      },
+      "required": [
+        "components",
+        "kernels",
+        "workload"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`sharing.json`.",
+  "properties": {
+    "activation": {
+      "$ref": "#/$defs/Variant",
+      "description": "Kernels whose class is not `size_independent`."
+    },
+    "all": {
+      "$ref": "#/$defs/Variant",
+      "description": "Every kernel."
+    },
+    "kernel_sharing_exceeds_component_sharing": {
+      "description": "The answer on `activation`: kernel-level mean Jaccard and workload coverage both exceed the\ncomponent level.",
+      "type": "boolean"
+    },
+    "models": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "models",
+    "all",
+    "activation",
+    "kernel_sharing_exceeds_component_sharing"
+  ],
+  "title": "Sharing",
+  "type": "object"
+}

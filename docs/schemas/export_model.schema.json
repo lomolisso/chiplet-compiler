@@ -323,6 +323,15 @@
             "null"
           ]
         },
+        "size": {
+          "description": "The symbol's integer size at the exported config, solved from the concrete input axes\n(`symbols.json` only; `value` is the config field, which need not be a size).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "value": true
       },
       "required": [

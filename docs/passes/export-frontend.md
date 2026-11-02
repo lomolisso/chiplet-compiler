@@ -6,10 +6,10 @@ and lowering) on `ShapeDtypeStruct`s.
 
 | Module | Role |
 |---|---|
-| `exporter.py` | per phase: symbolic specs, discovery trace, intercepted export, files, self-checks, invariance re-export |
+| `exporter.py` | per phase: symbolic specs, discovery trace, intercepted export, files, self-checks, concrete census, invariance re-export |
 | `composite.py` | `cc_composite` (`lax.composite` + closure conversion), the batching and DCE rules for `composite_p`, `wrap`, static attributes |
 | `flax_adapter.py`, `haiku_adapter.py`, `keras_adapter.py` | the three interceptors |
-| `symbols.py` | symbolic argument specs, config perturbation, where symbols appear |
+| `symbols.py` | symbolic argument specs, config perturbation, where symbols appear, their sizes at the config |
 | `graph.py` | module → `graph.json` through JAX's bundled MLIR bindings |
 | `analysis.py` | composite instances, coverage, census, canonical hash, first difference |
 | `facts.py` | `python -m cc_export.facts <dir>`: re-parse + MLIR verifier + op multiset (the pass's `verify`) |
@@ -78,4 +78,5 @@ composite). `python/tests/test_export.py` uses it to check that interception pre
 
 `python/tests/` (CI): toy Flax / Haiku / Keras ports (`toys.py`): nesting, roots, attributes, mutable caches,
 global-context hoisting, a port-side Haiku getter, vmap and DCE of composites, invariance catching a config branch,
-Python shape arithmetic failing, size variants, census = `verify/hlo.py`, semantics at tiny sizes.
+Python shape arithmetic failing, size variants, census = `verify/hlo.py`, the concrete census, symbol sizes (scaled
+axes, a failing expression), semantics at tiny sizes.

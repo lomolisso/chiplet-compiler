@@ -250,14 +250,29 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
 
 - **Purpose.** Canonical kernel classes Z, with instance tables.
 - **Method.**
-  - Canonicalize dimension numbers and constants (value → instance table).
-  - **Identity** = op structure + dtype *family* (signed int, unsigned int, fixed, binary float with exponent/mantissa format). **Width and extents are parameters**, never identity.
+  - Recompute each kernel's dim and element classes on the kernel alone (component classes can be joined
+    by ops outside the kernel). The literal 1 is an extent like any other, except a broadcast's expanded
+    operand axis.
+  - Encode each kernel as an identity graph without positions, widths or values: one node per axis class
+    and per element class, role nodes for what each op says about an axis (contracted, reduced, batch,
+    expanded, ω's `k`-th axis) and window nodes for spatial pairings (vertex colouring and edge
+    subdivision). Dimension numbers and layouts canonicalize by construction.
+  - **Identity** = op structure + dtype *family* (signed int, unsigned int, fixed, binary float) + ω +
+    group kind ({1, depthwise, grouped}) + the remaining literal attributes, `GT`/`GE` written as `LT`/`LE`
+    with exchanged operands. **Width, format, extents, strides, dilations, window sizes, padding and
+    constant values are parameters**, never identity.
   - WL hashing, then VF2.
-  - Instance table T_z per class: model, component, extents, widths, constants, ω, trip-count-weighted workload.
-  - Sharing report: per-model sets, Jaccard, coverage at component vs kernel level.
+  - Instance table T_z per class: model, phase, component instance, extents, element types, values, ω,
+    workload (|iteration domain| at the config's symbol sizes) and trip-count-weighted workload.
+  - Sharing report: per-model sets, Jaccard, workload coverage at component vs kernel level, over all
+    kernels and over activation kernels (classes whose extents depend on an input size).
 - **Verification.**
-  - Every class member is re-checked against the representative with its stored VF2 certificate.
-  - Property tests: renaming and dimension permutation do not change the class.
+  - Every class member is re-checked against the representative with its stored certificate (node,
+    axis-class and element-class maps), local classes recomputed and nodes compared by a position-free
+    description written independently of the encoder.
+  - Every row recomputes from its instance's bindings; per phase, 2 × the contraction workload equals the
+    FLOPs of the concrete census (`export`).
+  - Tests: renaming, axis permutation and operand order do not change the class.
 
 ### 4.7 `iteration_space`
 
@@ -535,3 +550,13 @@ build/         (ignored) build/.<pass>/ artifacts
 | Epilogue operands may be outside tensors of the core's domain (residual adds) and absorbed broadcasts | Broadcasts of lower-rank inputs only | Element-wise operands have the result's shape; convexity is the real constraint |
 | Layout ops are boundaries, except broadcasts of kernel inputs | Layout ops in map kernels | A kernel keeps one iteration space; broadcasts are projections that `iteration_space` folds into the access maps |
 | Ties broken by SSA order only | A selectable tie-break | One deterministic rule; the checker is independent of it |
+| Kernel classes use classes recomputed on the kernel; the literal 1 is an extent (except a broadcast's expanded axis) | The component's class ids; unit axes in identity | Outside ops can join component classes; decode (sequence 1) and prefill, 1×1 and 3×3 kernels are one datapath with other extents |
+| Identity graph with axis and element classes as nodes and roles as subdivided edges | Canonical positional forms per op | Dot dimension numbers and layouts canonicalize by construction, and an isomorphism maps classes to classes |
+| Strides, dilations, window sizes and padding are parameters; group count is identity as {1, depthwise, grouped} | Their 0/1 pattern in identity, as in components | They change the access, not the datapath; the group count changes the reuse |
+| `GT`/`GE` are `LT`/`LE` with exchanged operands | Four directions in identity | `a > b ⇔ b < a` exactly, NaN included |
+| A kernel is classified once per group kind its instances show | One class per kernel | Group kind is evaluated per instance (depthwise iff the count equals the input features) |
+| One certificate file per class (per member kernel) | One per instance | Every instance of a member has the same map; rows point to their member |
+| Workload = the size of the iteration domain (MACs for contractions); checked against a census of the concrete lowering | Against the symbolic census | The symbolic census has no FLOPs (its dims are `?`) |
+| `export` records each symbol's integer size | Use the config field's value | A field need not be a size (graphcast's `resolution`) |
+| Size-independent classes reported apart (`activation` variant) | Leave them out of Z | Every kernel is classified; parameter arithmetic is constant work per invocation and would inflate sharing |
+

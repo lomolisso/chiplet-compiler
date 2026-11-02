@@ -204,6 +204,22 @@ fn census_and_recipe_fail_on_a_wrong_count() {
 }
 
 #[test]
+fn census_concrete_fails_without_flops_or_on_other_counts() {
+    let s = fresh();
+    s.edit_json("forward/census_concrete.json", |v| {
+        v["flops"] = serde_json::Value::Null;
+        v["unknown"] = 1.into();
+    });
+    assert_fails(&s, "census_concrete");
+
+    let s = fresh();
+    s.edit_json("forward/census_concrete.json", |v| {
+        v["summary"]["dot_general f32xf32->f32"]["count"] = 6.into();
+    });
+    assert_fails(&s, "census_concrete");
+}
+
+#[test]
 fn decompositions_fail_on_a_dangling_symbol() {
     let s = fresh();
     s.edit_json("forward/graph.json", |v| {
@@ -238,6 +254,17 @@ fn symbols_fail_when_undeclared_or_absent() {
     s.edit_json("forward/symbols.json", |v| {
         v["symbols"]["B"]["inputs"] = serde_json::json!([])
     });
+    assert_fails(&s, "symbols");
+
+    let s = fresh();
+    s.edit_json("forward/symbols.json", |v| {
+        v["symbols"]["S"].as_object_mut().unwrap().remove("size");
+    });
+    assert_fails(&s, "symbols");
+
+    // `S >= 2` must hold at the sizes.
+    let s = fresh();
+    s.edit_json("forward/symbols.json", |v| v["symbols"]["S"]["size"] = 1.into());
     assert_fails(&s, "symbols");
 }
 

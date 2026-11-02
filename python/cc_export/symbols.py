@@ -95,3 +95,53 @@ def input_axes(flat_paths: list[str], avals: list, kinds: list[str]) -> tuple[di
             for name in names_in(expr):
                 where.setdefault(name, []).append({"path": path, "axis": ax, "expr": expr})
     return where, concrete
+
+
+_SCALED = re.compile(r"^\s*(?:(\d+)\s*\*\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*$")
+_EVAL_FUNCS = {
+    "floordiv": lambda a, b: a // b,
+    "mod": lambda a, b: a % b,
+    "max": max,
+    "min": min,
+    "non_negative": lambda a: max(a, 0),
+}
+
+
+def solve_sizes(where: dict, concrete: dict[str, tuple]) -> tuple[dict[str, int], list[str]]:
+    """Each symbol's integer size at the scenario, from the concrete input axes where it appears.
+
+    A symbol is solved from a site whose expression is `S` or `c*S` (size = axis size / c); every site of
+    every symbol must then evaluate to its concrete axis size. `concrete` maps an input path to the
+    concrete shape that the symbolic export replaced. Returns the sizes and the errors.
+    """
+    sizes: dict[str, int] = {}
+    errors: list[str] = []
+    for name in sorted(where):
+        found = set()
+        for site in where[name]:
+            m = _SCALED.match(site["expr"])
+            if m is None or m.group(2) != name:
+                continue
+            c = int(m.group(1) or 1)
+            d = concrete[site["path"]][site["axis"]]
+            if d % c:
+                errors.append(f"{name}: axis {site['path']}[{site['axis']}] = {d} is not a multiple of {c}")
+                continue
+            found.add(d // c)
+        if len(found) == 1:
+            sizes[name] = found.pop()
+        elif not found:
+            errors.append(f"{name}: no input axis of the form `{name}` or `c*{name}`")
+        else:
+            errors.append(f"{name}: inconsistent sizes {sorted(found)}")
+    for name in sorted(where):
+        for site in where[name]:
+            try:
+                v = eval(site["expr"], {"__builtins__": {}}, {**_EVAL_FUNCS, **sizes})  # noqa: S307 - names only
+            except Exception as e:  # noqa: BLE001 - an unsolved symbol, recorded
+                errors.append(f"{site['path']}[{site['axis']}] `{site['expr']}`: {type(e).__name__}: {e}")
+                continue
+            d = concrete[site["path"]][site["axis"]]
+            if v != d:
+                errors.append(f"{site['path']}[{site['axis']}] `{site['expr']}` = {v}, concrete {d}")
+    return sizes, sorted(set(errors))

@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 import toys
 
-from cc_export import composite, exporter
+from cc_export import composite, exporter, symbols
 
 
 def _export(tmp_path, port, **kw):
@@ -94,6 +94,25 @@ def test_symbols_recorded(tmp_path):
     assert sy["symbols"]["S"]["inputs"] == [{"path": "[1]", "axis": 1, "expr": "S"}]
     assert sy["constraints"] == ["S >= 2"]
     assert sy["concrete_input_axes"] == [{"path": "[1]", "axis": 2, "size": 4}]
+    assert {n: d["size"] for n, d in sy["symbols"].items()} == {"B": 2, "S": 8}
+    assert _forward_checks(tmp_path)["symbol_sizes"] == {"ok": True, "errors": []}
+
+
+def _forward_checks(tmp_path):
+    return json.loads((tmp_path / "export.json").read_text())["phases"]["forward"]["checks"]
+
+
+def test_solve_sizes_scaled_and_checked():
+    where = {
+        "H": [{"path": "[1]", "axis": 1, "expr": "32*H"}, {"path": "[2]", "axis": 0, "expr": "floordiv(H + 1, 2)"}],
+        "B": [{"path": "[1]", "axis": 0, "expr": "B"}],
+    }
+    sizes, errors = symbols.solve_sizes(where, {"[1]": (3, 640), "[2]": (10,)})
+    assert sizes == {"B": 3, "H": 20} and errors == []
+    _, errors = symbols.solve_sizes(where, {"[1]": (3, 640), "[2]": (11,)})
+    assert errors == ["[2][0] `floordiv(H + 1, 2)` = 10, concrete 11"]
+    _, errors = symbols.solve_sizes({"N": [{"path": "[1]", "axis": 0, "expr": "N + 1"}]}, {"[1]": (5,)})
+    assert errors[0] == "N: no input axis of the form `N` or `c*N`"
 
 
 def test_no_symbols_fails_invariance_note(tmp_path):
@@ -137,6 +156,10 @@ def test_census_matches_verify_hlo(tmp_path):
     cc = s["phases"]["forward"]["checks"]["census_crosscheck"]
     assert cc["ok"]
     assert cc["verify_hlo"]["dot_general f32xf32->f32"]["count"] == 7
+    con = json.loads((tmp_path / "forward" / "census_concrete.json").read_text())
+    assert con["summary"]["dot_general f32xf32->f32"]["count"] == 7
+    assert con["flops"] == con["summary"]["dot_general f32xf32->f32"]["flops"] > 0
+    assert s["phases"]["forward"]["checks"]["census_concrete"] == {"ok": True}
 
 
 def test_exported_bin_roundtrips(tmp_path):

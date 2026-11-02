@@ -1,0 +1,126 @@
+---
+source: tests/deep/kernel_classes.rs
+expression: digest
+---
+{
+  "checks": 472,
+  "sharing": {
+    "activation": {
+      "components": {
+        "coverage_mean": 0.114759,
+        "coverage_total": 0.071886,
+        "items": 154,
+        "mean_jaccard": 0.010857,
+        "per_model": {
+          "bert": 12,
+          "centerpoint": 17,
+          "llama": 20,
+          "mobilenetv4_conv_m": 21,
+          "qwen3vl": 30,
+          "resnet50": 14,
+          "sdxl": 50
+        },
+        "shared": 10
+      },
+      "kernels": {
+        "coverage_mean": 0.146154,
+        "coverage_total": 0.084161,
+        "items": 186,
+        "mean_jaccard": 0.036357,
+        "per_model": {
+          "bert": 25,
+          "centerpoint": 22,
+          "llama": 29,
+          "mobilenetv4_conv_m": 15,
+          "qwen3vl": 77,
+          "resnet50": 9,
+          "sdxl": 58
+        },
+        "shared": 40
+      }
+    },
+    "all": {
+      "components": {
+        "coverage_mean": 0.114747,
+        "coverage_total": 0.071867,
+        "items": 164,
+        "mean_jaccard": 0.011288,
+        "per_model": {
+          "bert": 12,
+          "centerpoint": 24,
+          "llama": 22,
+          "mobilenetv4_conv_m": 21,
+          "qwen3vl": 31,
+          "resnet50": 14,
+          "sdxl": 51
+        },
+        "shared": 11
+      },
+      "kernels": {
+        "coverage_mean": 0.146141,
+        "coverage_total": 0.084139,
+        "items": 228,
+        "mean_jaccard": 0.053902,
+        "per_model": {
+          "bert": 29,
+          "centerpoint": 31,
+          "llama": 39,
+          "mobilenetv4_conv_m": 27,
+          "qwen3vl": 91,
+          "resnet50": 14,
+          "sdxl": 69
+        },
+        "shared": 54
+      }
+    },
+    "kernel_sharing_exceeds_component_sharing": true,
+    "models": [
+      "bert",
+      "centerpoint",
+      "llama",
+      "mobilenetv4_conv_m",
+      "qwen3vl",
+      "resnet50",
+      "sdxl"
+    ]
+  },
+  "summary": {
+    "call_fed": 34,
+    "classes": 228,
+    "cores": {
+      "convolution/float": 4,
+      "convolution/sint": 8,
+      "dot_general/float": 24,
+      "dot_general/sint": 11,
+      "dynamic_reduce_window/sint": 1,
+      "map": 149,
+      "reduce/bool": 4,
+      "reduce/float": 20,
+      "reduce/sint": 4,
+      "reduce_window/sint": 1,
+      "scatter/sint": 2
+    },
+    "kernels": 1629,
+    "kinds": {
+      "contraction": 47,
+      "map": 149,
+      "reduction": 30,
+      "scatter_reduce": 2
+    },
+    "low_rank": 41,
+    "members": 1629,
+    "models_per_class": {
+      "1": 174,
+      "2": 41,
+      "3": 9,
+      "4": 3,
+      "5": 1
+    },
+    "positional": 2,
+    "rows": 46729,
+    "schema": "cc.kernel_classes.summary/1",
+    "size_independent": 42,
+    "split_buckets": 0,
+    "split_by_group": 0
+  }
+}
