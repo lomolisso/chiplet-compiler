@@ -91,14 +91,19 @@ fn registry_dag_and_order() {
             "import",
             "components",
             "normalize",
-            "kernels"
+            "kernels",
+            "kernel_classes"
         ]
     );
     assert_eq!(
         g.to_dot(),
-        "digraph passes {\n  rankdir=LR;\n  node [shape=box];\n  \"components\";\n  \"export\";\n  \"hello_a\";\n  \"hello_b\";\n  \"hello_c\";\n  \"import\";\n  \"kernels\";\n  \"normalize\";\n  \
+        "digraph passes {\n  rankdir=LR;\n  node [shape=box];\n  \"components\";\n  \"export\";\n  \"hello_a\";\n  \"hello_b\";\n  \"hello_c\";\n  \"import\";\n  \"kernel_classes\";\n  \"kernels\";\n  \"normalize\";\n  \
+         \"components\" -> \"kernel_classes\" [label=\"components\"];\n  \
          \"components\" -> \"normalize\" [label=\"components\"];\n  \"export\" -> \"import\" [label=\"export\"];\n  \
+         \"export\" -> \"kernel_classes\" [label=\"export\"];\n  \
          \"hello_a\" -> \"hello_b\" [label=\"hello.a\"];\n  \"import\" -> \"components\" [label=\"import\"];\n  \
+         \"kernels\" -> \"kernel_classes\" [label=\"kernels\"];\n  \
+         \"normalize\" -> \"kernel_classes\" [label=\"normalize\"];\n  \
          \"normalize\" -> \"kernels\" [label=\"normalize\"];\n}\n"
     );
 }

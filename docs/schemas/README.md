@@ -11,6 +11,7 @@ JSON Schemas (draft 2020-12, generated with `schemars` from the Rust types) of e
 | `export_graph.schema.json` | `cc_passes::export::json::GraphFile` | `build/.export/out/export/<model>/<phase>/graph.json` |
 | `export_symbols.schema.json` | `cc_passes::export::json::SymbolsFile` | `build/.export/out/export/<model>/<phase>/symbols.json` |
 | `export_census.schema.json` | `cc_passes::export::json::CensusFile` | `build/.export/out/export/<model>/<phase>/census.json` |
+| `export_census_concrete.schema.json` | `cc_passes::export::json::CensusConcreteFile` | `build/.export/out/export/<model>/<phase>/census_concrete.json` |
 | `import_ir.schema.json` | `cc_ir::Module` | `build/.import/out/import/<model>/<phase>/ir.postcard` (postcard; the schema of its JSON form) |
 | `import_summary.schema.json` | `cc_passes::import::json::Summary` | `build/.import/out/import/<model>/<phase>/ir.postcard.summary.json` |
 | `import_op_inventory.schema.json` | `cc_passes::import::json::Inventory` | `build/.import/out/import/op_inventory.json` |
@@ -22,6 +23,15 @@ JSON Schemas (draft 2020-12, generated with `schemars` from the Rust types) of e
 | `normalize_summary.schema.json` | `cc_passes::normalize::json::NormalizedSummary` | `build/.normalize/out/normalize/components/<id>.postcard.summary.json` |
 | `normalize_ledger.schema.json` | `cc_passes::normalize::json::LedgerFile` | `build/.normalize/out/normalize/ledger/<id>.json` |
 | `normalize_rule_result.schema.json` | `cc_passes::normalize::json::RuleResult` | `build/.normalize/out/normalize/rules/<rule>.result` |
+| `kernels_partition.schema.json` | `cc_passes::kernels::json::KernelPartition` | `build/.kernels/out/kernels/components/<id>.json` |
+| `kernels_graphs.schema.json` | `cc_passes::kernels::json::KernelGraphs` | `build/.kernels/out/kernels/kernels/<id>.postcard` (postcard; the schema of its JSON form) |
+| `kernels_component_summary.schema.json` | `cc_passes::kernels::json::PartitionSummary` | `build/.kernels/out/kernels/kernels/<id>.postcard.summary.json` |
+| `kernels_summary.schema.json` | `cc_passes::kernels::json::KernelsSummary` | `build/.kernels/out/kernels/summary.json` |
+| `kernel_classes_class.schema.json` | `cc_passes::kernel_classes::json::ClassFile` | `build/.kernel_classes/out/kernel_classes/classes/<z>.json` |
+| `kernel_classes_instances.schema.json` | `cc_passes::kernel_classes::json::InstancesTable` | `build/.kernel_classes/out/kernel_classes/instances/<z>.json` |
+| `kernel_classes_certificates.schema.json` | `cc_passes::kernel_classes::json::CertificatesFile` | `build/.kernel_classes/out/kernel_classes/certificates/<z>.json` |
+| `kernel_classes_sharing.schema.json` | `cc_passes::kernel_classes::json::Sharing` | `build/.kernel_classes/out/kernel_classes/sharing.json` |
+| `kernel_classes_summary.schema.json` | `cc_passes::kernel_classes::json::ClassesSummary` | `build/.kernel_classes/out/kernel_classes/summary.json` |
 | `run_summary.schema.json` | `cc_pipeline::RunSummary` | `build/.pipeline/run-<ts>.json` |
 
 The smoke test `schemas::committed_schemas_are_current` regenerates them and fails on drift. After

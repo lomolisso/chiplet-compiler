@@ -1,0 +1,164 @@
+{
+  "$defs": {
+    "Certificate": {
+      "description": "One member's maps to the representative: `nodes[i]` is the member node that representative node `i`\nmaps to; `axes[c]`, `elems[e]` the member's class for representative class `c`, `e`. `local` are the\nmember's own local classes.",
+      "properties": {
+        "axes": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "elems": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "local": {
+          "$ref": "#/$defs/LocalClasses"
+        },
+        "member": {
+          "$ref": "#/$defs/MemberKey"
+        },
+        "nodes": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "member",
+        "nodes",
+        "axes",
+        "elems",
+        "local"
+      ],
+      "type": "object"
+    },
+    "Group": {
+      "description": "The reuse structure of a convolution's group count (design: kept in identity because it changes the\nreuse): 1, one group per input feature (depthwise), or anything between.",
+      "enum": [
+        "one",
+        "depthwise",
+        "grouped"
+      ],
+      "type": "string"
+    },
+    "LocalClasses": {
+      "description": "The local classes of a kernel graph: per node, per result, per axis its dim class; per node, per result\nits element class.",
+      "properties": {
+        "dims": {
+          "items": {
+            "items": {
+              "items": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "elems": {
+          "items": {
+            "items": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "nd": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ne": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "unit": {
+          "description": "Per dim class: it holds an axis that a broadcast expands (extent 1 in every instance).",
+          "items": {
+            "type": "boolean"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "dims",
+        "elems",
+        "nd",
+        "ne",
+        "unit"
+      ],
+      "type": "object"
+    },
+    "MemberKey": {
+      "description": "A member kernel: one kernel of one component, and the group kinds it is classified with (a kernel\nwhose instances differ in group kind is a member once per kind).",
+      "properties": {
+        "component": {
+          "type": "string"
+        },
+        "groups": {
+          "additionalProperties": false,
+          "patternProperties": {
+            "^\\d+$": {
+              "additionalProperties": {
+                "$ref": "#/$defs/Group"
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "kernel": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "component",
+        "kernel",
+        "groups"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`certificates/<z>.json`.",
+  "properties": {
+    "certificates": {
+      "items": {
+        "$ref": "#/$defs/Certificate"
+      },
+      "type": "array"
+    },
+    "id": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "certificates"
+  ],
+  "title": "CertificatesFile",
+  "type": "object"
+}

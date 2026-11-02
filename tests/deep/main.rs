@@ -7,6 +7,7 @@ mod components;
 mod env;
 mod export;
 mod import;
+mod kernel_classes;
 mod kernels;
 mod normalize;
 

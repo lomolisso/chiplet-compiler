@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`summary.json`.",
+  "properties": {
+    "call_fed": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "classes": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "cores": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Classes per core key.",
+      "type": "object"
+    },
+    "kernels": {
+      "description": "Kernels of the input.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "kinds": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Classes per kind.",
+      "type": "object"
+    },
+    "low_rank": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "members": {
+      "description": "Member kernels (kernels, plus one per extra group kind).",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "models_per_class": {
+      "additionalProperties": false,
+      "description": "Classes per number of models using them.",
+      "patternProperties": {
+        "^\\d+$": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "positional": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "rows": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "size_independent": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "split_buckets": {
+      "description": "WL buckets that held more than one class.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "split_by_group": {
+      "description": "Kernels classified more than once because their instances differ in group kind.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema",
+    "classes",
+    "members",
+    "kernels",
+    "split_by_group",
+    "rows",
+    "kinds",
+    "cores",
+    "size_independent",
+    "low_rank",
+    "call_fed",
+    "positional",
+    "split_buckets",
+    "models_per_class"
+  ],
+  "title": "ClassesSummary",
+  "type": "object"
+}

@@ -181,7 +181,9 @@ memory_gb = 2
 timeout_min = 30
 
 [passes.kernel_classes]
-wl_iterations = 3
+wl_max_rounds = 64               # upper bound on WL refinement rounds (stops earlier when stable)
+vf2_budget = 200000000           # candidate pairs one VF2 search may test; over it the pass fails
+views = true                     # write views/sharing.md and views/classes.md
 [passes.kernel_classes.resources]
 threads = 16
 memory_gb = 4
