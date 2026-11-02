@@ -247,10 +247,21 @@ pub fn jobs(
                 let (mut scripts, mut lec) = (Vec::new(), Vec::new());
                 match cfg.tool {
                     Tool::Dc => {
-                        scripts.push((
-                            "syn.tcl".into(),
-                            eda::scripts::dc(&preamble(EdaTool::Dc), kit, chunk, period, &alib),
-                        ));
+                        // One session per design: a session that synthesized one design gives the next
+                        // a different result (a 32-bit divider after a 16-bit one: 15 614 against
+                        // 9 340 µm²), so every primitive starts from a fresh tool.
+                        for d in chunk {
+                            scripts.push((
+                                format!("syn_{}.tcl", d.id),
+                                eda::scripts::dc(
+                                    &preamble(EdaTool::Dc),
+                                    kit,
+                                    std::slice::from_ref(d),
+                                    period,
+                                    &alib,
+                                ),
+                            ));
+                        }
                         lec.push((
                             "lec.tcl".into(),
                             eda::scripts::formality(
@@ -263,10 +274,17 @@ pub fn jobs(
                         ));
                     }
                     Tool::Genus => {
-                        scripts.push((
-                            "syn.tcl".into(),
-                            eda::scripts::genus(&preamble(EdaTool::Genus), kit, chunk, period),
-                        ));
+                        for d in chunk {
+                            scripts.push((
+                                format!("syn_{}.tcl", d.id),
+                                eda::scripts::genus(
+                                    &preamble(EdaTool::Genus),
+                                    kit,
+                                    std::slice::from_ref(d),
+                                    period,
+                                ),
+                            ));
+                        }
                         for d in chunk {
                             lec.push((
                                 format!("{}.do", d.id),
@@ -424,29 +442,36 @@ fn run_job(
             write(&j.dir.join(f), t)?;
         }
         match cfg.tool {
-            Tool::Dc => {
-                let o = eda().run(
-                    &Invocation::new("dc_shell", EdaTool::Dc.program())
-                        .args(EdaTool::Dc.batch_args("syn.tcl"))
-                        .cwd(&j.dir),
-                )?;
-                keep(&o, "synth.log")?;
-            }
-            Tool::Genus => {
-                let o = eda().run(
-                    &Invocation::new("genus", EdaTool::Genus.program())
-                        .args([
+            Tool::Dc | Tool::Genus => {
+                // Each design's session log, appended in order (the markers split it again).
+                let mut log = String::new();
+                for d in &j.designs {
+                    let script = format!("syn_{}.tcl", d.id);
+                    let inv = if cfg.tool == Tool::Dc {
+                        Invocation::new("dc_shell", EdaTool::Dc.program())
+                            .args(EdaTool::Dc.batch_args(&script))
+                    } else {
+                        Invocation::new("genus", EdaTool::Genus.program()).args([
                             "-batch",
                             "-no_gui",
                             "-disable_user_startup",
                             "-log",
-                            "genus",
+                            &format!("genus_{}", d.id),
                             "-files",
-                            "syn.tcl",
+                            &script,
                         ])
-                        .cwd(&j.dir),
-                )?;
-                keep(&o, "synth.log")?;
+                    };
+                    let o = eda().run(&inv.cwd(&j.dir))?;
+                    if let Some(k) = &o.killed {
+                        return Err(PassError::failed(format!(
+                            "{}: {} killed ({k:?})",
+                            j.dir.display(),
+                            d.id
+                        )));
+                    }
+                    log.push_str(&std::fs::read_to_string(&o.stdout).unwrap_or_default());
+                }
+                write(&j.dir.join("synth.log"), &log)?;
             }
             Tool::Yosys => {
                 let lib_dir = kit.liberty.parent().unwrap_or(Path::new("/"));

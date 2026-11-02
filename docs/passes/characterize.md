@@ -86,7 +86,9 @@
       accumulators) at the target's period in the library's time unit (ns for Nangate45, ps for ASAP7),
       input and output delays 0, every input driven by `driving_cell`, every output loaded with
       `load_fanout` times that cell's input capacitance (read from the Liberty file).
-      - Design Compiler: `compile_ultra -no_autoungroup` (hierarchy kept, so a split multiplier reports
+      - Design Compiler, one session per design (a session that synthesized one design gives the next
+        a different netlist: a 32-bit divider after a 16-bit one came out at 15 614 instead of 9 340 µm²,
+        and only the second one was provable): `compile_ultra -no_autoungroup` (hierarchy kept, so a split multiplier reports
         its pieces) with DesignWare parts kept as blocks (`compile_ultra_ungroup_dw false`), and
         `alib_library_analysis_path` on `alib/`. The ASAP7 group libraries are merged
         into one by doctor because DC's library analysis needs one library with inverters and flops: on
@@ -99,7 +101,7 @@
         hours), and strategies s2 and s3 after 5 minutes each; with the DesignWare divider kept as a
         block Formality proves it in 8 s. Keeping the blocks costs DC the optimization across their
         boundaries.
-      - Genus: `syn_generic`, `syn_map`, `syn_opt`; Conformal LEC (`-XL`, `analyze datapath`) per design.
+      - Genus, one session per design: `syn_generic`, `syn_map`, `syn_opt`; Conformal LEC (`-XL`, `analyze datapath`) per design.
       - Yosys: `synth -flatten`, `dfflibmap`, ABC mapping at the period (`map -D`, then `stime -p`),
         `stat -liberty`; then Yosys' equivalence flow between the RTL and the netlist (`equiv_make` pairs
         signals by name, registers included; `equiv_simple -seq 2`, `equiv_induct -seq 2`,

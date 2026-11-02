@@ -105,7 +105,13 @@ impl ToolRunner for Tools {
                 out.push_str("@@done\n");
             }
             "dc_shell" => {
-                let script = std::fs::read_to_string(cwd.join("syn.tcl")).unwrap();
+                let f = inv
+                    .args
+                    .iter()
+                    .position(|a| a == "-f")
+                    .map(|i| inv.args[i + 1].clone())
+                    .unwrap();
+                let script = std::fs::read_to_string(cwd.join(f)).unwrap();
                 for id in ids(&script) {
                     let a = area_of(&id);
                     let w = |f: &str, t: String| std::fs::write(cwd.join(format!("{id}.{f}")), t).unwrap();
