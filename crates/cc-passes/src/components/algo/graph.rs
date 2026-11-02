@@ -1,7 +1,8 @@
 //! Abstract graphs of instances (docs/passes/components.md §4).
 //!
 //! An instance graph has one node per decomposition argument (`input k`, dimension arguments excluded),
-//! per compute op of the body (nested regions included, size computation excluded), per region argument,
+//! per compute op of the body (nested regions included, size computation excluded; a custom call's reducer
+//! computation is the call's region 0, one copy per call site), per region argument,
 //! per dimension value entering compute (`size_in`) and, for an anon region, per external input and per
 //! exported value. Edges carry (result index, port); shape operands are not edges. In the abstract form
 //! every dim except the literal 1 is a class variable, every element type is (family, class), the
@@ -11,7 +12,7 @@ use std::collections::BTreeMap;
 
 use cc_ir::absgraph::{EdgeEnd, Graph, PortLabel};
 use cc_ir::{
-    Attr, Def, Dim, Elem, FuncId, Module, Op, OpId, Owner, RegionId, Scalar, SymExpr, Type, ValueId,
+    Attr, Def, Dim, Elem, FuncId, FuncKind, Module, Op, OpId, Owner, RegionId, Scalar, SymExpr, Type, ValueId,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -32,6 +33,10 @@ pub enum NodeRef {
     SizeIn { op: u32, port: u32 },
     /// An exported value of an anon region.
     Out(u32),
+    /// Op `op` of the reducer computation inlined at call site `site` (one copy per call site).
+    CalleeOp { site: u32, op: u32 },
+    /// Argument `value` of the reducer computation inlined at call site `site`.
+    CalleeArg { site: u32, value: u32 },
 }
 
 /// What a node is.
@@ -278,6 +283,9 @@ pub fn split_sized(a: &Attr) -> Option<(SizedForm, Vec<i64>)> {
 /// Attributes of a composite call that describe the instance, not the graph (kept in its record).
 pub const CALL_ATTRS: [&str; 4] = ["composite_attributes", "decomposition", "name", "version"];
 
+/// The attribute naming a custom call's reducer computation, dropped from the label once it is inlined.
+pub const REDUCER_ATTR: &str = "called_computations";
+
 /// Abstract attributes and parameters of an op (the attribute map in key order).
 pub fn abstract_attrs(op: &Op) -> (BTreeMap<String, AAttr>, Vec<Param>) {
     let mut attrs = BTreeMap::new();
@@ -504,7 +512,11 @@ pub fn build(f: &Facts<'_>, ops: &[OpId], decomposition: Option<FuncId>) -> Resu
     let graph_ops: Vec<OpId> = ops.iter().copied().filter(|&o| f.in_graph(o)).collect();
     for &o in &graph_ops {
         let op = m.op(o);
-        let (attrs, params) = abstract_attrs(op);
+        let (mut attrs, params) = abstract_attrs(op);
+        // An inlined reducer is the label; its symbol name is not.
+        if reducer(m, op).is_some() {
+            attrs.remove(REDUCER_ATTR);
+        }
         let types = op
             .results
             .iter()
@@ -549,6 +561,9 @@ pub fn build(f: &Facts<'_>, ops: &[OpId], decomposition: Option<FuncId>) -> Resu
                     },
                 );
             }
+        }
+        if let Some(c) = reducer(m, op) {
+            inline_reducer(f, &mut b, n, o, c)?;
         }
     }
     // Edges, `size_in` and anon inputs.
@@ -658,6 +673,117 @@ pub fn build(f: &Facts<'_>, ops: &[OpId], decomposition: Option<FuncId>) -> Resu
     Ok(b)
 }
 
+/// The reducer computation of a custom call (`called_computations`; `dynamic_reduce_window`).
+pub fn reducer(m: &Module, op: &Op) -> Option<FuncId> {
+    op.callee
+        .filter(|&c| op.name == "stablehlo.custom_call" && m.func(c).kind == FuncKind::Computation)
+}
+
+/// Inline a custom call's reducer computation as region 0 of its node `site`, one copy per call site.
+/// The spec defines `dynamic_reduce_window` with that body as a region, as `reduce_window` has one (stablehlo
+/// `docs/spec.md`, "dynamic_reduce_window"); JAX passes it as a called computation. Its `func.return` is the
+/// region terminator `stablehlo.return`.
+fn inline_reducer(f: &Facts<'_>, b: &mut Built, site: u32, o: OpId, c: FuncId) -> Result<(), String> {
+    let m = f.m;
+    let func = m.func(c);
+    let body = m.region(func.body);
+    let mut val: BTreeMap<ValueId, (u32, u32)> = BTreeMap::new();
+    for (ai, &a) in body.args.iter().enumerate() {
+        let t = tensor(m, a)?.clone();
+        let an = b.node(
+            Kind::RegionArg {
+                region: 0,
+                index: ai as u32,
+            },
+            BTreeMap::new(),
+            vec![t],
+            Vec::new(),
+            NodeRef::CalleeArg {
+                site: o.0,
+                value: a.0,
+            },
+            None,
+        );
+        b.graph.add_edge(
+            site,
+            an,
+            EdgeEnd {
+                res: 0,
+                port: PortLabel::Region {
+                    region: 0,
+                    index: ai as u32,
+                },
+            },
+        );
+        val.insert(a, (an, 0));
+    }
+    for (k, &bo) in body.ops.iter().enumerate() {
+        let op = m.op(bo);
+        if !op.regions.is_empty() || op.callee.is_some() || !op.dim_as_data.is_empty() {
+            return Err(format!(
+                "reducer `{}` of op {}: op {} has a region, a call or a size operand",
+                func.name, o.0, bo.0
+            ));
+        }
+        let last = k + 1 == body.ops.len();
+        let name = if last && op.name == "func.return" {
+            "stablehlo.return".to_string()
+        } else {
+            op.name.clone()
+        };
+        let (attrs, params) = abstract_attrs(op);
+        let types = op
+            .results
+            .iter()
+            .map(|&v| tensor(m, v).cloned())
+            .collect::<Result<Vec<_>, _>>()?;
+        let n = b.node(
+            Kind::Op {
+                name,
+                target: op.target.clone(),
+            },
+            attrs,
+            types,
+            params,
+            NodeRef::CalleeOp { site: o.0, op: bo.0 },
+            None,
+        );
+        for (p, &v) in op.operands.iter().enumerate() {
+            if is_shape_port(m, op, p) {
+                continue;
+            }
+            let &(src, res) = val.get(&v).ok_or_else(|| {
+                format!(
+                    "reducer `{}` of op {}: op {} port {p} reads a value from outside",
+                    func.name, o.0, bo.0
+                )
+            })?;
+            b.graph.add_edge(
+                src,
+                n,
+                EdgeEnd {
+                    res,
+                    port: port_label(m, op, p),
+                },
+            );
+        }
+        for (ri, &r) in op.results.iter().enumerate() {
+            val.insert(r, (n, ri as u32));
+        }
+        if last {
+            b.graph.add_edge(
+                n,
+                site,
+                EdgeEnd {
+                    res: 0,
+                    port: PortLabel::Yield { region: 0 },
+                },
+            );
+        }
+    }
+    Ok(())
+}
+
 /// A node instantiated with its bindings: what the instance's node must be.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Concrete {
@@ -744,4 +870,171 @@ pub fn instantiate(n: &ANode, dims: &[Dim], elems: &[Elem], params: &[Param]) ->
         child: n.child.clone(),
         size,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cc_ir::{Func, Provenance, Region, TensorType, Value};
+
+    fn ty(shape: &[u64], elem: &str) -> Type {
+        Type::Tensor(TensorType {
+            shape: shape.iter().map(|&d| Dim::Const(d)).collect(),
+            elem: Elem::parse(elem).unwrap(),
+        })
+    }
+
+    fn op(name: &str, target: Option<&str>, operands: &[u32], results: &[u32], parent: u32) -> Op {
+        Op {
+            name: name.into(),
+            target: target.map(str::to_string),
+            operands: operands.iter().map(|&v| ValueId(v)).collect(),
+            results: results.iter().map(|&v| ValueId(v)).collect(),
+            attrs: Default::default(),
+            regions: Vec::new(),
+            callee: None,
+            parent: RegionId(parent),
+            size: false,
+            dim_as_data: Vec::new(),
+            prov: Provenance {
+                func: "main".into(),
+                op: 0,
+                loc: 0,
+                inlined_from: Vec::new(),
+            },
+        }
+    }
+
+    /// `main(x, init, 5 window operands) = dynamic_reduce_window(…)` with the reducer `body(a, b) = <reducer>(a, b)`.
+    fn module(reducer: &str) -> Module {
+        let arg = |r: u32, i: u32, t: Type| Value {
+            ty: t,
+            def: Def::Arg {
+                region: RegionId(r),
+                index: i,
+            },
+            dim_var: None,
+            src: 0,
+        };
+        let res = |o: u32, t: Type| Value {
+            ty: t,
+            def: Def::Result {
+                op: OpId(o),
+                index: 0,
+            },
+            dim_var: None,
+            src: 0,
+        };
+        let mut values = vec![arg(0, 0, ty(&[8], "f32")), arg(0, 1, ty(&[], "f32"))];
+        values.extend((2..7).map(|i| arg(0, i, ty(&[1], "i64"))));
+        values.push(arg(1, 0, ty(&[], "f32")));
+        values.push(arg(1, 1, ty(&[], "f32")));
+        values.push(res(0, ty(&[], "f32")));
+        values.push(res(2, ty(&[8], "f32")));
+        let mut call = op(
+            "stablehlo.custom_call",
+            Some("stablehlo.dynamic_reduce_window"),
+            &[0, 1, 2, 3, 4, 5, 6],
+            &[10],
+            0,
+        );
+        call.callee = Some(FuncId(1));
+        Module {
+            schema: String::new(),
+            model: "t".into(),
+            phase: "p".into(),
+            config: "reduced".into(),
+            symbols: Vec::new(),
+            constraints: Vec::new(),
+            entry: FuncId(0),
+            funcs: vec![
+                Func {
+                    name: "main".into(),
+                    kind: FuncKind::Entry,
+                    body: RegionId(0),
+                    results: vec![ty(&[8], "f32")],
+                },
+                Func {
+                    name: "reducer".into(),
+                    kind: FuncKind::Computation,
+                    body: RegionId(1),
+                    results: vec![ty(&[], "f32")],
+                },
+            ],
+            regions: vec![
+                Region {
+                    owner: Owner::Func(FuncId(0)),
+                    args: (0..7).map(ValueId).collect(),
+                    ops: vec![OpId(2), OpId(3)],
+                },
+                Region {
+                    owner: Owner::Func(FuncId(1)),
+                    args: vec![ValueId(7), ValueId(8)],
+                    ops: vec![OpId(0), OpId(1)],
+                },
+            ],
+            ops: vec![
+                op(reducer, None, &[7, 8], &[9], 1),
+                op("func.return", None, &[9], &[], 1),
+                call,
+                op("func.return", None, &[10], &[], 0),
+            ],
+            values,
+            locs: vec![String::new()],
+        }
+    }
+
+    fn graph(reducer: &str) -> Graph<ANode> {
+        let m = module(reducer);
+        let f = Facts::new(&m);
+        build(&f, &[OpId(2), OpId(3)], Some(FuncId(0))).unwrap().graph
+    }
+
+    #[test]
+    fn a_reducer_computation_is_region_zero_of_its_call() {
+        let g = graph("stablehlo.add");
+        let site = g
+            .nodes
+            .iter()
+            .position(|n| matches!(&n.kind, Kind::Op { target: Some(t), .. } if t == "stablehlo.dynamic_reduce_window"))
+            .unwrap() as u32;
+        let edges = |u: u32| {
+            g.out[u as usize]
+                .iter()
+                .flat_map(|(v, l)| l.iter().map(move |e| (*v, e.port)))
+        };
+        let args: Vec<u32> = edges(site)
+            .filter(|(_, p)| matches!(p, PortLabel::Region { region: 0, .. }))
+            .map(|(v, _)| v)
+            .collect();
+        assert_eq!(args.len(), 2);
+        assert!(
+            args.iter()
+                .all(|&a| matches!(g.nodes[a as usize].kind, Kind::RegionArg { region: 0, .. }))
+        );
+        let ret = g
+            .nodes
+            .iter()
+            .position(|n| matches!(&n.kind, Kind::Op { name, .. } if name == "stablehlo.return"))
+            .unwrap() as u32;
+        assert!(edges(ret).any(|(v, p)| v == site && p == PortLabel::Yield { region: 0 }));
+        // The entry's own terminator stays `func.return`, the only one (the component interface).
+        let returns = g
+            .nodes
+            .iter()
+            .filter(|n| matches!(&n.kind, Kind::Op { name, .. } if name == "func.return"))
+            .count();
+        assert_eq!(returns, 1);
+    }
+
+    #[test]
+    fn different_reducers_give_different_graphs() {
+        let keys = |g: &Graph<ANode>| {
+            let mut k: Vec<Vec<u8>> = g.nodes.iter().map(ANode::key).collect();
+            k.sort();
+            k
+        };
+        assert_eq!(keys(&graph("stablehlo.add")), keys(&graph("stablehlo.add")));
+        assert_ne!(keys(&graph("stablehlo.add")), keys(&graph("stablehlo.maximum")));
+    }
 }

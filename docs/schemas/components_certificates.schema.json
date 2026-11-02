@@ -76,6 +76,64 @@
             "out"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Op `op` of the reducer computation inlined at call site `site` (one copy per call site).",
+          "properties": {
+            "callee_op": {
+              "properties": {
+                "op": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "site": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "site",
+                "op"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "callee_op"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Argument `value` of the reducer computation inlined at call site `site`.",
+          "properties": {
+            "callee_arg": {
+              "properties": {
+                "site": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "value": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "site",
+                "value"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "callee_arg"
+          ],
+          "type": "object"
         }
       ]
     }

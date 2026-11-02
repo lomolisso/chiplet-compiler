@@ -665,7 +665,7 @@ expression: digest
       "class": "reduce",
       "core": "dynamic_reduce_window/sint",
       "dataflow": null,
-      "id": "z5e466b5b6eded565",
+      "id": "z59e729de19d07ef3",
       "reason": "reduction",
       "route": "datapath"
     },
