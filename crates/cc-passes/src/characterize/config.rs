@@ -34,6 +34,12 @@ pub struct CharacterizeConfig {
     pub driving_cell: BTreeMap<String, String>,
     /// Every output drives this many inputs of the driving cell.
     pub load_fanout: f64,
+    /// Wall-clock limit of one design's equivalence check (Formality `verification_timeout_limit`), per
+    /// strategy, in minutes.
+    pub lec_timeout_min: u32,
+    /// Formality's alternate strategies, tried in order while a design is not proven
+    /// (`verification_alternate_strategy_names` lists them in the recommended order).
+    pub lec_strategies: Vec<String>,
     /// Designs per tool session.
     pub batch: usize,
     /// Cores per DC / Genus session.
@@ -90,6 +96,8 @@ impl Default for CharacterizeConfig {
             ]
             .into(),
             load_fanout: 4.0,
+            lec_timeout_min: 10,
+            lec_strategies: vec!["s2".into(), "s3".into(), "s1".into()],
             batch: 24,
             cores: 2,
             views: true,

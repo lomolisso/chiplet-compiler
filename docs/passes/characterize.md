@@ -76,10 +76,12 @@
       on its own `n x n` unsigned instance and sums them shifted: the low w bits of a product are the same
       for signed and unsigned operands, so one split serves both families.
    3. *Jobs.* The designs go in batches of `batch`, one job per (kit, target, batch): a directory
-      `eda/<kit>-<target>-<hash>/` named by the hash of its scripts, RTL, libraries and image, with the
-      RTL copied in. A finished job (`job.done`) is reused by every later run, so an interrupted run
-      resumes and a config change reruns only the jobs it touches. Jobs run `threads` at a time; each EDA
-      call also holds one of `tools.eda.max_licenses`. Each session gets `memory_gb / threads` and `cores`.
+      `eda/<kit>-<target>-<hash>/` named by the hash of its synthesis scripts, RTL, libraries and image,
+      with the RTL copied in. `synth.done` marks a finished synthesis and `lec.done` a finished
+      equivalence run with the hash of its scripts: a later run reuses both, a changed equivalence
+      script reruns only the check, so an interrupted run resumes and a config change reruns only what it
+      touches. Jobs run `threads` at a time; each EDA call also holds one of `tools.eda.max_licenses`.
+      Each session gets `memory_gb / threads` and `cores`.
    4. *Synthesis* (`eda/scripts.rs`), every design: a virtual clock (the `clk` port for registers and
       accumulators) at the target's period in the library's time unit (ns for Nangate45, ps for ASAP7),
       input and output delays 0, every input driven by `driving_cell`, every output loaded with
@@ -89,7 +91,10 @@
         into one by doctor because DC's library analysis needs one library with inverters and flops: on
         the five group `.db` files it leaves placeholders and repeats the analysis (about 100 s) on every
         compile. Formality then checks RTL against netlist with the SVF, one design after the other in
-        one session.
+        one session, each verification stopped after `lec_timeout_min`; a design not proven is verified
+        again with each of `lec_strategies` (Formality's alternate strategies,
+        `verification_alternate_strategy`), and fails if none proves it. The default strategy alone
+        left 32-bit integer dividers unverified after an hour (Formality's own limit is 36 hours).
       - Genus: `syn_generic`, `syn_map`, `syn_opt`; Conformal LEC (`-XL`, `analyze datapath`) per design.
       - Yosys: `synth -flatten`, `dfflibmap`, ABC mapping at the period (`map -D`, then `stime -p`),
         `stat -liberty`; then Yosys' equivalence flow between the RTL and the netlist (`equiv_make` pairs

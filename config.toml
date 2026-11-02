@@ -226,6 +226,8 @@ register_widths = [1, 2, 4, 8, 16, 32]
 split_multipliers = [[8, 4], [16, 8], [32, 8], [32, 16]]   # (w, n): a w-bit multiply from n-bit pieces
 driving_cell = { nangate45 = "BUF_X1", asap7 = "BUFx2_ASAP7_75t_R" }   # drives every input
 load_fanout = 4                  # every output drives this many driving-cell inputs
+lec_timeout_min = 10             # Formality's limit per design and strategy (verification_timeout_limit)
+lec_strategies = ["s2", "s3", "s1"]   # alternate strategies tried in order while a design is not proven
 batch = 24                       # designs per tool session (a job directory, reused by a rerun)
 cores = 2                        # cores per DC / Genus session
 views = true                     # write views/library.md

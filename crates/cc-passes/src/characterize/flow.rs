@@ -211,15 +211,22 @@ pub struct Job {
     pub target: String,
     pub period_ps: f64,
     pub designs: Vec<Design>,
+    /// Named by the hash of the synthesis inputs (scripts, RTL, libraries, image).
     pub dir: PathBuf,
-    /// File name → text of every script.
-    pub scripts: Vec<(String, String)>,
+    /// File name → text of the synthesis scripts.
+    pub synth: Vec<(String, String)>,
+    /// File name → text of the equivalence scripts; `lec.done` holds `lec_key`, so a changed check
+    /// reruns without synthesizing again.
+    pub lec: Vec<(String, String)>,
+    pub lec_key: String,
 }
 
-/// What a finished job directory records.
+/// What a finished step records.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Done {
     seconds: f64,
+    #[serde(default)]
+    key: String,
 }
 
 /// The jobs of a run, in a fixed order (kit, target, batch).
@@ -237,16 +244,22 @@ pub fn jobs(
         for target in &cfg.targets {
             let period = cfg.period_ps(&kit.name, target).map_err(PassError::failed)?;
             for chunk in designs.chunks(cfg.batch) {
-                let mut scripts = Vec::new();
+                let (mut scripts, mut lec) = (Vec::new(), Vec::new());
                 match cfg.tool {
                     Tool::Dc => {
                         scripts.push((
                             "syn.tcl".into(),
                             eda::scripts::dc(&preamble(EdaTool::Dc), kit, chunk, period, &alib),
                         ));
-                        scripts.push((
+                        lec.push((
                             "lec.tcl".into(),
-                            eda::scripts::formality(&preamble(EdaTool::Fm), kit, chunk),
+                            eda::scripts::formality(
+                                &preamble(EdaTool::Fm),
+                                kit,
+                                chunk,
+                                cfg.lec_timeout_min,
+                                &cfg.lec_strategies,
+                            ),
                         ));
                     }
                     Tool::Genus => {
@@ -255,7 +268,7 @@ pub fn jobs(
                             eda::scripts::genus(&preamble(EdaTool::Genus), kit, chunk, period),
                         ));
                         for d in chunk {
-                            scripts.push((
+                            lec.push((
                                 format!("{}.do", d.id),
                                 eda::scripts::conformal(&preamble(EdaTool::Lec), kit, d),
                             ));
@@ -290,13 +303,19 @@ pub fn jobs(
                     .path()
                     .join("eda")
                     .join(format!("{}-{target}-{}", kit.name, short(&key)));
+                let mut lec_key = String::new();
+                for (f, t) in &lec {
+                    lec_key.push_str(&format!("{f}\n{t}\n"));
+                }
                 out.push(Job {
                     kit: ki,
                     target: target.clone(),
                     period_ps: period,
                     designs: chunk.to_vec(),
                     dir,
-                    scripts,
+                    synth: scripts,
+                    lec_key: short(&lec_key),
+                    lec,
                 });
             }
         }
@@ -360,21 +379,18 @@ fn run_job(
     rtl_dir: &Path,
     caps: &Caps,
 ) -> Result<Option<f64>, PassError> {
-    let done = j.dir.join("job.done");
-    if done.is_file() {
+    let synth_done = j.dir.join("synth.done");
+    let lec_done = j.dir.join("lec.done");
+    let lec_current = std::fs::read_to_string(&lec_done)
+        .ok()
+        .and_then(|t| serde_json::from_str::<Done>(&t).ok())
+        .is_some_and(|d| d.key == j.lec_key);
+    let need_synth = !synth_done.is_file();
+    let need_lec = !j.lec.is_empty() && (need_synth || !lec_current);
+    if !need_synth && !need_lec {
         return Ok(None);
     }
     let t0 = Instant::now();
-    std::fs::create_dir_all(j.dir.join("rtl")).map_err(|e| PassError::failed(e.to_string()))?;
-    for d in &j.designs {
-        for f in &d.files {
-            std::fs::copy(rtl_dir.join(f), j.dir.join("rtl").join(f))
-                .map_err(|e| PassError::failed(format!("{f}: {e}")))?;
-        }
-    }
-    for (f, t) in &j.scripts {
-        write(&j.dir.join(f), t)?;
-    }
     let eda = || ctx.eda().with_caps(*caps);
     let keep = |o: &cc_core::runner::ToolOutcome, name: &str| -> Result<(), PassError> {
         if let Some(k) = &o.killed {
@@ -386,76 +402,112 @@ fn run_job(
         std::fs::copy(&o.stdout, j.dir.join(name)).map_err(|e| PassError::failed(e.to_string()))?;
         Ok(())
     };
-    match cfg.tool {
-        Tool::Dc => {
-            let o = eda().run(
-                &Invocation::new("dc_shell", EdaTool::Dc.program())
-                    .args(EdaTool::Dc.batch_args("syn.tcl"))
-                    .cwd(&j.dir),
-            )?;
-            keep(&o, "synth.log")?;
-            let o = eda().run(
-                &Invocation::new("fm_shell", EdaTool::Fm.program())
-                    .args(["-work_path", "fm"])
-                    .args(EdaTool::Fm.batch_args("lec.tcl"))
-                    .cwd(&j.dir),
-            )?;
-            keep(&o, "lec.log")?;
-        }
-        Tool::Genus => {
-            let o = eda().run(
-                &Invocation::new("genus", EdaTool::Genus.program())
-                    .args([
-                        "-batch",
-                        "-no_gui",
-                        "-disable_user_startup",
-                        "-log",
-                        "genus",
-                        "-files",
-                        "syn.tcl",
-                    ])
-                    .cwd(&j.dir),
-            )?;
-            keep(&o, "synth.log")?;
-            for d in &j.designs {
-                let o = eda().run(
-                    &Invocation::new("lec", EdaTool::Lec.program())
-                        .args(EdaTool::Lec.batch_args(&format!("{}.do", d.id)))
-                        .cwd(&j.dir),
-                )?;
-                if let Some(k) = &o.killed {
-                    return Err(PassError::failed(format!(
-                        "{}: lec killed ({k:?})",
-                        j.dir.display()
-                    )));
-                }
+    let done = |path: &Path, key: &str, t: Instant| {
+        write(
+            path,
+            &serde_json::to_string(&Done {
+                seconds: t.elapsed().as_secs_f64(),
+                key: key.to_string(),
+            })
+            .unwrap_or_default(),
+        )
+    };
+    if need_synth {
+        std::fs::create_dir_all(j.dir.join("rtl")).map_err(|e| PassError::failed(e.to_string()))?;
+        for d in &j.designs {
+            for f in &d.files {
+                std::fs::copy(rtl_dir.join(f), j.dir.join("rtl").join(f))
+                    .map_err(|e| PassError::failed(format!("{f}: {e}")))?;
             }
         }
-        Tool::Yosys => {
-            let lib_dir = kit.liberty.parent().unwrap_or(Path::new("/"));
-            let inv = Invocation::new("yosys", "bash")
-                .arg("run.sh")
-                .cwd("/work")
-                .mount(Mount {
-                    src: j.dir.clone(),
-                    dst: "/work".into(),
-                    readonly: false,
-                })
-                .mount(Mount {
-                    src: lib_dir.to_path_buf(),
-                    dst: "/kit".into(),
-                    readonly: true,
-                });
-            let o = ctx.docker().with_caps(Caps { cpus: 1.0, ..*caps }).run(&inv)?;
-            keep(&o, "synth.log")?;
+        for (f, t) in &j.synth {
+            write(&j.dir.join(f), t)?;
         }
+        match cfg.tool {
+            Tool::Dc => {
+                let o = eda().run(
+                    &Invocation::new("dc_shell", EdaTool::Dc.program())
+                        .args(EdaTool::Dc.batch_args("syn.tcl"))
+                        .cwd(&j.dir),
+                )?;
+                keep(&o, "synth.log")?;
+            }
+            Tool::Genus => {
+                let o = eda().run(
+                    &Invocation::new("genus", EdaTool::Genus.program())
+                        .args([
+                            "-batch",
+                            "-no_gui",
+                            "-disable_user_startup",
+                            "-log",
+                            "genus",
+                            "-files",
+                            "syn.tcl",
+                        ])
+                        .cwd(&j.dir),
+                )?;
+                keep(&o, "synth.log")?;
+            }
+            Tool::Yosys => {
+                let lib_dir = kit.liberty.parent().unwrap_or(Path::new("/"));
+                let inv = Invocation::new("yosys", "bash")
+                    .arg("run.sh")
+                    .cwd("/work")
+                    .mount(Mount {
+                        src: j.dir.clone(),
+                        dst: "/work".into(),
+                        readonly: false,
+                    })
+                    .mount(Mount {
+                        src: lib_dir.to_path_buf(),
+                        dst: "/kit".into(),
+                        readonly: true,
+                    });
+                let o = ctx.docker().with_caps(Caps { cpus: 1.0, ..*caps }).run(&inv)?;
+                keep(&o, "synth.log")?;
+            }
+        }
+        done(&synth_done, "", t0)?;
     }
-    let secs = t0.elapsed().as_secs_f64();
-    write(
-        &done,
-        &serde_json::to_string(&Done { seconds: secs }).unwrap_or_default(),
-    )?;
-    Ok(Some(secs))
+    if need_lec {
+        let t1 = Instant::now();
+        let _ = std::fs::remove_file(&lec_done);
+        for d in &j.designs {
+            let _ = std::fs::remove_file(j.dir.join(format!("{}.lec.rpt", d.id)));
+        }
+        for (f, t) in &j.lec {
+            write(&j.dir.join(f), t)?;
+        }
+        match cfg.tool {
+            Tool::Dc => {
+                let o = eda().run(
+                    &Invocation::new("fm_shell", EdaTool::Fm.program())
+                        .args(["-work_path", "fm"])
+                        .args(EdaTool::Fm.batch_args("lec.tcl"))
+                        .cwd(&j.dir),
+                )?;
+                keep(&o, "lec.log")?;
+            }
+            Tool::Genus => {
+                for d in &j.designs {
+                    let o = eda().run(
+                        &Invocation::new("lec", EdaTool::Lec.program())
+                            .args(EdaTool::Lec.batch_args(&format!("{}.do", d.id)))
+                            .cwd(&j.dir),
+                    )?;
+                    if let Some(k) = &o.killed {
+                        return Err(PassError::failed(format!(
+                            "{}: lec killed ({k:?})",
+                            j.dir.display()
+                        )));
+                    }
+                }
+            }
+            Tool::Yosys => {}
+        }
+        done(&lec_done, &j.lec_key, t1)?;
+    }
+    Ok(Some(t0.elapsed().as_secs_f64()))
 }
 
 /// A design's problems found while reading its job (empty: the row stands).
