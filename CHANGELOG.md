@@ -25,6 +25,7 @@ All notable changes to this project are listed here. The format follows
 
 - JSON floats are parsed exactly (`serde_json` `float_roundtrip`); `import` read some float attributes one ulp off.
 - `components` inlines a custom call's reducer computation as its region, so `dynamic_reduce_window` kernels carry their combiner and classes tell reducers apart.
+- `scripts/on-build-host` sources the host's `/etc/profile`, so `eda-run` finds Lmod's modules: the licensed tools did not start through the wrapper.
 
 ## [0.3.0] - 2026-10-31
 

@@ -107,6 +107,9 @@ cmd="$(printf '%q ' "$@")"
 on "$host" <<EOF
 set -euo pipefail
 export HOME='$HOME' USER='$USER'
+# The host's system login setup (Lmod's MODULEPATH and module function, which eda-run needs), but none of the
+# user's dotfiles. Sourced before PATH is set, so PATH below stays exactly as written.
+if [[ -r /etc/profile ]]; then set +eu; . /etc/profile >/dev/null 2>&1; set -eu; fi
 export PATH='$area/target/debug:$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin'
 export CARGO_TARGET_DIR='$area/target'
 export UV_PROJECT_ENVIRONMENT='$area/venv'
