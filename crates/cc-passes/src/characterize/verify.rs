@@ -202,6 +202,7 @@ fn per_target(
     let read = |rel: &str| std::fs::read_to_string(root.join(rel)).unwrap_or_default();
     let (mut lec_bad, mut log_bad, mut val_bad) = (Vec::new(), Vec::new(), Vec::new());
     let mut proven = 0u64;
+    let mut allowed_rows: Vec<String> = Vec::new();
     for r in rows {
         let base = format!("reports/{}/{}/{}", kit.name, target, r.id);
         let log = read(&format!("{base}.log"));
@@ -213,8 +214,20 @@ fn per_target(
             Tool::Genus => parse::conformal(&lec_text),
             Tool::Yosys => parse::yosys_equiv(&lec_text),
         };
+        let allowed = cfg.allowed(&r.key, &lec);
+        if allowed != r.allowed {
+            val_bad.push(format!(
+                "{}: allowed {:?}, the config says {:?}",
+                r.key, r.allowed, allowed
+            ));
+        }
         if lec.equivalent {
             proven += 1;
+        } else if let Some(why) = &allowed {
+            allowed_rows.push(format!(
+                "{}: {} ({} passing, {} unverified, 0 failing), allowed: {why}",
+                r.key, lec.verdict, lec.passing, lec.aborted
+            ));
         } else {
             lec_bad.push(format!(
                 "{}: {} ({} failing, {} aborted)",
@@ -263,8 +276,9 @@ fn per_target(
         Check::new(format!("{pre}:lec"), lec_bad.is_empty() && n > 0)
             .count("rows", n)
             .count("equivalent", proven)
+            .count("allowed_inconclusive", allowed_rows.len() as u64)
             .note(format!("{} on every netlist against its RTL", cfg.tool.lec())),
-        &lec_bad,
+        &[lec_bad, allowed_rows].concat(),
     ));
     rep.push(note_list(
         Check::new(format!("{pre}:log"), log_bad.is_empty())

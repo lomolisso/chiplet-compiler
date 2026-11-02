@@ -187,6 +187,14 @@
       "additionalProperties": false,
       "description": "One measured primitive.",
       "properties": {
+        "allowed": {
+          "default": null,
+          "description": "`allow_inconclusive`'s reason when the check ended inconclusive with no failing point.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "corner": {
           "type": "string"
         },

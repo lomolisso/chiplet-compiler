@@ -235,6 +235,7 @@ fn summarize(
         pending,
         rows: rows.len() as u64,
         lec_equivalent: rows.iter().filter(|r| r.lec.equivalent).count() as u64,
+        lec_allowed: rows.iter().filter(|r| r.allowed.is_some()).count() as u64,
         designware_rows: rows.iter().filter(|r| r.designware).count() as u64,
         jobs_run: ran,
         jobs_reused: reused,

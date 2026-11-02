@@ -122,6 +122,23 @@ pub fn view(lib: &Library, cov: &Coverage, s: &Summary) -> String {
         let _ = writeln!(o);
     }
 
+    let allowed: Vec<String> = lib
+        .rows
+        .iter()
+        .filter_map(|r| {
+            r.allowed
+                .as_ref()
+                .map(|w| format!("- {} {} {}: {w}", r.key, r.kit, r.target))
+        })
+        .collect();
+    let _ = writeln!(o, "## Equivalence inconclusive, allowed ({})\n", allowed.len());
+    for a in &allowed {
+        let _ = writeln!(o, "{a}");
+    }
+    if !allowed.is_empty() {
+        let _ = writeln!(o);
+    }
+
     let pending: Vec<&str> = cov
         .primitives
         .iter()

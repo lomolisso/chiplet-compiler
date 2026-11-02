@@ -68,6 +68,9 @@ pub struct Row {
     /// `formality`, `conformal` or `yosys-equiv`, and its outcome.
     pub lec_tool: String,
     pub lec: Lec,
+    /// `allow_inconclusive`'s reason when the check ended inconclusive with no failing point.
+    #[serde(default)]
+    pub allowed: Option<String>,
     /// Design Compiler mapped arithmetic to DesignWare parts.
     pub designware: bool,
     pub provisional: bool,
@@ -133,6 +136,8 @@ pub struct Summary {
     pub pending: u64,
     pub rows: u64,
     pub lec_equivalent: u64,
+    /// Rows whose check ended inconclusive, allowed by `allow_inconclusive`.
+    pub lec_allowed: u64,
     pub designware_rows: u64,
     /// Tool sessions run now and taken from earlier runs (`eda/` job directories).
     pub jobs_run: u64,

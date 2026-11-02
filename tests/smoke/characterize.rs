@@ -44,6 +44,8 @@ timeout_min = 5
 struct Tools {
     /// Designs whose equivalence check fails.
     lec_fails: Mutex<Vec<String>>,
+    /// Designs whose equivalence check ends inconclusive (no failing point, some unverified).
+    lec_inconclusive: Mutex<Vec<String>>,
     calls: Mutex<Vec<String>>,
 }
 
@@ -146,15 +148,18 @@ impl ToolRunner for Tools {
             "fm_shell" => {
                 let script = std::fs::read_to_string(cwd.join("lec.tcl")).unwrap();
                 let fails = self.lec_fails.lock().unwrap().clone();
+                let open = self.lec_inconclusive.lock().unwrap().clone();
                 for id in ids(&script) {
-                    let (v, p, f) = if fails.contains(&id) {
-                        ("FAILED", 7, 1)
+                    let (v, p, f, u) = if fails.contains(&id) {
+                        ("FAILED", 7, 1, 0)
+                    } else if open.contains(&id) {
+                        ("INCONCLUSIVE", 6, 0, 2)
                     } else {
-                        ("SUCCEEDED", 8, 0)
+                        ("SUCCEEDED", 8, 0, 0)
                     };
                     std::fs::write(
                         cwd.join(format!("{id}.lec.rpt")),
-                        format!("Verification {v}\nPassing (equivalent)  0  0  0  0  {p}  0  0  {p}\nFailing (not equivalent)  0  0  0  0  {f}  0  0  {f}\n"),
+                        format!("Verification {v}\nPassing (equivalent)  0  0  0  0  {p}  0  0  {p}\nFailing (not equivalent)  0  0  0  0  {f}  0  0  {f}\nUnverified  0  0  0  0  {u}  0  0  {u}\n"),
                     )
                     .unwrap();
                     out.push_str(&format!("@@begin {id}\n@@end {id}\n"));
@@ -183,6 +188,8 @@ impl ToolRunner for Tools {
 struct Setup {
     env: Env,
     tools: Arc<Tools>,
+    /// `--set` overrides.
+    sets: Mutex<Vec<String>>,
 }
 
 impl Setup {
@@ -194,13 +201,16 @@ impl Setup {
         Self {
             env,
             tools: Arc::new(Tools::default()),
+            sets: Mutex::new(Vec::new()),
         }
     }
 
     fn config(&self) -> LoadedConfig {
         let lib = repo_root().join("tests/fixtures/characterize/mini.lib");
         let text = format!("{CONFIG}\n[paths]\nnangate45_lib = \"{}\"\n", lib.display());
-        self.env.config(&text, &[])
+        let sets = self.sets.lock().unwrap().clone();
+        let sets: Vec<&str> = sets.iter().map(String::as_str).collect();
+        self.env.config(&text, &sets)
     }
 
     fn pipeline(&self) -> Pipeline {
@@ -545,4 +555,44 @@ fn kits_need_the_environment() {
     assert!(!sum.ok);
     assert!(format!("{sum:?}").contains("chipc doctor"));
     let _ = flow::design;
+}
+
+const ALLOW_ADD_I8: &str =
+    "passes.characterize.allow_inconclusive=[{ key = \"add@i8\", reason = \"stand-in\" }]";
+
+#[test]
+fn an_inconclusive_check_needs_its_allowance_and_a_failing_one_never_has_one() {
+    // Not listed: the run fails.
+    let s = Setup::new();
+    s.tools.lec_inconclusive.lock().unwrap().push("add_i8".into());
+    assert!(!s.run().ok);
+
+    // Listed: the run and verify pass, the row records the reason.
+    let s = Setup::new();
+    s.tools.lec_inconclusive.lock().unwrap().push("add_i8".into());
+    s.sets.lock().unwrap().push(ALLOW_ADD_I8.into());
+    let sum = s.run();
+    assert!(sum.ok, "{sum:?}");
+    let row = s.library().rows.into_iter().find(|r| r.key == "add@i8").unwrap();
+    assert_eq!(row.allowed.as_deref(), Some("stand-in"));
+    assert!(!row.lec.equivalent);
+    let failing = s.failing();
+    assert!(failing.is_empty(), "{failing:?}");
+    let checks = s.pipeline().verify_pass("characterize").unwrap();
+    let lec = checks
+        .checks
+        .iter()
+        .find(|c| c.name == "nangate45:clock:lec")
+        .unwrap();
+    assert_eq!(lec.evidence.counts["allowed_inconclusive"], 1);
+
+    // Removing the allowance afterwards fails verify (and the stored reason no longer matches).
+    s.sets.lock().unwrap().clear();
+    s.expect("nangate45:clock:lec");
+
+    // A failing compare point is never allowed.
+    let s = Setup::new();
+    s.tools.lec_fails.lock().unwrap().push("add_i8".into());
+    s.sets.lock().unwrap().push(ALLOW_ADD_I8.into());
+    assert!(!s.run().ok);
 }

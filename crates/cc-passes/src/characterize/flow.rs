@@ -602,6 +602,10 @@ pub fn rows(
             // ABC reports no path for a design that is only flip-flops.
             !(cfg.tool == Tool::Yosys && d.clocked),
         ));
+        let allowed = cfg.allowed(&p.key, &lec);
+        if allowed.is_some() {
+            problems.retain(|x| !x.starts_with("equivalence not proven"));
+        }
         // Copy the evidence.
         let rel_dir = format!("{}/{}", kit.name, j.target);
         let netlist = format!("netlist/{rel_dir}/{id}.v");
@@ -651,6 +655,7 @@ pub fn rows(
                 estimator: cfg.tool.name().into(),
                 lec_tool: cfg.tool.lec().into(),
                 lec,
+                allowed,
                 provisional: p.provisional,
                 netlist,
                 netlist_hash: canon::hash_bytes(net_text.as_bytes()),

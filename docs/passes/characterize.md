@@ -131,7 +131,8 @@
    `fast_fraction = 0.05`, `int_widths = [2, 4, 8, 16, 32]`, `float_formats = ["f32", "f16", "bf16",
    "f8e4m3fn"]`, `mux_inputs = [2 … 8]`, `mux_widths = [1, 2, 4, 8, 16, 32]`, `register_widths = [1, 2, 4,
    8, 16, 32]`, `split_multipliers = [[8, 4], [16, 8], [32, 8], [32, 16]]`, `driving_cell = { nangate45 =
-   "BUF_X1", asap7 = "BUFx2_ASAP7_75t_R" }`, `load_fanout = 4`, `batch = 24`, `cores = 2`, `views =
+   "BUF_X1", asap7 = "BUFx2_ASAP7_75t_R" }`, `load_fanout = 4`, `lec_timeout_min = 10`, `lec_strategies = []`,
+   `allow_inconclusive = [{ key = "divide@ui32", reason = … }]`, `batch = 24`, `cores = 2`, `views =
    true`. The corner is the one doctor compiled: Nangate45's only corner (typical) and ASAP7
    `[tools.pdk] asap7_vt`/`asap7_corner` (RVT, TT). Resources: `threads = 2`, `memory_gb = 8`,
    `timeout_min = 600`.
@@ -143,8 +144,10 @@
    - `complete`: exactly one row per primitive with RTL, kit and target, none for anything else; the
      coverage states each primitive as the catalog does, every pending one with its reason.
    - `<kit>:libraries`: the `.lib` and `.db` the rows were measured on are the ones there now.
-   - `<kit>:<target>:lec`: every equivalence report, re-read, proves the netlist equal to its RTL (an
-     aborted or inconclusive point is a failure).
+   - `<kit>:<target>:lec`: every equivalence report, re-read, proves the netlist equal to its RTL. An
+     aborted or unverified point is a failure, except for a primitive in `allow_inconclusive` whose
+     check found no failing point (each such row carries the reason, counted as
+     `allowed_inconclusive`); a failing point is never allowed.
    - `<kit>:<target>:log`: in every design's log, report and netlist: no error line, no unresolved
      reference, no latch cell (cells with a `latch` group in the Liberty file), no cell outside the
      library (no generic cells left).
@@ -169,6 +172,11 @@
    - Float rows are provisional (XLS `apfloat`: subnormals flushed, IEEE special values for E4M3FN) and
      12 float ops are pending until the soft-float library exists; `merge` must treat pending
      primitives as unpriced.
+   - Formality does not finish a timing-driven DesignWare 32-bit unsigned divider (DC builds it to cut a
+     6.7 ns path toward the 2 ns Nangate45 clock): 22 of its 32 outputs pass, 10 stay unverified, none
+     fails, with the default strategy, s1 to s3, and datapath effort `high` and `unlimited` (30 minutes
+     each). The row is measured and allowed (`allow_inconclusive`), not proven. Every other divider,
+     the signed 32-bit one included, is proven.
    - One corner per kit (Nangate45 has only typical; other ASAP7 corners need doctor to compile them).
    - Areas are cell areas from the Liberty files at 1x scale (ASAP7 also ships 4x LEFs for P&R tools;
      an area from a 4x flow would be 16 times larger); no wires (no wire-load model, no placement).
