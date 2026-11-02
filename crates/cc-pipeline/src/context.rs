@@ -76,6 +76,11 @@ impl PassContext {
     }
 
     /// `[tools.smt]`: which solver proves, where the binaries are, the per-query timeout.
+    /// `[tools]`: the image, the PDK selection and the tool settings.
+    pub fn tools(&self) -> &cc_core::config::ToolsConfig {
+        &self.config.config.tools
+    }
+
     pub fn smt(&self) -> &SmtConfig {
         &self.config.config.tools.smt
     }

@@ -5,7 +5,7 @@
 `env` is not a pass in the DAG. It is the environment every pass relies on. `chipc doctor` proves that each external tool works on this machine by making it do one small real job. It compiles the Liberty files that Design Compiler needs into `.db` files, and it records the evidence in `build/.env/`, the only directory it writes.
 
 Later passes read from it:
-- `characterize` and `synth` use `build/.env/out/pdk_db/*.db`;
+- `characterize` and `synth` use `build/.env/out/pdk_db/*.db` and the merged ASAP7 Liberty in `build/.env/out/pdk_lib/`;
 - every Docker pass uses the image whose pins doctor checked.
 
 Run doctor after cloning, after an image rebuild, and whenever a tool or licence looks broken:
@@ -41,7 +41,8 @@ chipc doctor --build-args    # the docker/build.sh inputs, from config.toml
 |---|---|
 | `verify.json` | `VerifyReport` (pass `env`): one check per item in §6, with evidence paths, counts and notes |
 | `manifest.json` | `Manifest` (pass `env`), with the fields below |
-| `out/pdk_db/<library>.db` | `NangateOpenCellLibrary.db`, plus `asap7sc7p5t_<G>_<VT>_<C>_nldm_<date>.db` for the five ASAP7 groups |
+| `out/pdk_db/<library>.db` | `NangateOpenCellLibrary.db`, `asap7sc7p5t_<G>_<VT>_<C>_nldm_<date>.db` for the five ASAP7 groups, and `asap7sc7p5t_<VT>_<C>.db` for their merge |
+| `out/pdk_lib/asap7sc7p5t_<VT>_<C>.lib` | the five ASAP7 group libraries merged into one (`liberty.rs`): the first file's header and groups, every cell of the others, their other top-level groups the first lacks |
 | `out/selftest/` | inputs and outputs of `cc-selftest`: `add8.cc`, the IR, `add8.v`, `q.smt2`, GraMi `two_paths.lg` and `Output.txt`, `allo_add.py` |
 | `out/dc_tiny/` | `<kit>_area.rpt` and `<kit>_netlist.v` of the tiny DC runs |
 | `eda/<job>/` | the working directory of each EDA call, with its scripts and the tool logs |
@@ -49,7 +50,7 @@ chipc doctor --build-args    # the docker/build.sh inputs, from config.toml
 
 `manifest.json` fields:
 - `inputs`: one `liberty:<library>` record per Liberty file, with its blake3 hash;
-- `outputs`: `pdk_db`, `selftest` and `dc_tiny`, with every file hashed;
+- `outputs`: `pdk_db`, `pdk_lib`, `selftest` and `dc_tiny`, with every file hashed;
 - `tool_versions`: every probed version, the submodule HEADs and the image ID;
 - `status`: `ok` or `failed`.
 
@@ -81,10 +82,11 @@ chipc doctor --build-args    # the docker/build.sh inputs, from config.toml
    - The Nangate45 `.lib`/`.lef` are found.
    - The five ASAP7 files of `[tools.pdk]` VT/corner are found. Each group's date stamp is matched, not assumed; exactly one file per group, otherwise doctor fails.
    - `library (NAME)` is read from the first 256 KiB of each file.
-   - `make_db.tcl` (`read_lib` + `write_lib NAME -format db` per file) runs in `lc_shell`, and the `.db` files are copied to `out/pdk_db/`.
+   - The five ASAP7 files are merged into `out/pdk_lib/asap7sc7p5t_<VT>_<C>.lib`. Units and the nominal operating point must agree, a cell may appear only once, and a shared group with different text (the driver waveforms) keeps the first file's (noted). Design Compiler's library analysis needs one library with inverters and flops: on the group files alone it leaves placeholders and repeats the analysis (about 100 s) on every compile. Yosys' ABC reads one Liberty file. OpenROAD's `mergeLib.pl` merges ASAP7 the same way.
+   - `make_db.tcl` (`read_lib` + `write_lib NAME -format db` per file, the merged library included) runs in `lc_shell`, and the `.db` files are copied to `out/pdk_db/`.
    - LC is skipped when the previous manifest has the same `.lib` hashes and `lc_shell` version and every `.db` exists.
 6. **Synopsys licence and `.db` link.**
-   - An 8-bit adder goes through `compile_ultra` with `set_host_options -max_cores 2`, once against Nangate45 (virtual clock 2.0 ns) and once against the five ASAP7 `.db` files (1000 ps; ASAP7's time unit is ps).
+   - An 8-bit adder goes through `compile_ultra` with `set_host_options -max_cores 2`, once against Nangate45 (virtual clock 2.0 ns) and once against the merged ASAP7 `.db` (1000 ps; ASAP7's time unit is ps).
    - Pass: no `Error` lines, `Total cell area` > 0, and the netlist was written.
 7. **Cadence licences.**
    - Genus: `genus -batch … -execute "…; exit"` must print `Checking out license`, and its `TMPDIR is being set to …` path must lie on the scratch disk. That confirms Genus nests its temp directory under the `TMPDIR` that `EdaRunner` sets.
@@ -121,6 +123,7 @@ Every check is computed independently of the code under test: it reads tool outp
 | `image.selftest.*` | each open-source tool does real work | `out/selftest/*`; GraMi pattern count |
 | `eda.version.*` | every licensed tool starts through `eda-run` | version line |
 | `pdk.nangate45`, `pdk.asap7` | the PDK files exist | paths, library count |
+| `pdk.asap7_merged` | the ASAP7 groups merge into one library | `out/pdk_lib/*.lib`, cell count, differing groups |
 | `pdk.db` | `.db` files exist for both kits | `out/pdk_db/*.db`, LC error/warning counts |
 | `dc.nangate45`, `dc.asap7` | Synopsys licence; the `.db` files link and map | `out/dc_tiny/*` (area report, netlist) |
 | `license.genus`, `license.lec` | Cadence licences reachable; Genus temp on scratch | checkout lines |

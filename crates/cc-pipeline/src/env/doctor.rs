@@ -29,6 +29,13 @@ pub const ENV_DIR: &str = "env";
 pub const PDK_DB: ArtifactKind = ArtifactKind("pdk_db");
 pub const SELFTEST: ArtifactKind = ArtifactKind("selftest");
 pub const DC_TINY: ArtifactKind = ArtifactKind("dc_tiny");
+/// `out/pdk_lib/<library>.lib`: the ASAP7 group libraries of one VT/corner merged into one (`liberty.rs`).
+pub const PDK_LIB: ArtifactKind = ArtifactKind("pdk_lib");
+
+/// The merged ASAP7 library of one VT/corner, e.g. `asap7sc7p5t_RVT_TT`.
+pub fn asap7_merged_name(pdk: &cc_core::config::PdkConfig) -> String {
+    format!("asap7sc7p5t_{}_{}", pdk.asap7_vt, pdk.asap7_corner)
+}
 const DOCTOR_VERSION: u32 = 1;
 /// The steps `cc-selftest` reports (docker/selftest.sh).
 pub const SELFTEST_STEPS: [&str; 6] = ["xls", "xls_equiv", "rtl_tools", "smt", "grami", "allo"];
@@ -601,7 +608,9 @@ impl Doctor<'_> {
                         c = c.path(l.path.display().to_string());
                     }
                     self.push(c);
+                    let merged = self.asap7_merge(&pdk, &found);
                     libs.extend(found);
+                    libs.extend(merged);
                 }
                 Err(e) => self.push(Check::new("pdk.asap7", false).note(e.to_string())),
             },
@@ -683,6 +692,47 @@ impl Doctor<'_> {
         libs
     }
 
+    /// The ASAP7 group libraries merged into one (`out/pdk_lib/`), which LC then compiles with the rest:
+    /// DC's library analysis needs a library with inverters and flops, Yosys reads one file.
+    fn asap7_merge(&mut self, pdk: &cc_core::config::PdkConfig, found: &[LibertyLib]) -> Option<LibertyLib> {
+        let name = asap7_merged_name(pdk);
+        let texts: Result<Vec<String>, String> = found
+            .iter()
+            .map(|l| std::fs::read_to_string(&l.path).map_err(|e| format!("{}: {e}", l.path.display())))
+            .collect();
+        let merged = texts.and_then(|t| {
+            let refs: Vec<&str> = t.iter().map(String::as_str).collect();
+            super::liberty::merge(&name, &refs)
+        });
+        let m = match merged {
+            Ok(m) => m,
+            Err(e) => {
+                self.push(Check::new("pdk.asap7_merged", false).note(e));
+                return None;
+            }
+        };
+        let kd = self.dir.kind(PDK_LIB);
+        let path = kd.dir().join(format!("{name}.lib"));
+        if !self.opts.dry && (kd.create().is_err() || !self.write(&path, &m.text)) {
+            self.push(Check::new("pdk.asap7_merged", false).note(format!("cannot write {}", path.display())));
+            return None;
+        }
+        let mut c = Check::new("pdk.asap7_merged", true)
+            .count("cells", m.cells as u64)
+            .count("differing_groups", m.differing.len() as u64)
+            .path(format!("out/pdk_lib/{name}.lib"))
+            .note(format!(
+                "{name}: {} cells from {} libraries",
+                m.cells,
+                found.len()
+            ));
+        if !m.differing.is_empty() {
+            c = c.note(format!("kept the first library's {}", m.differing.join(", ")));
+        }
+        self.push(c);
+        Some(LibertyLib { path, name })
+    }
+
     // -- licensed synthesis -----------------------------------------------------------------------
 
     /// An 8-bit adder through `compile_ultra` on each kit: proves the Synopsys license and that the
@@ -694,9 +744,10 @@ impl Doctor<'_> {
             .filter(|l| !l.name.starts_with("asap7"))
             .map(LibertyLib::db_file)
             .collect();
+        let merged = asap7_merged_name(&self.config().tools.pdk);
         let asap7: Vec<String> = libs
             .iter()
-            .filter(|l| l.name.starts_with("asap7"))
+            .filter(|l| l.name == merged)
             .map(LibertyLib::db_file)
             .collect();
         // Clock period in each library's time unit: ns for Nangate45, ps for ASAP7 (pdks.md §5).
@@ -840,7 +891,7 @@ impl Doctor<'_> {
             return Ok(());
         }
         let mut outputs = Vec::new();
-        for k in [PDK_DB, SELFTEST, DC_TINY] {
+        for k in [PDK_DB, PDK_LIB, SELFTEST, DC_TINY] {
             let kd = self.dir.kind(k);
             if kd.exists() {
                 outputs.push(kd.record()?);

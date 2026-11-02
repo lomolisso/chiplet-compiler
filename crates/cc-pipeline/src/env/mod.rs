@@ -2,6 +2,7 @@
 //! `build/.env/` (manifest, verify report, liberty `.db` files). See `docs/framework/environment.md`.
 
 pub mod doctor;
+pub mod liberty;
 pub mod pdk_db;
 
 pub use doctor::{DoctorOptions, doctor};

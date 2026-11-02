@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`summary.json`.",
+  "properties": {
+    "by_kind": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "type": "object"
+    },
+    "designware_rows": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "jobs_reused": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "jobs_run": {
+      "description": "Tool sessions run now and taken from earlier runs (`eda/` job directories).",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "lec_equivalent": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "measured": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "pending": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "primitives": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "provisional": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "rows": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "tool": {
+      "type": "string"
+    },
+    "tool_seconds": {
+      "description": "Seconds spent in the tool sessions run now.",
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "schema",
+    "tool",
+    "primitives",
+    "by_kind",
+    "measured",
+    "provisional",
+    "pending",
+    "rows",
+    "lec_equivalent",
+    "designware_rows",
+    "jobs_run",
+    "jobs_reused",
+    "tool_seconds"
+  ],
+  "title": "Summary",
+  "type": "object"
+}

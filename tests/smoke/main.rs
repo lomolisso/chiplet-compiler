@@ -3,6 +3,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 mod cache;
+mod characterize;
 mod cli;
 mod components;
 mod config;

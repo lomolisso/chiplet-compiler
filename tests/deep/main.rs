@@ -3,6 +3,7 @@
 //! cap costs at most a few hundred MB before the test fails.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+mod characterize;
 mod components;
 mod datapaths;
 mod env;

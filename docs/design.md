@@ -316,16 +316,24 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
 
 ### 4.9 `characterize` (parallel branch)
 
-- **Purpose.** An area/delay library A of primitives: op × dtype family × width, plus mux and register.
+- **Purpose.** An area/delay library A of primitives: op × dtype family × width, plus mux, register,
+  accumulator and split multiplier.
 - **Method.**
-  - Generate each primitive once (DSLX → XLS → Verilog, or a small Verilog template).
-  - Synthesize with DC (Nangate45 `.db` built by `lc_shell`) and/or Genus on FreePDK45 and ASAP7.
+  - The primitive set follows the op semantics: every element-wise op of the op table at every
+    configured type the SMT semantics defines it on.
+  - Generate each primitive once (DSLX → XLS → Verilog, or a small Verilog template); float RTL comes
+    from XLS's `apfloat` until `softfloat` exists, and float ops without it are pending.
+  - Synthesize with DC (Nangate45 and a merged ASAP7 `.db`, both built by `lc_shell` in `chipc doctor`)
+    or Genus, at two timing points: the clock target (the area) and a tight constraint (the minimum
+    delay). Yosys with ABC on the same Liberty files is the license-free alternative.
   - Record area, delay and leakage.
-  - XLS's area model is a fallback.
 - **Verification.**
-  - Synthesis logs are free of errors and latches.
-  - Formality/Conformal LEC of netlist vs RTL for every primitive.
-  - Sanity: area is monotone in width.
+  - Synthesis logs are free of errors, unresolved references and latches; netlists use only library
+    cells.
+  - Formality/Conformal LEC (ABC `cec` for Yosys) of netlist vs RTL for every primitive.
+  - Sanity: area is monotone in width, multipliers grow about quadratically and adders linearly
+    (flagged, not failed).
+  - Coverage: every vertex of the datapaths maps to a primitive.
 
 ### 4.10 `mine`
 
@@ -586,4 +594,10 @@ build/         (ignored) build/.<pass>/ artifacts
 | One datapath file per class, template stages included (vertices tagged by stage) | Separate files per stage | One proof per class and tuple covers every stage; mining sees one graph per class |
 | Width tuples: distinct element types (and constant types, structural attributes) over T_z; constants free | One proof per (tuple, constant values) | Fewer obligations, and the proof covers every constant value |
 | `cc-smt` writes SMT-LIB files and runs the solvers in batch | `easy-smt` interactive sessions | The file is the certificate; no query is incremental; one container per batch |
+| `characterize`: two timing points per primitive (the clock target and 5% of it) | One synthesis at the clock target | At the clock target synthesis spends slack on area, so the delay is about the period; a logic-depth bound needs the minimum delay |
+| License-free characterization by Yosys + ABC on the same Liberty files, chosen only explicitly | XLS's area model | XLS's area model is ASAP7/sky130 only and its tool is Bazel-only; Yosys is in the image; a silent switch would mix estimators in one library |
+| Float primitives from XLS `apfloat`, provisional; float ops without an `apfloat` function pending | DesignWare floating-point parts; hand-written DSLX now | One RTL route: `softfloat` replaces them; vendor IP would price parts no unit will contain |
+| The primitive set is every element-wise op at every configured type the SMT semantics defines | A hand-written primitive list | No hard-coded op set; a new op or type in the semantics enters the library by itself |
+| ASAP7's group libraries merged into one Liberty and `.db` by `chipc doctor` | DC on the five group `.db` files | DC's library analysis leaves placeholders per group (no inverters or flops) and repeats about 100 s on every compile; Yosys' ABC reads one file (OpenROAD's `mergeLib.pl` does the same) |
+| Characterization jobs are directories named by the hash of their scripts, RTL and libraries, reused by later runs | Pass-level caching only | A full run takes hours; an interrupted or partly changed run redoes only what changed |
 

@@ -1,0 +1,73 @@
+{
+  "$defs": {
+    "CoverageEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rows": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "status": {
+          "$ref": "#/$defs/Status"
+        }
+      },
+      "required": [
+        "key",
+        "status",
+        "rows"
+      ],
+      "type": "object"
+    },
+    "Status": {
+      "description": "What a primitive has.",
+      "oneOf": [
+        {
+          "enum": [
+            "measured"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "provisional",
+          "description": "Measured on stand-in RTL (XLS `apfloat`) until the soft-float library replaces it.",
+          "type": "string"
+        },
+        {
+          "const": "pending",
+          "description": "No RTL yet.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`coverage.json`.",
+  "properties": {
+    "primitives": {
+      "items": {
+        "$ref": "#/$defs/CoverageEntry"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "primitives"
+  ],
+  "title": "Coverage",
+  "type": "object"
+}

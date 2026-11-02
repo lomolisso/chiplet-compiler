@@ -1,0 +1,38 @@
+/* Synthetic four-cell library for the characterize smoke tests: units, corner, a driving cell with an
+   input capacitance, a flop and a latch. Not a real kit. */
+library (mini_lib) {
+  delay_model : table_lookup;
+  time_unit : "1ns";
+  voltage_unit : "1V";
+  leakage_power_unit : "1nW";
+  capacitive_load_unit (1,ff);
+  nom_process : 1.0;
+  nom_temperature : 25.0;
+  nom_voltage : 1.1;
+  default_operating_conditions : typical;
+  cell (BUF_X1) {
+    area : 0.798;
+    pin (A) { direction : input; capacitance : 0.97; }
+    pin (Z) { direction : output; function : "A"; }
+  }
+  cell (NAND2_X1) {
+    area : 0.798;
+    pin (A1) { direction : input; capacitance : 1.5; }
+    pin (A2) { direction : input; capacitance : 1.6; }
+    pin (ZN) { direction : output; function : "!(A1 & A2)"; }
+  }
+  cell (DFF_X1) {
+    area : 4.522;
+    ff (IQ, IQN) { next_state : "D"; clocked_on : "CK"; }
+    pin (D) { direction : input; capacitance : 1.1; }
+    pin (CK) { direction : input; capacitance : 0.9; clock : true; }
+    pin (Q) { direction : output; function : "IQ"; }
+  }
+  cell (DLH_X1) {
+    area : 2.926;
+    latch (IQ, IQN) { data_in : "D"; enable : "G"; }
+    pin (D) { direction : input; capacitance : 1.0; }
+    pin (G) { direction : input; capacitance : 1.0; }
+    pin (Q) { direction : output; function : "IQ"; }
+  }
+}

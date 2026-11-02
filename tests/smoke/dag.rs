@@ -84,6 +84,7 @@ fn registry_dag_and_order() {
     assert_eq!(
         order,
         [
+            "characterize",
             "export",
             "hello_a",
             "hello_b",
@@ -99,7 +100,7 @@ fn registry_dag_and_order() {
     );
     assert_eq!(
         g.to_dot(),
-        "digraph passes {\n  rankdir=LR;\n  node [shape=box];\n  \"components\";\n  \"datapaths\";\n  \"export\";\n  \"hello_a\";\n  \"hello_b\";\n  \"hello_c\";\n  \"import\";\n  \"iteration_space\";\n  \"kernel_classes\";\n  \"kernels\";\n  \"normalize\";\n  \
+        "digraph passes {\n  rankdir=LR;\n  node [shape=box];\n  \"characterize\";\n  \"components\";\n  \"datapaths\";\n  \"export\";\n  \"hello_a\";\n  \"hello_b\";\n  \"hello_c\";\n  \"import\";\n  \"iteration_space\";\n  \"kernel_classes\";\n  \"kernels\";\n  \"normalize\";\n  \
          \"components\" -> \"kernel_classes\" [label=\"components\"];\n  \
          \"components\" -> \"normalize\" [label=\"components\"];\n  \"export\" -> \"import\" [label=\"export\"];\n  \
          \"export\" -> \"kernel_classes\" [label=\"export\"];\n  \
