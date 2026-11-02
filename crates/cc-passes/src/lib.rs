@@ -9,6 +9,7 @@ pub mod hello_a;
 pub mod hello_b;
 pub mod hello_c;
 pub mod import;
+pub mod iteration_space;
 pub mod kernel_classes;
 pub mod kernels;
 pub mod normalize;
@@ -24,5 +25,6 @@ pub fn pass_schemas() -> Vec<(&'static str, serde_json::Value)> {
     v.extend(normalize::json::schemas());
     v.extend(kernels::json::schemas());
     v.extend(kernel_classes::json::schemas());
+    v.extend(iteration_space::json::schemas());
     v
 }

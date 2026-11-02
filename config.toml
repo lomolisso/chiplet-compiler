@@ -190,10 +190,12 @@ memory_gb = 4
 timeout_min = 30
 
 [passes.iteration_space]
+views = true                     # write views/routing.md and views/iteration_space.md
 [passes.iteration_space.template]
-enabled = true
-min_reuse = 8                    # minimum reuse factor for routing a class to an array template
-max_dims = 7                     # bound of the space-time mapping search
+enabled = true                   # route uniform contractions with a valid space-time mapping to array templates
+min_reuse = 8                    # a row counts when each core input is reused >= this many times (MACs per element)
+min_share = 0.5                  # ... and such rows must hold >= this share of the class's weighted workload
+max_dims = 7                     # bound on the dims of the space-time mapping search (after grouping: at most 3)
 [passes.iteration_space.resources]
 threads = 8
 memory_gb = 2

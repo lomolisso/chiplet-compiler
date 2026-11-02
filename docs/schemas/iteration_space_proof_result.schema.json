@@ -1,0 +1,100 @@
+{
+  "$defs": {
+    "Solver": {
+      "description": "A solver binary.",
+      "enum": [
+        "bitwuzla",
+        "z3"
+      ],
+      "type": "string"
+    },
+    "Verdict": {
+      "description": "A solver's answer to one `(check-sat)`.",
+      "oneOf": [
+        {
+          "enum": [
+            "unsat",
+            "unknown",
+            "timeout"
+          ],
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "With the model the solver printed (a counterexample of the negated equivalence).",
+          "properties": {
+            "sat": {
+              "properties": {
+                "model": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "model"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "sat"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "error": {
+              "properties": {
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "message"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "error"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`smt/<file>.result`.",
+  "properties": {
+    "file": {
+      "type": "string"
+    },
+    "query_hash": {
+      "description": "blake3 of the `.smt2` file.",
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "solver": {
+      "$ref": "#/$defs/Solver"
+    },
+    "verdict": {
+      "$ref": "#/$defs/Verdict"
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "file",
+    "query_hash",
+    "solver",
+    "version",
+    "verdict"
+  ],
+  "title": "ProofResult",
+  "type": "object"
+}

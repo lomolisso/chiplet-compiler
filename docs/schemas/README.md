@@ -32,6 +32,13 @@ JSON Schemas (draft 2020-12, generated with `schemars` from the Rust types) of e
 | `kernel_classes_certificates.schema.json` | `cc_passes::kernel_classes::json::CertificatesFile` | `build/.kernel_classes/out/kernel_classes/certificates/<z>.json` |
 | `kernel_classes_sharing.schema.json` | `cc_passes::kernel_classes::json::Sharing` | `build/.kernel_classes/out/kernel_classes/sharing.json` |
 | `kernel_classes_summary.schema.json` | `cc_passes::kernel_classes::json::ClassesSummary` | `build/.kernel_classes/out/kernel_classes/summary.json` |
+| `iteration_space_skeleton.schema.json` | `cc_passes::iteration_space::json::Skeleton` | `build/.iteration_space/out/iteration_space/skeletons/<z>.json` |
+| `iteration_space_dependences.schema.json` | `cc_passes::iteration_space::json::Dependences` | `build/.iteration_space/out/iteration_space/dependences/<z>.json` |
+| `iteration_space_template.schema.json` | `cc_passes::iteration_space::json::TemplateFile` | `build/.iteration_space/out/iteration_space/templates/<z>.json` |
+| `iteration_space_embedding.schema.json` | `cc_passes::iteration_space::json::Embedding` | `build/.iteration_space/out/iteration_space/embedding.json` |
+| `iteration_space_routing.schema.json` | `cc_passes::iteration_space::json::Routing` | `build/.iteration_space/out/iteration_space/routing.json` |
+| `iteration_space_proof_result.schema.json` | `cc_passes::iteration_space::json::ProofResult` | `build/.iteration_space/out/iteration_space/smt/<file>.result` |
+| `iteration_space_summary.schema.json` | `cc_passes::iteration_space::json::Summary` | `build/.iteration_space/out/iteration_space/summary.json` |
 | `run_summary.schema.json` | `cc_pipeline::RunSummary` | `build/.pipeline/run-<ts>.json` |
 
 The smoke test `schemas::committed_schemas_are_current` regenerates them and fails on drift. After

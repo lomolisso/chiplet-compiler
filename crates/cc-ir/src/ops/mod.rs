@@ -7,6 +7,7 @@
 //! function and op). `custom_call` entries are keyed by `call_target_name`.
 
 pub mod dims;
+pub mod iter;
 pub mod shape;
 
 use std::collections::HashMap;
@@ -16,6 +17,7 @@ use schemars::JsonSchema;
 use serde::Serialize;
 
 pub use dims::{DimsFn, DimsIn, Rel, Side, Slot};
+pub use iter::{IterIn, IterationFn, OpIteration};
 pub use shape::{ShapeFn, ShapeIn};
 
 /// Op classes (design §4.5). `Constant` holds the ops that create values from attributes alone.
@@ -101,9 +103,6 @@ pub enum ElemRule {
     /// Unconstrained by the spec (conversions, `dot_general`'s preferred type, …) or given by the callee.
     Free,
 }
-
-/// Iteration-space semantics of a core op: the hook the iteration-space analysis fills in.
-pub type IterationFn = fn(&ShapeIn<'_>) -> Option<serde_json::Value>;
 
 /// One table entry.
 #[derive(Debug, Clone, Copy, Serialize, JsonSchema)]
@@ -198,6 +197,12 @@ const fn ew(name: &'static str, spec: &'static str, n: u32, elem: ElemRule, comm
     e.elementwise = true;
     e.commutative = commutative;
     e.dims = dims::elementwise;
+    e.iteration = Some(iter::elementwise);
+    e
+}
+
+const fn with_iter(mut e: OpSpec, f: IterationFn) -> OpSpec {
+    e.iteration = Some(f);
     e
 }
 
@@ -310,32 +315,38 @@ pub static TABLE: &[OpSpec] = &[
         ShapePorts::Ports(&[0]),
     ),
     // Layout.
-    with_dims(
-        entry(
-            "stablehlo.broadcast_in_dim",
-            "broadcast_in_dim",
-            C::Layout,
-            Exactly(1),
-            Exactly(1),
-            E::SameAs(0),
-            s::broadcast_in_dim,
-        ),
-        dims::broadcast_in_dim,
-    ),
-    with_dims(
-        with_shape_ports(
+    with_iter(
+        with_dims(
             entry(
-                "stablehlo.dynamic_broadcast_in_dim",
-                "dynamic_broadcast_in_dim",
+                "stablehlo.broadcast_in_dim",
+                "broadcast_in_dim",
                 C::Layout,
-                Exactly(2),
+                Exactly(1),
                 Exactly(1),
                 E::SameAs(0),
-                s::dynamic_broadcast_in_dim,
+                s::broadcast_in_dim,
             ),
-            ShapePorts::Ports(&[1]),
+            dims::broadcast_in_dim,
         ),
-        dims::broadcast_in_dim,
+        iter::broadcast_in_dim,
+    ),
+    with_iter(
+        with_dims(
+            with_shape_ports(
+                entry(
+                    "stablehlo.dynamic_broadcast_in_dim",
+                    "dynamic_broadcast_in_dim",
+                    C::Layout,
+                    Exactly(2),
+                    Exactly(1),
+                    E::SameAs(0),
+                    s::dynamic_broadcast_in_dim,
+                ),
+                ShapePorts::Ports(&[1]),
+            ),
+            dims::broadcast_in_dim,
+        ),
+        iter::broadcast_in_dim,
     ),
     entry(
         "stablehlo.reshape",
@@ -499,140 +510,161 @@ pub static TABLE: &[OpSpec] = &[
     ),
     // `scatter(inputs…, scatter_indices, updates…)` with an update computation; whether it is a
     // scatter-reduce depends on that body (design §4.5), not on the op.
-    with_dims(
-        with_regions(
-            entry(
-                "stablehlo.scatter",
-                "scatter",
-                C::DataMovement,
-                AtLeast(3),
-                AtLeast(1),
-                E::SameAs(0),
-                s::scatter,
+    with_iter(
+        with_dims(
+            with_regions(
+                entry(
+                    "stablehlo.scatter",
+                    "scatter",
+                    C::DataMovement,
+                    AtLeast(3),
+                    AtLeast(1),
+                    E::SameAs(0),
+                    s::scatter,
+                ),
+                1,
             ),
-            1,
+            dims::scatter,
         ),
-        dims::scatter,
+        iter::scatter,
     ),
     // Cores.
-    with_dims(
-        entry(
-            "stablehlo.dot_general",
-            "dot_general",
-            C::Core,
-            Exactly(2),
-            Exactly(1),
-            E::Free,
-            s::dot_general,
-        ),
-        dims::dot_general,
-    ),
-    with_size_attrs(
+    with_iter(
         with_dims(
             entry(
-                "stablehlo.convolution",
-                "convolution",
+                "stablehlo.dot_general",
+                "dot_general",
                 C::Core,
                 Exactly(2),
                 Exactly(1),
                 E::Free,
-                s::convolution,
+                s::dot_general,
             ),
-            dims::convolution,
+            dims::dot_general,
         ),
-        &[
-            "window_strides",
-            "padding",
-            "lhs_dilation",
-            "rhs_dilation",
-            "feature_group_count",
-            "batch_group_count",
-        ],
+        iter::dot_general,
     ),
-    with_size_attrs(
-        with_dims(
-            with_shape_ports(
+    with_iter(
+        with_size_attrs(
+            with_dims(
                 entry(
-                    "stablehlo.dynamic_conv",
-                    "dynamic_conv",
+                    "stablehlo.convolution",
+                    "convolution",
                     C::Core,
-                    Exactly(3),
+                    Exactly(2),
                     Exactly(1),
                     E::Free,
-                    s::dynamic_conv,
+                    s::convolution,
                 ),
-                ShapePorts::Ports(&[2]),
+                dims::convolution,
             ),
-            dims::convolution,
+            &[
+                "window_strides",
+                "padding",
+                "lhs_dilation",
+                "rhs_dilation",
+                "feature_group_count",
+                "batch_group_count",
+            ],
         ),
-        &[
-            "window_strides",
-            "lhs_dilation",
-            "rhs_dilation",
-            "feature_group_count",
-            "batch_group_count",
-        ],
+        iter::convolution,
     ),
-    with_dims(
-        with_regions(
-            entry(
-                "stablehlo.reduce",
-                "reduce",
-                C::Core,
-                AtLeast(2),
-                AtLeast(1),
-                E::Free,
-                s::reduce,
+    with_iter(
+        with_size_attrs(
+            with_dims(
+                with_shape_ports(
+                    entry(
+                        "stablehlo.dynamic_conv",
+                        "dynamic_conv",
+                        C::Core,
+                        Exactly(3),
+                        Exactly(1),
+                        E::Free,
+                        s::dynamic_conv,
+                    ),
+                    ShapePorts::Ports(&[2]),
+                ),
+                dims::convolution,
             ),
-            1,
+            &[
+                "window_strides",
+                "lhs_dilation",
+                "rhs_dilation",
+                "feature_group_count",
+                "batch_group_count",
+            ],
         ),
-        dims::reduce,
+        iter::dynamic_conv,
     ),
-    with_size_attrs(
+    with_iter(
         with_dims(
             with_regions(
                 entry(
-                    "stablehlo.reduce_window",
-                    "reduce_window",
+                    "stablehlo.reduce",
+                    "reduce",
                     C::Core,
                     AtLeast(2),
                     AtLeast(1),
                     E::Free,
-                    s::reduce_window,
+                    s::reduce,
                 ),
                 1,
             ),
-            dims::same_inputs,
+            dims::reduce,
         ),
-        &[
-            "window_dimensions",
-            "window_strides",
-            "base_dilations",
-            "window_dilations",
-            "padding",
-        ],
+        iter::reduce,
+    ),
+    with_iter(
+        with_size_attrs(
+            with_dims(
+                with_regions(
+                    entry(
+                        "stablehlo.reduce_window",
+                        "reduce_window",
+                        C::Core,
+                        AtLeast(2),
+                        AtLeast(1),
+                        E::Free,
+                        s::reduce_window,
+                    ),
+                    1,
+                ),
+                dims::same_inputs,
+            ),
+            &[
+                "window_dimensions",
+                "window_strides",
+                "base_dilations",
+                "window_dilations",
+                "padding",
+            ],
+        ),
+        iter::reduce_window,
     ),
     // `custom_call @stablehlo.dynamic_reduce_window(inputs…, init_values…, window_dimensions,
     // window_strides, base_dilations, window_dilations, padding)`: JAX's encoding of the spec's
     // `dynamic_reduce_window` (stablehlo `docs/spec.md`, "dynamic_reduce_window" in the experimental ops
     // of `stablehlo/dialect/StablehloOps.td`), the reducer passed as a called computation.
-    with_dims(
-        custom(
-            "stablehlo.dynamic_reduce_window",
-            with_shape_ports(
-                entry(
-                    "stablehlo.custom_call",
-                    "custom_call",
-                    C::Core,
-                    AtLeast(7),
-                    AtLeast(1),
-                    E::Free,
-                    s::dynamic_reduce_window,
+    with_iter(
+        with_dims(
+            custom(
+                "stablehlo.dynamic_reduce_window",
+                with_shape_ports(
+                    entry(
+                        "stablehlo.custom_call",
+                        "custom_call",
+                        C::Core,
+                        AtLeast(7),
+                        AtLeast(1),
+                        E::Free,
+                        s::dynamic_reduce_window,
+                    ),
+                    ShapePorts::Last(5),
                 ),
-                ShapePorts::Last(5),
             ),
+            dims::same_inputs,
         ),
-        dims::same_inputs,
+        iter::dynamic_reduce_window,
     ),
     // Irregular.
     with_dims(
@@ -764,6 +796,19 @@ mod tests {
             if e.commutative {
                 assert_eq!(e.operands, Arity::Exactly(2), "{}", e.key());
             }
+        }
+    }
+
+    #[test]
+    fn cores_broadcasts_and_elementwise_ops_have_iteration_semantics() {
+        for e in TABLE {
+            let needs = e.class == OpClass::Core
+                || e.elementwise
+                || matches!(
+                    e.name,
+                    "stablehlo.broadcast_in_dim" | "stablehlo.dynamic_broadcast_in_dim" | "stablehlo.scatter"
+                );
+            assert_eq!(e.iteration.is_some(), needs, "{}", e.key());
         }
     }
 

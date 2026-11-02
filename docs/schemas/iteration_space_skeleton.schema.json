@@ -1,0 +1,625 @@
+{
+  "$defs": {
+    "Dim": {
+      "properties": {
+        "extent": {
+          "$ref": "#/$defs/Extent"
+        },
+        "role": {
+          "description": "The core op's name for it (`batch`, `lhs_free`, `contract`, `out_spatial`, `window`, …).",
+          "type": "string"
+        },
+        "tag": {
+          "$ref": "#/$defs/Tag"
+        }
+      },
+      "required": [
+        "tag",
+        "extent",
+        "role"
+      ],
+      "type": "object"
+    },
+    "DimOrder": {
+      "description": "ω on the iteration dims: the order and the reduction dims, outermost first.",
+      "properties": {
+        "dims": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "order": {
+          "$ref": "#/$defs/Order"
+        }
+      },
+      "required": [
+        "order",
+        "dims"
+      ],
+      "type": "object"
+    },
+    "Direction": {
+      "enum": [
+        "in",
+        "out"
+      ],
+      "type": "string"
+    },
+    "Extent": {
+      "description": "The extent of an iteration dim.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "An axis class of the kernel class (the instance table's `extents[class]`).",
+          "properties": {
+            "class": {
+              "properties": {
+                "class": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "class"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "class"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A literal.",
+          "properties": {
+            "const": {
+              "properties": {
+                "value": {
+                  "format": "int64",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "value"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "const"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A value column entry (a window size).",
+          "properties": {
+            "column": {
+              "properties": {
+                "column": {
+                  "type": "string"
+                },
+                "index": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "column",
+                "index"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "column"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A shape-operand entry, known only at run time.",
+          "properties": {
+            "runtime": {
+              "properties": {
+                "index": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "node": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "port": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "node",
+                "port",
+                "index"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "runtime"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "An axis class divided by a factor (a convolution's output features per group).",
+          "properties": {
+            "quot": {
+              "properties": {
+                "by": {
+                  "$ref": "#/$defs/Factor"
+                },
+                "class": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "class",
+                "by"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "quot"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Factor": {
+      "description": "A symbolic factor of a coefficient, bound to the class: a value column of the instance table\n(`n<node>.<attribute>`, entry `index`), an entry of a shape operand (known only at run time), or the\nextent of an iteration dim.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "column": {
+              "properties": {
+                "column": {
+                  "type": "string"
+                },
+                "index": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "column",
+                "index"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "column"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "runtime": {
+              "properties": {
+                "index": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "node": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "port": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "node",
+                "port",
+                "index"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "runtime"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "extent": {
+              "properties": {
+                "dim": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "dim"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "extent"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "NodeAccess": {
+      "description": "The accesses of one member node: per result and per operand port (`None`: a shape or folded port).",
+      "properties": {
+        "node": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "operands": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/Row"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "results": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/Row"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "node",
+        "results",
+        "operands"
+      ],
+      "type": "object"
+    },
+    "Operand": {
+      "description": "One operand of the skeleton: a core operand or result, or a kernel input use or output.",
+      "properties": {
+        "access": {
+          "items": {
+            "$ref": "#/$defs/Row"
+          },
+          "type": "array"
+        },
+        "axes": {
+          "description": "Axis classes of the value, and its element class.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "core": {
+          "description": "A core operand (or result).",
+          "type": "boolean"
+        },
+        "direction": {
+          "$ref": "#/$defs/Direction"
+        },
+        "elem": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "description": "`lhs`, `rhs`, `input<i>`, `init<i>`, `indices`, `updates<i>`, `result<i>` (core), `in<j>`, `out<j>`\n(kernel interface).",
+          "type": "string"
+        },
+        "node": {
+          "description": "The kernel node whose value it is (an input node, a member, or the member an output reads).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "res": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reuse": {
+          "description": "Iteration dims that do not index it (reuse along `e_d`).",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "direction",
+        "core",
+        "node",
+        "res",
+        "axes",
+        "elem",
+        "access",
+        "reuse"
+      ],
+      "type": "object"
+    },
+    "Order": {
+      "description": "A reduction order ω (docs/passes/normalize.md §4).",
+      "oneOf": [
+        {
+          "const": "seq",
+          "description": "One accumulator: the init value, then the elements in ascending lexicographic order of `axes`.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The elements in the same order, grouped by `fan_in` (each group left to right), level by level;\nthe init value is combined at the root.",
+          "properties": {
+            "tree": {
+              "properties": {
+                "fan_in": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "fan_in"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "tree"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Row": {
+      "description": "One index of a value: `(Σ terms) / divisor`.",
+      "properties": {
+        "data": {
+          "description": "The index also depends on data (scatter); the terms are its affine part.",
+          "type": "boolean"
+        },
+        "divisor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Factor"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Exact division (base or lhs dilation): iterations where it does not divide read no element."
+        },
+        "padded": {
+          "description": "Out-of-range indices read the padding value.",
+          "type": "boolean"
+        },
+        "terms": {
+          "items": {
+            "$ref": "#/$defs/Term"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "terms",
+        "padded",
+        "data"
+      ],
+      "type": "object"
+    },
+    "SkelClass": {
+      "description": "What a class computes, from its accesses (design §4.7).",
+      "oneOf": [
+        {
+          "const": "map",
+          "description": "No reduction dim.",
+          "type": "string"
+        },
+        {
+          "const": "reduce",
+          "description": "Reduction dims, and every core input is indexed by every parallel dim (no reuse).",
+          "type": "string"
+        },
+        {
+          "const": "contraction",
+          "description": "Reduction dims, and some core input is not indexed by some parallel dim (reuse).",
+          "type": "string"
+        }
+      ]
+    },
+    "Stages": {
+      "description": "Element-wise stages around a template's core (handed to `datapaths` like map kernels).",
+      "properties": {
+        "epilogue": {
+          "description": "The epilogue members (once per element of the result).",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "prologue": {
+          "additionalProperties": false,
+          "description": "Per core input port: the prologue members on its path (once per element of that operand).",
+          "patternProperties": {
+            "^\\d+$": {
+              "items": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "prologue",
+        "epilogue"
+      ],
+      "type": "object"
+    },
+    "Tag": {
+      "description": "Parallel (indexes the result) or reduction (combined away).",
+      "enum": [
+        "par",
+        "red"
+      ],
+      "type": "string"
+    },
+    "Term": {
+      "description": "`k · Π factors · i_dim` (no dim: a constant term).",
+      "properties": {
+        "dim": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "factors": {
+          "items": {
+            "$ref": "#/$defs/Factor"
+          },
+          "type": "array"
+        },
+        "k": {
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "k",
+        "factors"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`skeletons/<z>.json`.",
+  "properties": {
+    "accesses": {
+      "items": {
+        "$ref": "#/$defs/NodeAccess"
+      },
+      "type": "array"
+    },
+    "affine": {
+      "description": "Every access is affine in the iteration vector (no data-dependent index).",
+      "type": "boolean"
+    },
+    "class": {
+      "$ref": "#/$defs/SkelClass"
+    },
+    "core": {
+      "type": "string"
+    },
+    "core_node": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "dims": {
+      "items": {
+        "$ref": "#/$defs/Dim"
+      },
+      "type": "array"
+    },
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "description": "The kernel_classes kind and core key.",
+      "type": "string"
+    },
+    "omega": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DimOrder"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "operands": {
+      "items": {
+        "$ref": "#/$defs/Operand"
+      },
+      "type": "array"
+    },
+    "proof": {
+      "description": "The access proof (`smt/<file>`).",
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "stages": {
+      "$ref": "#/$defs/Stages"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "class",
+    "kind",
+    "core",
+    "affine",
+    "dims",
+    "operands",
+    "accesses",
+    "stages",
+    "proof"
+  ],
+  "title": "Skeleton",
+  "type": "object"
+}

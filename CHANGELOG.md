@@ -13,6 +13,7 @@ All notable changes to this project are listed here. The format follows
 - `normalize` pass and `cc-smt`: exactness-preserving rewrites proven once with SMT, a replayable ledger, and a reduction order on every reduction.
 - `kernels` pass: every component partitioned into convex single-core kernels and map kernels, with an independently checked partition and kernel graphs.
 - `kernel_classes` pass: kernels grouped into position-, width- and size-free classes with certificates, instance tables with workloads, and the component vs kernel sharing report.
+- `iteration_space` pass and the op table's iteration semantics: per class its affine accesses proven against the spec, dependences, the embedding relation, and routing of uniform contractions to systolic templates by a proven space-time mapping.
 
 ### Changed
 

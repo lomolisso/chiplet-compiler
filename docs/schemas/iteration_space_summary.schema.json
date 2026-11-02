@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`summary.json`.",
+  "properties": {
+    "classes": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "classes_by_kind": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Skeleton classes per kernel_classes kind: `<kind> -> <class>`.",
+      "type": "object"
+    },
+    "dataflows": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Template classes per selected dataflow.",
+      "type": "object"
+    },
+    "datapath_reasons": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Datapath classes per reason kind.",
+      "type": "object"
+    },
+    "datapath_workload": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "datapaths": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "embedding_over_budget": {
+      "description": "Embedding searches stopped by their step budget (counted as no embedding).",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "embedding_pairs": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "proofs": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "template_cores": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Template classes per core key.",
+      "type": "object"
+    },
+    "template_workload": {
+      "description": "Weighted workload routed to templates and to datapaths.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "templates": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "uniform": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema",
+    "classes",
+    "classes_by_kind",
+    "uniform",
+    "templates",
+    "datapaths",
+    "template_cores",
+    "dataflows",
+    "datapath_reasons",
+    "template_workload",
+    "datapath_workload",
+    "embedding_pairs",
+    "embedding_over_budget",
+    "proofs"
+  ],
+  "title": "Summary",
+  "type": "object"
+}
