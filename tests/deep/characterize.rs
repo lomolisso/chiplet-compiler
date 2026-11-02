@@ -97,7 +97,19 @@ fn characterize_reduced_catalog_on_every_flow() {
             "{tool}: {s:?}"
         );
         let lib: Library = dir.kind(LIBRARY).read_json("library.json").unwrap();
-        assert!(lib.rows.iter().all(|r| r.lec.equivalent), "{tool}");
+        // Proven, or out of time with no failing point (the row says so); never a failing point.
+        let open: Vec<String> = lib
+            .rows
+            .iter()
+            .filter(|r| !r.lec.equivalent)
+            .map(|r| format!("{} {} {}", r.key, r.kit, r.target))
+            .collect();
+        assert!(
+            lib.rows
+                .iter()
+                .all(|r| r.lec.failing == 0 && (r.lec.equivalent || r.inconclusive)),
+            "{tool}: {open:?}"
+        );
         // A wider multiply costs more than a narrower one, and a split 16-bit multiply has its pieces.
         for kit in ["nangate45", "asap7"] {
             let area = |key: &str| {
@@ -147,7 +159,12 @@ fn characterize_reduced_catalog_on_every_flow() {
             .map(|r| format!("{} {} {}", r.key, r.kit, r.target))
             .collect();
         keys.sort();
-        digest.push(serde_json::json!({ "tool": tool, "rows": keys.len(), "keys": keys }));
+        digest.push(serde_json::json!({
+            "tool": tool,
+            "rows": keys.len(),
+            "inconclusive": open,
+            "keys": keys,
+        }));
     }
     insta::assert_json_snapshot!("characterize_reduced_keys", digest);
     std::fs::remove_dir_all(&build).unwrap();

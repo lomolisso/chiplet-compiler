@@ -198,6 +198,12 @@
    | `register@w32` | 144.7 / 120 | 195.8 / 100 | 10.7 / 54 | 14.6 / 44 |
    | `accumulator.add@i32` | 380.6 / 1910 | 531.2 / 520 | 24.8 / 981 | 39.9 / 219 |
 
+   Deep test (`tests/deep/characterize.rs`: doctor, then `add` and `multiply` at 8 bits and f32, their
+   accumulators, a 2-input mux, a register and a 16-from-8 split multiplier on both kits and targets):
+   about 80 minutes from scratch (DC + Formality 76 rows, all proven; Genus + Conformal 76 rows, 5
+   inconclusive; Yosys 56 rows without the float and split ones, all proven), 3 minutes with its job
+   directories in place.
+
 8. **Limitations.**
    - Float rows are provisional (XLS `apfloat`: subnormals flushed, IEEE special values for E4M3FN) and
      12 float ops are pending until the soft-float library exists; `merge` must treat pending
@@ -210,6 +216,9 @@
      `cec` needs 172 s for a 32-bit textbook divider and more than 72 h at 48 bits (Scholl and Konrad,
      DATE 2020); the methods that scale exploit the divider's layer structure. Every other divider,
      the signed 32-bit one included, is proven.
+   - Conformal stops some compare points of an f32 multiplier and of a split multiplier at its own limits
+     (deep test: multiply@f32 at three of the four kit and target pairs, split@w16n8 at both fast
+     targets; 0 failing points); those Genus rows end inconclusive where Formality proves the DC ones.
    - One corner per kit (Nangate45 has only typical; other ASAP7 corners need doctor to compile them).
    - Areas are cell areas from the Liberty files at 1x scale (ASAP7 also ships 4x LEFs for P&R tools;
      an area from a 4x flow would be 16 times larger); no wires (no wire-load model, no placement).
