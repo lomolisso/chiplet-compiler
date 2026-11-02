@@ -5,8 +5,8 @@ expression: digest
 {
   "checks": 822,
   "components": 203,
-  "nodes": 26890,
-  "nodes_in": 29052,
+  "nodes": 26898,
+  "nodes_in": 29060,
   "omega": {
     "seq": 415
   },

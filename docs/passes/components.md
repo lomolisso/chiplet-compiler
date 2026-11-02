@@ -64,7 +64,11 @@
       value and one `output` per value used outside), one node per op except size computation and ops
       whose every use is a shape operand (constant shape vectors), one per region argument, and one
       `size_in` per `dim_as_data` operand (the size value enters compute there; its symbolic value,
-      recomputed by import's size-value interpreter, is a parameter). Shape operands and composite
+      recomputed by import's size-value interpreter, is a parameter). A custom call's reducer
+      computation (`called_computations` of `dynamic_reduce_window`, which the spec defines with that
+      body as a region, like `reduce_window`) is inlined as the call's region 0, one copy per call
+      site: its arguments are region arguments, its `func.return` is the region terminator
+      `stablehlo.return`, and the reducer's symbol name leaves the label. Shape operands and composite
       dimension arguments are not edges: import validated that the result types determine them. Edges
       carry (result index, port): `*` for a commutative op's operands, the index among non-shape
       operands for a composite call, `region r.i` from an owner to its region's arguments and `yield r`
@@ -150,7 +154,7 @@
    - `dynamic_*` ops and their static forms (`dynamic_broadcast_in_dim` and `broadcast_in_dim`) are
      different labels, so a layer exported with a constant batch and the same layer with a symbolic
      batch are different components; identifying them is a rewrite for `normalize`.
-   - A custom call's `called_computations` stays a literal name in the label.
+   - A reducer computation must be a single block without regions or calls; the pass fails on any other.
    - Equal WL hashes of non-isomorphic graphs only cost VF2 searches (each is a new representative);
      a VF2 search over `vf2_budget` fails the pass instead of guessing.
    - Size values of `size_in` nodes come from import's interpreter (`size_value::interpret`), which

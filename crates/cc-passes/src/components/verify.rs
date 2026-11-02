@@ -20,7 +20,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use cc_core::{Check, VerifyReport};
 use cc_ir::absgraph::{EdgeEnd, EdgeLabel, Graph, PortLabel, hash_bytes, wl};
-use cc_ir::{Def, FuncId, Module, OpId, Owner, SymCtx, ValueId};
+use cc_ir::{Def, FuncId, FuncKind, Module, OpId, Owner, SymCtx, ValueId};
 use cc_pipeline::{PassContext, PassError};
 use rayon::prelude::*;
 
@@ -335,6 +335,13 @@ fn concrete(
                 attrs.remove(k);
             }
         }
+        let computation_call = op.name == "stablehlo.custom_call"
+            && op
+                .callee
+                .is_some_and(|cf| m.func(cf).kind == FuncKind::Computation);
+        if computation_call {
+            attrs.remove("called_computations");
+        }
         c.nodes.insert(
             NodeRef::Op(o.0),
             Concrete {
@@ -375,6 +382,12 @@ fn concrete(
                     },
                 );
             }
+        }
+        if op.name == "stablehlo.custom_call"
+            && let Some(cf) = op.callee
+            && m.func(cf).kind == FuncKind::Computation
+        {
+            computation(&mut c, m, o, cf)?;
         }
     }
     let anon = rec.func.is_none();
@@ -487,6 +500,98 @@ fn concrete(
         }
     }
     Ok(c)
+}
+
+/// A custom call's computation (a reducer) as region 0 of the call's node, one copy per call site; its
+/// `func.return` is the region terminator `stablehlo.return` (docs/passes/components.md §4).
+fn computation(c: &mut Conc, m: &Module, site: OpId, cf: FuncId) -> Result<(), String> {
+    let ty = |v: ValueId| m.value(v).ty.tensor().cloned().ok_or("non-tensor value");
+    let body_id = m.func(cf).body;
+    let body = m.region(body_id);
+    let arg = |v: ValueId| NodeRef::CalleeArg {
+        site: site.0,
+        value: v.0,
+    };
+    let at = |o: OpId| NodeRef::CalleeOp {
+        site: site.0,
+        op: o.0,
+    };
+    for (ai, &a) in body.args.iter().enumerate() {
+        c.nodes.insert(
+            arg(a),
+            Concrete {
+                kind: Kind::RegionArg {
+                    region: 0,
+                    index: ai as u32,
+                },
+                attrs: Default::default(),
+                results: vec![ty(a)?],
+                child: None,
+                size: None,
+            },
+        );
+        c.edge(
+            NodeRef::Op(site.0),
+            arg(a),
+            EdgeEnd {
+                res: 0,
+                port: PortLabel::Region {
+                    region: 0,
+                    index: ai as u32,
+                },
+            },
+        );
+    }
+    for (k, &o) in body.ops.iter().enumerate() {
+        let op = m.op(o);
+        let last = k + 1 == body.ops.len();
+        let name = if last && op.name == "func.return" {
+            "stablehlo.return".to_string()
+        } else {
+            op.name.clone()
+        };
+        c.nodes.insert(
+            at(o),
+            Concrete {
+                kind: Kind::Op {
+                    name,
+                    target: op.target.clone(),
+                },
+                attrs: op.attrs.clone(),
+                results: op.results.iter().map(|&v| ty(v)).collect::<Result<_, _>>()?,
+                child: None,
+                size: None,
+            },
+        );
+        let spec = cc_ir::lookup(&op.name, op.target.as_deref()).ok_or("op not in the table")?;
+        for (p, &v) in op.operands.iter().enumerate() {
+            if is_shape_port(m, op, p) {
+                continue;
+            }
+            let port = if spec.commutative {
+                PortLabel::Commutative
+            } else {
+                PortLabel::Port(p as u32)
+            };
+            let (src, res) = match m.value(v).def {
+                Def::Result { op: u, index } if m.op(u).parent == body_id => (at(u), index),
+                _ if body.args.contains(&v) => (arg(v), 0),
+                _ => return Err(format!("computation op {} port {p}: operand from outside", o.0)),
+            };
+            c.edge(src, at(o), EdgeEnd { res, port });
+        }
+        if last {
+            c.edge(
+                at(o),
+                NodeRef::Op(site.0),
+                EdgeEnd {
+                    res: 0,
+                    port: PortLabel::Yield { region: 0 },
+                },
+            );
+        }
+    }
+    Ok(())
 }
 
 fn same(a: &Concrete, b: &Concrete, ctx: &SymCtx) -> Result<(), String> {

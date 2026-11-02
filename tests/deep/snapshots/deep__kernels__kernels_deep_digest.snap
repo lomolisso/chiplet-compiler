@@ -85,7 +85,7 @@ expression: digest
   "low_rank_maps": 910,
   "map_kernels": 1217,
   "roles": {
-    "body": 844,
+    "body": 852,
     "broadcast": 1132,
     "core": 412,
     "epilogue": 326,

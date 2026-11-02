@@ -23,6 +23,7 @@ All notable changes to this project are listed here. The format follows
 ### Fixed
 
 - JSON floats are parsed exactly (`serde_json` `float_roundtrip`); `import` read some float attributes one ulp off.
+- `components` inlines a custom call's reducer computation as its region, so `dynamic_reduce_window` kernels carry their combiner and classes tell reducers apart.
 
 ## [0.3.0] - 2026-10-31
 
