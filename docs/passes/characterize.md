@@ -58,7 +58,9 @@
       rows). Structural primitives: an N-input multiplexer per `mux_inputs` and `mux_widths` (binary
       select), a register per `register_widths` (D flip-flops, no reset: ASAP7 has no plain async-reset
       flop), an accumulator per commutative op of the table at every type it has RTL for (the combiner
-      with its result register in the loop), and a split multiplier per `split_multipliers` (w, n).
+      with its result register in the loop, and a `start` input that loads the first element: without a
+      defined start value DC assumed one and removed the register of every multiply accumulator, which
+      the flip-flop check caught), and a split multiplier per `split_multipliers` (w, n).
    2. *RTL.* Integer and bool ops are DSLX mirroring `cc_smt::ops`: wrapping arithmetic, XLA's results for
       `x / 0 = -1`, `INT_MIN / -1 = INT_MIN`, `x % 0 = x`, `INT_MIN % -1 = 0`, a remainder with the sign of
       the dividend. Float ops call XLS's `apfloat` library (`add`, `sub`, `mul`, `eq_2`, `lt_2`, `lte_2`,

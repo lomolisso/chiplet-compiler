@@ -122,20 +122,26 @@ pub fn view(lib: &Library, cov: &Coverage, s: &Summary) -> String {
         let _ = writeln!(o);
     }
 
-    let allowed: Vec<String> = lib
+    let open: Vec<String> = lib
         .rows
         .iter()
-        .filter_map(|r| {
-            r.allowed
-                .as_ref()
-                .map(|w| format!("- {} {} {}: {w}", r.key, r.kit, r.target))
+        .filter(|r| r.inconclusive)
+        .map(|r| {
+            format!(
+                "- {} {} {}: {} passing, {} unverified, 0 failing",
+                r.key, r.kit, r.target, r.lec.passing, r.lec.aborted
+            )
         })
         .collect();
-    let _ = writeln!(o, "## Equivalence inconclusive, allowed ({})\n", allowed.len());
-    for a in &allowed {
+    let _ = writeln!(
+        o,
+        "## Equivalence inconclusive within the time limit ({})\n",
+        open.len()
+    );
+    for a in &open {
         let _ = writeln!(o, "{a}");
     }
-    if !allowed.is_empty() {
+    if !open.is_empty() {
         let _ = writeln!(o);
     }
 

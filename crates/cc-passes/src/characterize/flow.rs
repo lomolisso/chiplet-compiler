@@ -295,7 +295,12 @@ pub fn jobs(
                     Tool::Yosys => {
                         scripts.push((
                             "run.sh".into(),
-                            eda::scripts::yosys(&format!("/kit/{}", lib_file(kit)), chunk, period),
+                            eda::scripts::yosys(
+                                &format!("/kit/{}", lib_file(kit)),
+                                chunk,
+                                period,
+                                u64::from(cfg.lec_timeout_min) * 60,
+                            ),
                         ));
                     }
                 }
@@ -591,25 +596,28 @@ pub fn rows(
                 parse::yosys_equiv(&read(&format!("{id}.lec.rpt"))),
             ),
         };
+        let net_text = read(&format!("{id}.net.v"));
+        let rtl_text = read(&format!("rtl/{id}.v"));
         problems.extend(problems_of(
             kit,
-            &seg,
-            &lseg,
-            &check,
-            &read(&format!("{id}.net.v")),
+            &Evidence {
+                seg: &seg,
+                lec_seg: &lseg,
+                check: &check,
+                netlist: &net_text,
+                rtl: &rtl_text,
+                top: id,
+                flops: expected_flops(p.kind, p.width),
+                // ABC reports no path for a design that is only flip-flops.
+                need_delay: !(cfg.tool == Tool::Yosys && d.clocked),
+            },
             &measured,
             &lec,
-            // ABC reports no path for a design that is only flip-flops.
-            !(cfg.tool == Tool::Yosys && d.clocked),
         ));
-        let allowed = cfg.allowed(&p.key, &lec);
-        if allowed.is_some() {
-            problems.retain(|x| !x.starts_with("equivalence not proven"));
-        }
+        let inconclusive = lec.inconclusive();
         // Copy the evidence.
         let rel_dir = format!("{}/{}", kit.name, j.target);
         let netlist = format!("netlist/{rel_dir}/{id}.v");
-        let net_text = read(&format!("{id}.net.v"));
         write(&out_root.join(&netlist), &net_text)?;
         let mut reports = Vec::new();
         for what in ["area", "qor", "timing", "power", "check", "lec"] {
@@ -655,7 +663,7 @@ pub fn rows(
                 estimator: cfg.tool.name().into(),
                 lec_tool: cfg.tool.lec().into(),
                 lec,
-                allowed,
+                inconclusive,
                 provisional: p.provisional,
                 netlist,
                 netlist_hash: canon::hash_bytes(net_text.as_bytes()),
@@ -667,34 +675,59 @@ pub fn rows(
     Ok(out)
 }
 
-/// Everything wrong with one design's synthesis and equivalence check. Shared with `verify`, which
-/// calls it on the copies in `out/library/`.
-#[allow(clippy::too_many_arguments)]
-pub fn problems_of(
-    kit: &Kit,
-    seg: &str,
-    lec_seg: &str,
-    check: &str,
-    netlist: &str,
-    m: &parse::Measured,
-    lec: &parse::Lec,
-    need_delay: bool,
-) -> Problems {
-    let mut p = Vec::new();
-    for e in parse::errors(seg).into_iter().chain(parse::errors(lec_seg)) {
-        p.push(format!("tool error: {e}"));
+/// What one design left behind, as `problems_of` reads it.
+#[derive(Debug, Clone, Copy)]
+pub struct Evidence<'a> {
+    /// The design's part of the synthesis and of the equivalence log.
+    pub seg: &'a str,
+    pub lec_seg: &'a str,
+    pub check: &'a str,
+    pub netlist: &'a str,
+    /// The RTL file of the top module, and its name.
+    pub rtl: &'a str,
+    pub top: &'a str,
+    /// Flip-flops the RTL describes (a register or accumulator: its width; otherwise none).
+    pub flops: u64,
+    /// Whether the report must have a timing path (ABC gives none for a design that is only flops).
+    pub need_delay: bool,
+}
+
+/// The flip-flops a primitive's RTL describes.
+pub fn expected_flops(kind: super::catalog::Kind, width: u32) -> u64 {
+    match kind {
+        super::catalog::Kind::Register | super::catalog::Kind::Accumulator => u64::from(width),
+        _ => 0,
     }
-    let u = parse::unresolved(seg, check);
+}
+
+/// Everything wrong with one design: the tool's log, the netlist against the library and the RTL (the
+/// sanity checks), the reports, and the equivalence check. A check that ran out of time without a
+/// failing point is not a problem by itself (`Lec::inconclusive`); with any other problem the row fails.
+/// Shared with `verify`, which calls it on the copies in `out/library/`.
+pub fn problems_of(kit: &Kit, e: &Evidence, m: &parse::Measured, lec: &parse::Lec) -> Problems {
+    let mut p = Vec::new();
+    for err in parse::errors(e.seg).into_iter().chain(parse::errors(e.lec_seg)) {
+        p.push(format!("tool error: {err}"));
+    }
+    let u = parse::unresolved(e.seg, e.check);
     if u > 0 {
         p.push(format!("{u} unresolved references"));
     }
-    if netlist.trim().is_empty() {
+    let wiring = is_wiring(e.netlist);
+    if e.netlist.trim().is_empty() {
         p.push("no netlist".into());
     } else {
-        let n = eda::netlist::parse(netlist);
+        let n = eda::netlist::parse(e.netlist);
         let latches = n.count_of(&kit.latches);
         if latches > 0 {
             p.push(format!("{latches} latch cells in the netlist"));
+        }
+        let flops = n.count_of(&kit.flops);
+        if flops != e.flops {
+            p.push(format!(
+                "{flops} flip-flops in the netlist, the RTL has {}",
+                e.flops
+            ));
         }
         let foreign: Vec<&String> = n.foreign(&kit.cells).collect();
         if !foreign.is_empty() {
@@ -709,16 +742,28 @@ pub fn problems_of(
                     .join(", ")
             ));
         }
+        match (
+            eda::netlist::ports(e.rtl, e.top),
+            eda::netlist::ports(e.netlist, e.top),
+        ) {
+            (Some(r), Some(nl)) if r == nl => {}
+            (Some(r), Some(nl)) => p.push(format!("ports differ: RTL {r:?}, netlist {nl:?}")),
+            (None, _) => p.push(format!("no module {} in the RTL", e.top)),
+            (_, None) => p.push(format!("no module {} in the netlist", e.top)),
+        }
+        if !wiring && n.instances.is_empty() {
+            p.push("no cells in the netlist".into());
+        }
     }
-    if m.area_um2.is_none_or(|a| a <= 0.0) && !netlist.trim().is_empty() && !is_wiring(netlist) {
+    if m.area_um2.is_none_or(|a| a <= 0.0) && !e.netlist.trim().is_empty() && !wiring {
         p.push("no area in the report".into());
     }
-    if need_delay && m.delay_ps.is_none() && !is_wiring(netlist) {
+    if e.need_delay && m.delay_ps.is_none() && !wiring {
         p.push("no delay in the report".into());
     }
-    if !lec.equivalent {
+    if !lec.equivalent && !lec.inconclusive() {
         p.push(format!(
-            "equivalence not proven: {} ({} failing, {} aborted, {} passing)",
+            "equivalence not proven: {} ({} failing, {} unverified, {} passing)",
             lec.verdict, lec.failing, lec.aborted, lec.passing
         ));
     }

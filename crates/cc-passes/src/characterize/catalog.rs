@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use super::config::CharacterizeConfig;
 
 /// Bump when a generator's output changes (enters the cache key through `catalog.json`).
-pub const CATALOG_VERSION: u32 = 1;
+pub const CATALOG_VERSION: u32 = 2;
 
 /// Why a primitive has no RTL yet.
 pub const PENDING_SOFTFLOAT: &str = "softfloat: no apfloat function for this op";
@@ -561,13 +561,16 @@ fn register(w: u32) -> Primitive {
 
 /// The ports of an XLS combinational module: inputs `a`, `b`, output `out`; float values flatten to their
 /// bit patterns (sign, exponent, fraction).
+/// The combiner with its result register in the loop. `start` loads the first element (a reduction starts
+/// from a defined value): without it nothing initializes the register, and synthesis may assume a start
+/// state and remove it (a multiply accumulator from 0 stays 0).
 fn accumulator(c: &Primitive) -> Primitive {
     let ty = &c.types[0];
     let w = format_width(ty);
     let id = format!("accumulator_{}", c.id);
     let h = w - 1;
     let v = format!(
-        "module {id}(input wire clk, input wire [{h}:0] x, output reg [{h}:0] acc);\n  wire [{h}:0] next;\n  {comb} u_comb(.a(acc), .b(x), .out(next));\n  always @(posedge clk) acc <= next;\nendmodule\n",
+        "module {id}(input wire clk, input wire start, input wire [{h}:0] x, output reg [{h}:0] acc);\n  wire [{h}:0] next;\n  {comb} u_comb(.a(acc), .b(x), .out(next));\n  always @(posedge clk) acc <= start ? x : next;\nendmodule\n",
         comb = c.id
     );
     Primitive {

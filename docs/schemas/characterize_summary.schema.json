@@ -27,13 +27,13 @@
       "minimum": 0,
       "type": "integer"
     },
-    "lec_allowed": {
-      "description": "Rows whose check ended inconclusive, allowed by `allow_inconclusive`.",
+    "lec_equivalent": {
       "format": "uint64",
       "minimum": 0,
       "type": "integer"
     },
-    "lec_equivalent": {
+    "lec_inconclusive": {
+      "description": "Rows whose check ran out of time with no failing point (every sanity check passed).",
       "format": "uint64",
       "minimum": 0,
       "type": "integer"
@@ -85,7 +85,7 @@
     "pending",
     "rows",
     "lec_equivalent",
-    "lec_allowed",
+    "lec_inconclusive",
     "designware_rows",
     "jobs_run",
     "jobs_reused",

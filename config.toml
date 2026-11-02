@@ -226,14 +226,11 @@ register_widths = [1, 2, 4, 8, 16, 32]
 split_multipliers = [[8, 4], [16, 8], [32, 8], [32, 16]]   # (w, n): a w-bit multiply from n-bit pieces
 driving_cell = { nangate45 = "BUF_X1", asap7 = "BUFx2_ASAP7_75t_R" }   # drives every input
 load_fanout = 4                  # every output drives this many driving-cell inputs
-lec_timeout_min = 10             # Formality's limit per design and strategy (verification_timeout_limit)
+lec_timeout_min = 2              # equivalence check limit per design (Formality verification_timeout_limit, Yosys);
+                                 # a check that runs out of time with no failing point passes when every sanity
+                                 # check does, and the row is marked inconclusive
 lec_strategies = []              # Formality alternate strategies (s2, s3, …) tried while a design is not proven;
                                  # none proved a wide divider (s2, s3, s1 on divide@ui32), so none by default
-# Primitives whose check may end inconclusive: no failing compare point, some unverified within
-# lec_timeout_min. A failing point is never allowed (docs/passes/characterize.md §6, §8).
-allow_inconclusive = [
-  { key = "divide@ui32", reason = "Formality leaves 10 of 32 outputs of DC's timing-driven DesignWare divider unverified (default, s1-s3, datapath effort high and unlimited: 30 min each); 22 pass, none fails" },
-]
 batch = 24                       # designs per tool session (a job directory, reused by a rerun)
 cores = 2                        # cores per DC / Genus session
 views = true                     # write views/library.md

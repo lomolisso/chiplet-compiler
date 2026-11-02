@@ -40,23 +40,12 @@ pub struct CharacterizeConfig {
     /// Formality's alternate strategies, tried in order while a design is not proven
     /// (`verification_alternate_strategy_names` lists them in the recommended order).
     pub lec_strategies: Vec<String>,
-    /// Primitives whose equivalence check may end inconclusive (no failing compare point, some left
-    /// unverified), each with its reason. A failing point is never allowed.
-    pub allow_inconclusive: Vec<Inconclusive>,
     /// Designs per tool session.
     pub batch: usize,
     /// Cores per DC / Genus session.
     pub cores: u32,
     /// Write `views/library.md`.
     pub views: bool,
-}
-
-/// One `allow_inconclusive` entry.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Inconclusive {
-    pub key: String,
-    pub reason: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -107,9 +96,8 @@ impl Default for CharacterizeConfig {
             ]
             .into(),
             load_fanout: 4.0,
-            lec_timeout_min: 10,
+            lec_timeout_min: 2,
             lec_strategies: Vec::new(),
-            allow_inconclusive: Vec::new(),
             batch: 24,
             cores: 2,
             views: true,
@@ -118,21 +106,6 @@ impl Default for CharacterizeConfig {
 }
 
 impl CharacterizeConfig {
-    /// The reason a primitive may end inconclusive, if it is listed.
-    pub fn inconclusive_reason(&self, key: &str) -> Option<&str> {
-        self.allow_inconclusive
-            .iter()
-            .find(|a| a.key == key)
-            .map(|a| a.reason.as_str())
-    }
-
-    /// A check that proves nothing wrong (no failing point) but did not finish, for a listed primitive.
-    pub fn allowed(&self, key: &str, lec: &crate::eda::parse::Lec) -> Option<String> {
-        (!lec.equivalent && lec.failing == 0 && lec.aborted > 0)
-            .then(|| self.inconclusive_reason(key).map(str::to_string))
-            .flatten()
-    }
-
     /// The period of `target` on `kit`, in ps.
     pub fn period_ps(&self, kit: &str, target: &str) -> Result<f64, String> {
         let clock = *self

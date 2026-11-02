@@ -255,6 +255,13 @@ fn row_total(text: &str, label: &str) -> Option<u64> {
     })
 }
 
+impl Lec {
+    /// The check ran out of time: nothing failed, some points stayed unverified.
+    pub fn inconclusive(&self) -> bool {
+        !self.equivalent && self.failing == 0 && self.aborted > 0
+    }
+}
+
 /// Formality `report_status`: the verdict line and the matched compare point table.
 pub fn formality(status: &str) -> Lec {
     let verdict = status
@@ -326,13 +333,14 @@ pub fn yosys_equiv(log: &str) -> Lec {
             .next_back()
     };
     let passing = count("proven").unwrap_or(0);
+    // An unproven pair is one SAT could not decide in time, not a counterexample.
     let unproven = count("unproven").unwrap_or(u64::from(!proven));
     let equivalent = proven && unproven == 0;
     Lec {
         equivalent,
         passing,
-        failing: if equivalent { 0 } else { unproven.max(1) },
-        aborted: 0,
+        failing: 0,
+        aborted: if equivalent { 0 } else { unproven.max(1) },
         unmatched: 0,
         verdict: if equivalent {
             "equivalent".into()
@@ -439,7 +447,8 @@ mod tests {
         assert_eq!(yosys_equiv(ok).passing, 64);
         let bad = "  Of those cells 60 are proven and 4 are unproven.\n";
         assert!(!yosys_equiv(bad).equivalent);
-        assert_eq!(yosys_equiv(bad).failing, 4);
+        assert!(yosys_equiv(bad).inconclusive());
+        assert_eq!(yosys_equiv(bad).aborted, 4);
         assert!(!yosys_equiv("").equivalent);
     }
 

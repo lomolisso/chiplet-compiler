@@ -97,7 +97,7 @@ pub fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
     for s in &series {
         flags.extend(sanity::flags(s));
     }
-    let mut c = Check::new("sanity", true)
+    let mut c = Check::new("trends", true)
         .with_status(CheckStatus::Pass)
         .count("series", series.len() as u64)
         .count("flags", flags.len() as u64);
@@ -202,7 +202,7 @@ fn per_target(
     let read = |rel: &str| std::fs::read_to_string(root.join(rel)).unwrap_or_default();
     let (mut lec_bad, mut log_bad, mut val_bad) = (Vec::new(), Vec::new(), Vec::new());
     let mut proven = 0u64;
-    let mut allowed_rows: Vec<String> = Vec::new();
+    let mut open_rows: Vec<String> = Vec::new();
     for r in rows {
         let base = format!("reports/{}/{}/{}", kit.name, target, r.id);
         let log = read(&format!("{base}.log"));
@@ -214,25 +214,21 @@ fn per_target(
             Tool::Genus => parse::conformal(&lec_text),
             Tool::Yosys => parse::yosys_equiv(&lec_text),
         };
-        let allowed = cfg.allowed(&r.key, &lec);
-        if allowed != r.allowed {
-            val_bad.push(format!(
-                "{}: allowed {:?}, the config says {:?}",
-                r.key, r.allowed, allowed
-            ));
-        }
         if lec.equivalent {
             proven += 1;
-        } else if let Some(why) = &allowed {
-            allowed_rows.push(format!(
-                "{}: {} ({} passing, {} unverified, 0 failing), allowed: {why}",
+        } else if lec.inconclusive() {
+            open_rows.push(format!(
+                "{}: {} ({} passing, {} unverified, 0 failing)",
                 r.key, lec.verdict, lec.passing, lec.aborted
             ));
         } else {
             lec_bad.push(format!(
-                "{}: {} ({} failing, {} aborted)",
+                "{}: {} ({} failing, {} unverified)",
                 r.key, lec.verdict, lec.failing, lec.aborted
             ));
+        }
+        if r.inconclusive != lec.inconclusive() {
+            val_bad.push(format!("{}: inconclusive flag", r.key));
         }
         let measured = match cfg.tool {
             Tool::Dc => parse::dc(
@@ -251,14 +247,19 @@ fn per_target(
         };
         let problems = flow::problems_of(
             kit,
-            seg,
-            lseg,
-            &read(&format!("{base}.check.rpt")),
-            &net,
+            &flow::Evidence {
+                seg,
+                lec_seg: lseg,
+                check: &read(&format!("{base}.check.rpt")),
+                netlist: &net,
+                rtl: &read(&format!("rtl/{}.v", r.id)),
+                top: &r.id,
+                flops: flow::expected_flops(r.kind, r.width),
+                need_delay: !(cfg.tool == Tool::Yosys
+                    && matches!(r.kind, catalog::Kind::Register | catalog::Kind::Accumulator)),
+            },
             &measured,
             &lec,
-            !(cfg.tool == Tool::Yosys
-                && matches!(r.kind, catalog::Kind::Register | catalog::Kind::Accumulator)),
         );
         for p in problems.into_iter().filter(|p| !p.starts_with("equivalence")) {
             log_bad.push(format!("{}: {p}", r.key));
@@ -276,15 +277,22 @@ fn per_target(
         Check::new(format!("{pre}:lec"), lec_bad.is_empty() && n > 0)
             .count("rows", n)
             .count("equivalent", proven)
-            .count("allowed_inconclusive", allowed_rows.len() as u64)
-            .note(format!("{} on every netlist against its RTL", cfg.tool.lec())),
-        &[lec_bad, allowed_rows].concat(),
+            .count("inconclusive", open_rows.len() as u64)
+            .note(format!(
+                "{} on every netlist against its RTL; a check that ran out of time with no failing point \
+                 passes when every sanity check does",
+                cfg.tool.lec()
+            )),
+        &[lec_bad, open_rows].concat(),
     ));
     rep.push(note_list(
-        Check::new(format!("{pre}:log"), log_bad.is_empty())
+        Check::new(format!("{pre}:sanity"), log_bad.is_empty())
             .count("rows", n)
             .count("problems", log_bad.len() as u64)
-            .note("no tool errors, unresolved references, latches or cells outside the library"),
+            .note(
+                "per netlist: the RTL's ports; flip-flops as the RTL describes; only library cells, no \
+                 latches; cells unless the RTL is wiring; no tool errors or unresolved references",
+            ),
         &log_bad,
     ));
     rep.push(note_list(

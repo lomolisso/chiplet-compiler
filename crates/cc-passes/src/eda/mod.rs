@@ -34,6 +34,8 @@ pub struct Kit {
     pub cells: BTreeSet<String>,
     /// Cells with a `latch` group.
     pub latches: BTreeSet<String>,
+    /// Cells with an `ff` group (flip-flops).
+    pub flops: BTreeSet<String>,
 }
 
 impl Kit {
@@ -62,7 +64,7 @@ impl Kit {
         }
         let cap = liberty::input_capacitance(text, driving_cell)?
             .ok_or_else(|| format!("{name}: {driving_cell} has no input pin capacitance"))?;
-        let (latches, _) = liberty::sequential_cells(text)?;
+        let (latches, flops) = liberty::sequential_cells(text)?;
         Ok(Kit {
             name: name.into(),
             corner,
@@ -74,6 +76,7 @@ impl Kit {
             load: load_fanout * cap,
             cells,
             latches,
+            flops,
         })
     }
 

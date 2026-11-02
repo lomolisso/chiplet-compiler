@@ -11,6 +11,7 @@ use cc_core::{CancelToken, CheckStatus, LoadedConfig};
 use cc_passes::characterize::catalog::catalog;
 use cc_passes::characterize::json::{Library, Summary};
 use cc_passes::characterize::{CharacterizeConfig, flow};
+use cc_passes::eda::netlist::Dir;
 use cc_pipeline::{Pipeline, RunOptions, RunStatus};
 use tests::{Env, repo_root};
 
@@ -58,6 +59,36 @@ fn ids(script: &str) -> Vec<String> {
                 .map(|r| r.trim_end_matches('"').to_string())
         })
         .collect()
+}
+
+/// A stand-in gate netlist with the RTL's ports, two gates, and one flop per bit of a clocked design's
+/// output.
+fn netlist(cwd: &Path, id: &str) -> String {
+    let rtl = std::fs::read_to_string(cwd.join(format!("rtl/{id}.v"))).unwrap();
+    let ports = cc_passes::eda::netlist::ports(&rtl, id).unwrap();
+    let names: Vec<&str> = ports.keys().map(String::as_str).collect();
+    let mut s = format!("module {id} ( {} );\n", names.join(", "));
+    for (n, (d, w)) in &ports {
+        let dir = match d {
+            Dir::Input => "input",
+            Dir::Output => "output",
+            Dir::Inout => "inout",
+        };
+        if *w == 1 {
+            s.push_str(&format!("  {dir} {n};\n"));
+        } else {
+            s.push_str(&format!("  {dir} [{}:0] {n};\n", w - 1));
+        }
+    }
+    s.push_str("  NAND2_X1 U1 ( .A1(n1), .A2(n2), .ZN(n3) );\n  BUF_X1 U2 ( .A(n3), .Z(n4) );\n");
+    if ports.contains_key("clk") {
+        let w = ports.values().find(|(d, _)| *d == Dir::Output).map_or(0, |p| p.1);
+        for i in 0..w {
+            s.push_str(&format!("  DFF_X1 R{i} ( .D(n4), .CK(clk), .Q(q{i}) );\n"));
+        }
+    }
+    s.push_str("endmodule\n");
+    s
 }
 
 fn area_of(id: &str) -> f64 {
@@ -136,12 +167,7 @@ impl ToolRunner for Tools {
                     );
                     w("timing.rpt", String::new());
                     w("check.rpt", String::new());
-                    w(
-                        "net.v",
-                        format!(
-                            "module {id} ( a, b, out );\n  input [7:0] a;\n  output [7:0] out;\n  NAND2_X1 U1 ( .A1(a[0]), .A2(a[1]), .ZN(out[0]) );\n  BUF_X1 U2 ( .A(a[2]), .Z(out[1]) );\nendmodule\n"
-                        ),
-                    );
+                    w("net.v", netlist(&cwd, &id));
                     out.push_str(&format!("@@begin {id}\nInformation: compiled {id}\n@@end {id}\n"));
                 }
             }
@@ -373,7 +399,7 @@ fn verify_catches_a_latch_and_a_cell_outside_the_library() {
         "  DLH_X1 L1 ( .D(a[3]), .G(a[4]), .Q(out[2]) );\nendmodule",
     );
     std::fs::write(&p, text).unwrap();
-    s.expect("nangate45:clock:log");
+    s.expect("nangate45:clock:sanity");
     s.expect("nangate45:clock:rows");
 
     let s = Setup::green();
@@ -383,7 +409,7 @@ fn verify_catches_a_latch_and_a_cell_outside_the_library() {
         "  GTECH_AND2 G1 ( .A(a[3]), .B(a[4]), .Z(out[2]) );\nendmodule",
     );
     std::fs::write(&p, text).unwrap();
-    s.expect("nangate45:clock:log");
+    s.expect("nangate45:clock:sanity");
 }
 
 #[test]
@@ -397,14 +423,14 @@ fn verify_catches_an_unresolved_reference_and_a_tool_error() {
         1,
     );
     std::fs::write(&log, text).unwrap();
-    s.expect("nangate45:clock:log");
+    s.expect("nangate45:clock:sanity");
     let s = Setup::green();
     std::fs::write(
         s.out(&format!("reports/nangate45/clock/{id}.log")),
         "Error: Cannot find the design 'x' in the library 'WORK'. (LBR-0)\n@@lec\n",
     )
     .unwrap();
-    s.expect("nangate45:clock:log");
+    s.expect("nangate45:clock:sanity");
 }
 
 #[test]
@@ -451,7 +477,7 @@ fn an_off_trend_point_is_a_note_not_a_failure() {
         v["rows"][i]["measured"]["area_um2"] = 1.0.into();
     });
     let checks = s.pipeline().verify_pass("characterize").unwrap();
-    let sanity = checks.checks.iter().find(|c| c.name == "sanity").unwrap();
+    let sanity = checks.checks.iter().find(|c| c.name == "trends").unwrap();
     assert_eq!(sanity.status, CheckStatus::Pass);
     assert!(sanity.evidence.counts["flags"] >= 1, "{sanity:?}");
     // Only the framework's output hashes notice the edit.
@@ -557,25 +583,15 @@ fn kits_need_the_environment() {
     let _ = flow::design;
 }
 
-const ALLOW_ADD_I8: &str =
-    "passes.characterize.allow_inconclusive=[{ key = \"add@i8\", reason = \"stand-in\" }]";
-
 #[test]
-fn an_inconclusive_check_needs_its_allowance_and_a_failing_one_never_has_one() {
-    // Not listed: the run fails.
+fn an_inconclusive_check_passes_only_with_every_sanity_check_and_a_failing_one_never() {
+    // Inconclusive, sanity checks green: the run and verify pass, the row is marked.
     let s = Setup::new();
     s.tools.lec_inconclusive.lock().unwrap().push("add_i8".into());
-    assert!(!s.run().ok);
-
-    // Listed: the run and verify pass, the row records the reason.
-    let s = Setup::new();
-    s.tools.lec_inconclusive.lock().unwrap().push("add_i8".into());
-    s.sets.lock().unwrap().push(ALLOW_ADD_I8.into());
     let sum = s.run();
     assert!(sum.ok, "{sum:?}");
     let row = s.library().rows.into_iter().find(|r| r.key == "add@i8").unwrap();
-    assert_eq!(row.allowed.as_deref(), Some("stand-in"));
-    assert!(!row.lec.equivalent);
+    assert!(row.inconclusive && !row.lec.equivalent);
     let failing = s.failing();
     assert!(failing.is_empty(), "{failing:?}");
     let checks = s.pipeline().verify_pass("characterize").unwrap();
@@ -584,15 +600,53 @@ fn an_inconclusive_check_needs_its_allowance_and_a_failing_one_never_has_one() {
         .iter()
         .find(|c| c.name == "nangate45:clock:lec")
         .unwrap();
-    assert_eq!(lec.evidence.counts["allowed_inconclusive"], 1);
+    assert_eq!(lec.evidence.counts["inconclusive"], 1);
+    let summary: Summary =
+        serde_json::from_str(&std::fs::read_to_string(s.out("summary.json")).unwrap()).unwrap();
+    assert_eq!(summary.lec_inconclusive, 1);
 
-    // Removing the allowance afterwards fails verify (and the stored reason no longer matches).
-    s.sets.lock().unwrap().clear();
-    s.expect("nangate45:clock:lec");
+    // Inconclusive and a sanity check fails (a port the RTL does not have): verify fails.
+    let net = s.out(&format!("netlist/nangate45/clock/{}.v", row.id));
+    let text = std::fs::read_to_string(&net)
+        .unwrap()
+        .replacen(" );", ", extra );\n  output extra;", 1);
+    std::fs::write(&net, text).unwrap();
+    s.expect("nangate45:clock:sanity");
 
-    // A failing compare point is never allowed.
+    // A failing compare point always fails the run.
     let s = Setup::new();
     s.tools.lec_fails.lock().unwrap().push("add_i8".into());
-    s.sets.lock().unwrap().push(ALLOW_ADD_I8.into());
     assert!(!s.run().ok);
+}
+
+#[test]
+fn verify_catches_ports_and_flip_flops_that_differ_from_the_rtl() {
+    let s = Setup::green();
+    let id = first_id(&s, "add_i8");
+    let net = s.out(&format!("netlist/nangate45/clock/{id}.v"));
+    let text = std::fs::read_to_string(&net)
+        .unwrap()
+        .replace("output [7:0] out", "output [6:0] out");
+    std::fs::write(&net, text).unwrap();
+    s.expect("nangate45:clock:sanity");
+
+    // A register with one flop fewer than its width.
+    let s = Setup::green();
+    let id = first_id(&s, "register_w8");
+    let net = s.out(&format!("netlist/nangate45/clock/{id}.v"));
+    let text = std::fs::read_to_string(&net)
+        .unwrap()
+        .replace("  DFF_X1 R7 ( .D(n4), .CK(clk), .Q(q7) );\n", "");
+    std::fs::write(&net, text).unwrap();
+    s.expect("nangate45:clock:sanity");
+
+    // A combinational design with a flop.
+    let s = Setup::green();
+    let id = first_id(&s, "add_i8");
+    let net = s.out(&format!("netlist/nangate45/clock/{id}.v"));
+    let text = std::fs::read_to_string(&net)
+        .unwrap()
+        .replace("endmodule", "  DFF_X1 R0 ( .D(n4), .CK(n1), .Q(n9) );\nendmodule");
+    std::fs::write(&net, text).unwrap();
+    s.expect("nangate45:clock:sanity");
 }
