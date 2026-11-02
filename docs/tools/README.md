@@ -16,7 +16,7 @@ that could not be checked are marked "(unverified)". Facts about this machine we
 | [pdks.md](pdks.md) | FreePDK45/Nangate45 and ASAP7 on this host: files, corners, units, `.db` creation, env vars |
 | [eda_environment.md](eda_environment.md) | `eda-toggle.sh` functions, why `eda-run` needs an interactive shell, `EdaRunner` contract, licenses, memory limiting on cgroups v1 |
 | [docker_resources.md](docker_resources.md) | `docker run` caps and OOM behaviour, permissions/mounts, toolchain image layering, disk layout |
-| [rust_stack.md](rust_stack.md) | Chosen crates and versions, nextest config, rustup without root, z3/bitwuzla binaries for `easy-smt` |
+| [rust_stack.md](rust_stack.md) | Chosen crates and versions, nextest config, rustup without root, z3/bitwuzla binaries |
 | [ci.md](ci.md) | GitHub Actions on GitHub-hosted runners, the `lint` and `test` jobs, what runs in CI vs locally |
 
 Most important cross-cutting findings:

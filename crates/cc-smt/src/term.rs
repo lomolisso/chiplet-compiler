@@ -17,7 +17,10 @@ pub enum Sort {
     Bool,
     Bv(u32),
     /// `(_ FloatingPoint e s)`: `s` counts the hidden bit (Float32 is `e = 8, s = 24`).
-    Fp { e: u32, s: u32 },
+    Fp {
+        e: u32,
+        s: u32,
+    },
 }
 
 impl Sort {
@@ -91,7 +94,10 @@ pub enum Op {
     BvSlt,
     BvSle,
     Concat,
-    Extract { hi: u32, lo: u32 },
+    Extract {
+        hi: u32,
+        lo: u32,
+    },
     ZeroExtend(u32),
     SignExtend(u32),
     // Floating point.
@@ -113,17 +119,38 @@ pub enum Op {
     FpIsNegative,
     FpIsSubnormal,
     /// `((_ to_fp e s) bv)`: reinterpret an IEEE bit pattern.
-    FpFromBits { e: u32, s: u32 },
+    FpFromBits {
+        e: u32,
+        s: u32,
+    },
     /// `((_ to_fp e s) rm fp)`.
-    FpToFp { e: u32, s: u32, rm: Rm },
+    FpToFp {
+        e: u32,
+        s: u32,
+        rm: Rm,
+    },
     /// `((_ to_fp e s) rm bv)`: a signed integer.
-    FpFromSbv { e: u32, s: u32, rm: Rm },
+    FpFromSbv {
+        e: u32,
+        s: u32,
+        rm: Rm,
+    },
     /// `((_ to_fp_unsigned e s) rm bv)`.
-    FpFromUbv { e: u32, s: u32, rm: Rm },
+    FpFromUbv {
+        e: u32,
+        s: u32,
+        rm: Rm,
+    },
     /// `((_ fp.to_sbv w) rm fp)` (unspecified out of range: callers guard it).
-    FpToSbv { w: u32, rm: Rm },
+    FpToSbv {
+        w: u32,
+        rm: Rm,
+    },
     /// `((_ fp.to_ubv w) rm fp)`.
-    FpToUbv { w: u32, rm: Rm },
+    FpToUbv {
+        w: u32,
+        rm: Rm,
+    },
     /// An uninterpreted function declared in the context.
     Uf(String),
 }
@@ -382,11 +409,15 @@ impl Ctx {
         let same = || a.windows(2).all(|w| w[0] == w[1]);
         let bin_bv = || match a {
             [Bv(x), Bv(y)] if x == y => Ok(Bv(*x)),
-            _ => err(format!("{op:?}: bit-vector operands of one width expected, got {a:?}")),
+            _ => err(format!(
+                "{op:?}: bit-vector operands of one width expected, got {a:?}"
+            )),
         };
         let cmp_bv = || match a {
             [Bv(x), Bv(y)] if x == y => Ok(Bool),
-            _ => err(format!("{op:?}: bit-vector operands of one width expected, got {a:?}")),
+            _ => err(format!(
+                "{op:?}: bit-vector operands of one width expected, got {a:?}"
+            )),
         };
         let bin_fp = || match a {
             [f @ Fp { .. }, g] if f == g => Ok(*f),
@@ -442,7 +473,9 @@ impl Ctx {
             Op::FpAdd(_) | Op::FpSub(_) | Op::FpMul(_) | Op::FpDiv(_) | Op::FpRem => bin_fp(),
             Op::FpSqrt(_) | Op::FpRoundToIntegral(_) | Op::FpAbs | Op::FpNeg => un_fp(),
             Op::FpLt | Op::FpLeq | Op::FpEq => pred_fp(2),
-            Op::FpIsNaN | Op::FpIsInfinite | Op::FpIsZero | Op::FpIsNegative | Op::FpIsSubnormal => pred_fp(1),
+            Op::FpIsNaN | Op::FpIsInfinite | Op::FpIsZero | Op::FpIsNegative | Op::FpIsSubnormal => {
+                pred_fp(1)
+            }
             Op::FpFromBits { e, s } => match a {
                 [Bv(w)] if *w == e + s => Ok(Fp { e: *e, s: *s }),
                 _ => err(format!("to_fp {e} {s} of {a:?}")),
@@ -665,7 +698,17 @@ mod tests {
         let x = c.var("x", Sort::Fp { e: 8, s: 24 }).unwrap();
         let s = c.op2(Op::FpAdd(Rm::Rne), x, x).unwrap();
         let m = c.op2(Op::FpMul(Rm::Rne), s, s).unwrap();
-        assert!(c.app(Op::FpFromSbv { e: 8, s: 24, rm: Rm::Rne }, &[x]).is_err());
+        assert!(
+            c.app(
+                Op::FpFromSbv {
+                    e: 8,
+                    s: 24,
+                    rm: Rm::Rne
+                },
+                &[x]
+            )
+            .is_err()
+        );
         let n = c.app(Op::FpIsNaN, &[m]).unwrap();
         let mut sc = Script::new();
         c.render(&mut sc, &[n]);

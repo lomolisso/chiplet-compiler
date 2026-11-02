@@ -336,8 +336,22 @@ pub fn from_f32(c: &mut Ctx, f: Format, x: T) -> R {
 /// rounded sums: proved algorithms using rounding to odd", IEEE TC 57(4), 2008); the lemma checks it.
 pub fn from_f64(c: &mut Ctx, f: Format, x: T) -> R {
     c.note(format!("{}.from_f64", f.name()));
-    let y = c.app(Op::FpToFp { e: 8, s: 24, rm: Rm::Rtz }, &[x])?;
-    let back = c.app(Op::FpToFp { e: 11, s: 53, rm: Rm::Rne }, &[y])?;
+    let y = c.app(
+        Op::FpToFp {
+            e: 8,
+            s: 24,
+            rm: Rm::Rtz,
+        },
+        &[x],
+    )?;
+    let back = c.app(
+        Op::FpToFp {
+            e: 11,
+            s: 53,
+            rm: Rm::Rne,
+        },
+        &[y],
+    )?;
     let exact = c.eq(back, x)?;
     let b = c.bits_of(y)?;
     let one = c.bv(1, 32);
@@ -406,10 +420,24 @@ fn ieee_decode(f: Format) -> Result<String, SortError> {
     let v = to_f32(&mut c, f, b)?;
     let (e, s) = (f.e, f.m + 1);
     let r = c.app(Op::FpFromBits { e, s }, &[b])?;
-    let w = c.app(Op::FpToFp { e: 8, s: 24, rm: Rm::Rne }, &[r])?;
+    let w = c.app(
+        Op::FpToFp {
+            e: 8,
+            s: 24,
+            rm: Rm::Rne,
+        },
+        &[r],
+    )?;
     let eq = c.eq(v, w)?;
     let goal = c.not(eq)?;
-    finish(&c, &format!("{}: the Float32 decoding is the exact widening (expect unsat)", f.name()), goal)
+    finish(
+        &c,
+        &format!(
+            "{}: the Float32 decoding is the exact widening (expect unsat)",
+            f.name()
+        ),
+        goal,
+    )
 }
 
 /// `from_f32` is the theory's rounding to the native sort.
@@ -422,7 +450,14 @@ fn ieee_round(f: Format) -> Result<String, SortError> {
     let want = c.app(Op::FpToFp { e, s, rm: Rm::Rne }, &[x])?;
     let eq = c.eq(got, want)?;
     let goal = c.not(eq)?;
-    finish(&c, &format!("{}: rounding from Float32 equals to_fp RNE (expect unsat)", f.name()), goal)
+    finish(
+        &c,
+        &format!(
+            "{}: rounding from Float32 equals to_fp RNE (expect unsat)",
+            f.name()
+        ),
+        goal,
+    )
 }
 
 /// An arithmetic operation computed in Float32 and rounded equals the native one (double rounding is
@@ -437,10 +472,22 @@ fn ieee_op(f: Format, op: &str) -> Result<String, SortError> {
     let na = c.app(Op::FpFromBits { e, s }, &[a])?;
     let nb = c.app(Op::FpFromBits { e, s }, &[b])?;
     let (wide, native) = match op {
-        "add" => (c.op2(Op::FpAdd(Rm::Rne), da, db)?, c.op2(Op::FpAdd(Rm::Rne), na, nb)?),
-        "sub" => (c.op2(Op::FpSub(Rm::Rne), da, db)?, c.op2(Op::FpSub(Rm::Rne), na, nb)?),
-        "mul" => (c.op2(Op::FpMul(Rm::Rne), da, db)?, c.op2(Op::FpMul(Rm::Rne), na, nb)?),
-        "div" => (c.op2(Op::FpDiv(Rm::Rne), da, db)?, c.op2(Op::FpDiv(Rm::Rne), na, nb)?),
+        "add" => (
+            c.op2(Op::FpAdd(Rm::Rne), da, db)?,
+            c.op2(Op::FpAdd(Rm::Rne), na, nb)?,
+        ),
+        "sub" => (
+            c.op2(Op::FpSub(Rm::Rne), da, db)?,
+            c.op2(Op::FpSub(Rm::Rne), na, nb)?,
+        ),
+        "mul" => (
+            c.op2(Op::FpMul(Rm::Rne), da, db)?,
+            c.op2(Op::FpMul(Rm::Rne), na, nb)?,
+        ),
+        "div" => (
+            c.op2(Op::FpDiv(Rm::Rne), da, db)?,
+            c.op2(Op::FpDiv(Rm::Rne), na, nb)?,
+        ),
         _ => (c.op1(Op::FpSqrt(Rm::Rne), da)?, c.op1(Op::FpSqrt(Rm::Rne), na)?),
     };
     let r = from_f32(&mut c, f, wide)?;
@@ -449,7 +496,10 @@ fn ieee_op(f: Format, op: &str) -> Result<String, SortError> {
     let goal = c.not(eq)?;
     finish(
         &c,
-        &format!("{}: {op} in Float32 then rounded equals the native {op} (expect unsat)", f.name()),
+        &format!(
+            "{}: {op} in Float32 then rounded equals the native {op} (expect unsat)",
+            f.name()
+        ),
         goal,
     )
 }
@@ -466,7 +516,10 @@ fn ieee_from_f64(f: Format) -> Result<String, SortError> {
     let goal = c.not(eq)?;
     finish(
         &c,
-        &format!("{}: rounding from Float64 through Float32 rounded to odd equals to_fp RNE (expect unsat)", f.name()),
+        &format!(
+            "{}: rounding from Float64 through Float32 rounded to odd equals to_fp RNE (expect unsat)",
+            f.name()
+        ),
         goal,
     )
 }
@@ -503,9 +556,23 @@ fn fn_decode(f: Format) -> Result<String, SortError> {
     let sub = c.eq(ex, z)?;
     // Subnormals: the IEEE sort of the same width has the same layout there.
     let ieee = c.app(Op::FpFromBits { e, s }, &[b])?;
-    let w1 = c.app(Op::FpToFp { e: 8, s: 24, rm: Rm::Rne }, &[ieee])?;
+    let w1 = c.app(
+        Op::FpToFp {
+            e: 8,
+            s: 24,
+            rm: Rm::Rne,
+        },
+        &[ieee],
+    )?;
     let wider = fn_as_wider(&mut c, f, b)?;
-    let w2 = c.app(Op::FpToFp { e: 8, s: 24, rm: Rm::Rne }, &[wider])?;
+    let w2 = c.app(
+        Op::FpToFp {
+            e: 8,
+            s: 24,
+            rm: Rm::Rne,
+        },
+        &[wider],
+    )?;
     let isnan = is_nan_bits(&mut c, f, b)?;
     let vnan = c.op1(Op::FpIsNaN, v)?;
     let e1 = c.eq(v, w1)?;

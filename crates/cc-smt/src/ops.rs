@@ -32,7 +32,9 @@ impl Ty {
                 signed: *signed,
                 w: u32::from(*width),
             },
-            Elem::Float { .. } => Ty::Float(Format::of(e).ok_or_else(|| SortError(format!("{e}: no encoding")))?),
+            Elem::Float { .. } => {
+                Ty::Float(Format::of(e).ok_or_else(|| SortError(format!("{e}: no encoding")))?)
+            }
             Elem::Complex(c) => match Ty::of(c)? {
                 Ty::Float(f) => Ty::Complex(f),
                 _ => return Err(SortError(format!("{e}: no encoding"))),
@@ -113,7 +115,11 @@ fn fzero(c: &mut Ctx, f: Format) -> Res<T> {
 /// not specified).
 pub fn same(c: &mut Ctx, a: Val, b: Val) -> Res<T> {
     if a.ty != b.ty {
-        return Err(SortError(format!("compared {} with {}", a.ty.name(), b.ty.name())));
+        return Err(SortError(format!(
+            "compared {} with {}",
+            a.ty.name(),
+            b.ty.name()
+        )));
     }
     let part = |c: &mut Ctx, x: T, y: T| -> Res<T> {
         match a.ty {
@@ -145,7 +151,13 @@ pub struct Attrs {
 
 /// The value of op `op` (without the `stablehlo.` prefix) on `args`, with result type `ret`.
 pub fn apply(c: &mut Ctx, op: &str, a: &Attrs, args: &[Val], ret: Ty) -> Res<Val> {
-    let bad = || SortError(format!("{op}: no encoding for ({}) -> {}", names(args), ret.name()));
+    let bad = || {
+        SortError(format!(
+            "{op}: no encoding for ({}) -> {}",
+            names(args),
+            ret.name()
+        ))
+    };
     let n = args.len();
     let x = args.first().copied();
     let y = args.get(1).copied();
@@ -318,7 +330,11 @@ fn wide(c: &mut Ctx, f: Format, t: T) -> Res<T> {
 
 /// Back from `wide`: round a Float32 result to `f`.
 fn narrow(c: &mut Ctx, f: Format, t: T) -> Res<T> {
-    if f.native() { Ok(t) } else { float::from_f32(c, f, t) }
+    if f.native() {
+        Ok(t)
+    } else {
+        float::from_f32(c, f, t)
+    }
 }
 
 fn floating(c: &mut Ctx, op: &str, a: &Attrs, args: &[Val], f: Format, ret: Ty) -> Option<Res<Val>> {
@@ -403,8 +419,19 @@ fn floating(c: &mut Ctx, op: &str, a: &Attrs, args: &[Val], f: Format, ret: Ty) 
                 Val::new(ty, reduce_precision(c, f, x.t, eb, mb)?)
             }
             (
-                "exponential" | "log" | "log_plus_one" | "tanh" | "rsqrt" | "sine" | "cosine" | "power"
-                | "logistic" | "exponential_minus_one" | "cbrt" | "tan" | "atan2",
+                "exponential"
+                | "log"
+                | "log_plus_one"
+                | "tanh"
+                | "rsqrt"
+                | "sine"
+                | "cosine"
+                | "power"
+                | "logistic"
+                | "exponential_minus_one"
+                | "cbrt"
+                | "tan"
+                | "atan2",
                 _,
             ) => {
                 // Implementation-defined accuracy: an uninterpreted function of the operands' encodings.
@@ -476,7 +503,11 @@ fn maxmin(c: &mut Ctx, f: Format, x: T, y: T, max: bool) -> Res<T> {
     let both0 = c.and(&[uz, vz])?;
     let uneg = c.op1(Op::FpIsNegative, u)?;
     // Among zeros: maximum takes +0 (x unless x is -0), minimum takes -0.
-    let zero_pick = if max { c.ite(uneg, y, x)? } else { c.ite(uneg, x, y)? };
+    let zero_pick = if max {
+        c.ite(uneg, y, x)?
+    } else {
+        c.ite(uneg, x, y)?
+    };
     let lt = c.op2(Op::FpLt, u, v)?;
     let pick = if max { c.ite(lt, y, x)? } else { c.ite(lt, x, y)? };
     let p = c.ite(both0, zero_pick, pick)?;
@@ -500,7 +531,10 @@ fn nan_bits(f: Format) -> u128 {
 /// overflow to infinity / underflow to zero outside the range of `eb` exponent bits, keeping the sign.
 fn reduce_precision(c: &mut Ctx, f: Format, t: T, eb: u32, mb: u32) -> Res<T> {
     if !f.native() || mb > f.m || eb > f.e {
-        return Err(SortError(format!("reduce_precision of {} to ({eb}, {mb})", f.name())));
+        return Err(SortError(format!(
+            "reduce_precision of {} to ({eb}, {mb})",
+            f.name()
+        )));
     }
     let w = f.bits();
     let b = c.bits_of(t)?;
@@ -550,12 +584,26 @@ fn complex(c: &mut Ctx, op: &str, x: Val, y: Option<Val>, f: Format) -> Option<R
     let ty = Ty::Complex(f);
     let re = Ty::Float(f);
     let r = (|| -> Res<Val> {
-        let xi = x.im.ok_or_else(|| SortError("complex without an imaginary part".into()))?;
+        let xi =
+            x.im.ok_or_else(|| SortError("complex without an imaginary part".into()))?;
         Ok(match (op, y) {
             ("add" | "subtract", Some(y)) => {
-                let yi = y.im.ok_or_else(|| SortError("complex without an imaginary part".into()))?;
-                let a = apply(c, op, &Attrs::default(), &[Val::new(re, x.t), Val::new(re, y.t)], re)?;
-                let b = apply(c, op, &Attrs::default(), &[Val::new(re, xi), Val::new(re, yi)], re)?;
+                let yi =
+                    y.im.ok_or_else(|| SortError("complex without an imaginary part".into()))?;
+                let a = apply(
+                    c,
+                    op,
+                    &Attrs::default(),
+                    &[Val::new(re, x.t), Val::new(re, y.t)],
+                    re,
+                )?;
+                let b = apply(
+                    c,
+                    op,
+                    &Attrs::default(),
+                    &[Val::new(re, xi), Val::new(re, yi)],
+                    re,
+                )?;
                 Val {
                     ty,
                     t: a.t,
@@ -574,7 +622,8 @@ fn complex(c: &mut Ctx, op: &str, x: Val, y: Option<Val>, f: Format) -> Option<R
             ("multiply" | "divide", Some(y)) => {
                 // The spec's complex multiplication and division leave the evaluation (and its
                 // roundings) open: two uninterpreted functions of the four parts.
-                let yi = y.im.ok_or_else(|| SortError("complex without an imaginary part".into()))?;
+                let yi =
+                    y.im.ok_or_else(|| SortError("complex without an imaginary part".into()))?;
                 let s = f.sort();
                 let mut parts = Vec::new();
                 for p in ["re", "im"] {
@@ -636,7 +685,11 @@ fn compare(c: &mut Ctx, a: &Attrs, x: Val, y: Val) -> Res<T> {
                 None => signed,
                 Some(t) => return Err(SortError(format!("compare_type {t} on integers"))),
             };
-            let (lt, le) = if signed { (Op::BvSlt, Op::BvSle) } else { (Op::BvUlt, Op::BvUle) };
+            let (lt, le) = if signed {
+                (Op::BvSlt, Op::BvSle)
+            } else {
+                (Op::BvUlt, Op::BvUle)
+            };
             match dir {
                 "EQ" => c.eq(x.t, y.t),
                 "NE" => {
@@ -760,9 +813,17 @@ pub fn convert(c: &mut Ctx, x: Val, to: Ty) -> Res<Val> {
                     return Err(bad());
                 }
                 let o64 = if signed {
-                    Op::FpFromSbv { e: 11, s: 53, rm: Rm::Rne }
+                    Op::FpFromSbv {
+                        e: 11,
+                        s: 53,
+                        rm: Rm::Rne,
+                    }
                 } else {
-                    Op::FpFromUbv { e: 11, s: 53, rm: Rm::Rne }
+                    Op::FpFromUbv {
+                        e: 11,
+                        s: 53,
+                        rm: Rm::Rne,
+                    }
                 };
                 let v = c.app(o64, &[x.t])?;
                 Val::new(to, float::from_f64(c, f, v)?)
@@ -807,12 +868,26 @@ pub fn convert(c: &mut Ctx, x: Val, to: Ty) -> Res<Val> {
                 if c.sort(v) == g.fp_sort() {
                     v
                 } else {
-                    c.app(Op::FpToFp { e: g.e, s: g.m + 1, rm: Rm::Rne }, &[v])?
+                    c.app(
+                        Op::FpToFp {
+                            e: g.e,
+                            s: g.m + 1,
+                            rm: Rm::Rne,
+                        },
+                        &[v],
+                    )?
                 }
             } else {
                 let v32 = match c.sort(v) {
                     s if s == f32s => v,
-                    Sort::Fp { e, s } if e <= 8 && s <= 24 => c.app(Op::FpToFp { e: 8, s: 24, rm: Rm::Rne }, &[v])?,
+                    Sort::Fp { e, s } if e <= 8 && s <= 24 => c.app(
+                        Op::FpToFp {
+                            e: 8,
+                            s: 24,
+                            rm: Rm::Rne,
+                        },
+                        &[v],
+                    )?,
                     Sort::Fp { e: 11, s: 53 } => {
                         let r = float::from_f64(c, g, v)?;
                         return Ok(Val::new(to, r));
@@ -833,11 +908,7 @@ pub fn convert(c: &mut Ctx, x: Val, to: Ty) -> Res<Val> {
         }
         (Ty::Complex(f), Ty::Complex(g)) => {
             let re = convert(c, Val::new(Ty::Float(f), x.t), Ty::Float(g))?;
-            let im = convert(
-                c,
-                Val::new(Ty::Float(f), x.im.ok_or_else(bad)?),
-                Ty::Float(g),
-            )?;
+            let im = convert(c, Val::new(Ty::Float(f), x.im.ok_or_else(bad)?), Ty::Float(g))?;
             Val {
                 ty: to,
                 t: re.t,

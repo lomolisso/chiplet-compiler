@@ -63,10 +63,17 @@ pub fn run_sharded(
 }
 
 /// The first line of `<solver> --version`.
-pub fn solver_version(runner: &BoundRunner, location: &Location, solver: Solver) -> Result<String, CoreError> {
+pub fn solver_version(
+    runner: &BoundRunner,
+    location: &Location,
+    solver: Solver,
+) -> Result<String, CoreError> {
     let program = match location {
         Location::Image => solver.name().to_string(),
-        Location::Host(p) => p.get(&solver).cloned().unwrap_or_else(|| solver.name().to_string()),
+        Location::Host(p) => p
+            .get(&solver)
+            .cloned()
+            .unwrap_or_else(|| solver.name().to_string()),
     };
     let inv = Invocation::new(format!("smt-{}", solver.name()), program).arg("--version");
     let out = runner.run(&inv)?;
@@ -89,7 +96,9 @@ impl Cache {
 
     fn path(&self, solver: Solver, version: &str, hash: &str) -> PathBuf {
         let v = query_hash(version);
-        self.dir.join(format!("{}-{}", solver.name(), &v[..16])).join(hash)
+        self.dir
+            .join(format!("{}-{}", solver.name(), &v[..16]))
+            .join(hash)
     }
 
     pub fn get(&self, solver: Solver, version: &str, hash: &str) -> Option<Verdict> {

@@ -39,6 +39,9 @@ JSON Schemas (draft 2020-12, generated with `schemars` from the Rust types) of e
 | `iteration_space_routing.schema.json` | `cc_passes::iteration_space::json::Routing` | `build/.iteration_space/out/iteration_space/routing.json` |
 | `iteration_space_proof_result.schema.json` | `cc_passes::iteration_space::json::ProofResult` | `build/.iteration_space/out/iteration_space/smt/<file>.result` |
 | `iteration_space_summary.schema.json` | `cc_passes::iteration_space::json::Summary` | `build/.iteration_space/out/iteration_space/summary.json` |
+| `datapaths_datapath.schema.json` | `cc_passes::datapaths::json::Datapath` | `build/.datapaths/out/datapaths/datapaths/<z>.json` |
+| `datapaths_proof_result.schema.json` | `cc_passes::datapaths::json::ProofResult` | `build/.datapaths/out/datapaths/{proofs/<z>,lemmas}/<file>.result` |
+| `datapaths_summary.schema.json` | `cc_passes::datapaths::json::Summary` | `build/.datapaths/out/datapaths/summary.json` |
 | `run_summary.schema.json` | `cc_pipeline::RunSummary` | `build/.pipeline/run-<ts>.json` |
 
 The smoke test `schemas::committed_schemas_are_current` regenerates them and fails on drift. After

@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`summary.json`.",
+  "properties": {
+    "allowed_unknown": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "by_route": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "type": "object"
+    },
+    "classes": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "labels": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Vertices by `op@family` (the census `mine` works on).",
+      "type": "object"
+    },
+    "lemmas": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "order_bound": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "order_free": {
+      "description": "Order queries: combiners proven free / bound by ω.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "order_queries": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "proofs": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "tuples": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "uninterpreted": {
+      "description": "Uninterpreted functions used (`exponential_bf16`, …).",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "vertices": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema",
+    "classes",
+    "by_route",
+    "vertices",
+    "labels",
+    "tuples",
+    "proofs",
+    "order_queries",
+    "order_free",
+    "order_bound",
+    "lemmas",
+    "allowed_unknown",
+    "uninterpreted"
+  ],
+  "title": "Summary",
+  "type": "object"
+}

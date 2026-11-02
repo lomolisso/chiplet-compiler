@@ -202,7 +202,10 @@ memory_gb = 2
 timeout_min = 30
 
 [passes.datapaths]
-allow_unknown = []               # classes allowed to end with solver "unknown" (with a reason)
+allow_unknown = []               # [{ class = "z…", reason = "…" }]: classes allowed to end "unknown"/timeout
+max_tuples = 64                  # width tuples one class may have (more fails the pass)
+lemma_timeout_s = 600            # per encoding lemma (Z3; bf16 division takes about 100 s)
+views = true                     # write views/datapaths.md
 [passes.datapaths.resources]
 threads = 16
 memory_gb = 8

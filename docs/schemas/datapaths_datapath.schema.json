@@ -1,0 +1,630 @@
+{
+  "$defs": {
+    "AccEntry": {
+      "description": "One accumulator: its width, its init value and its next value (one combiner step).",
+      "properties": {
+        "init": {
+          "$ref": "#/$defs/Src"
+        },
+        "next": {
+          "$ref": "#/$defs/Src"
+        },
+        "width": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "width",
+        "init",
+        "next"
+      ],
+      "type": "object"
+    },
+    "Accumulator": {
+      "description": "The accumulator vertex: a tuple of accumulators updated by one combiner (variadic reductions have\nseveral).",
+      "properties": {
+        "combiner": {
+          "description": "The combiner's vertices.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/AccEntry"
+          },
+          "type": "array"
+        },
+        "omega": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DimOrder"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "order": {
+          "items": {
+            "$ref": "#/$defs/OrderFree"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "entries",
+        "combiner",
+        "order"
+      ],
+      "type": "object"
+    },
+    "Arg": {
+      "description": "An operand of a vertex: its source and port (`p<i>`, or `*` for a commutative op).",
+      "properties": {
+        "port": {
+          "type": "string"
+        },
+        "src": {
+          "$ref": "#/$defs/Src"
+        }
+      },
+      "required": [
+        "src",
+        "port"
+      ],
+      "type": "object"
+    },
+    "DimOrder": {
+      "description": "ω on the iteration dims: the order and the reduction dims, outermost first.",
+      "properties": {
+        "dims": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "order": {
+          "$ref": "#/$defs/Order"
+        }
+      },
+      "required": [
+        "order",
+        "dims"
+      ],
+      "type": "object"
+    },
+    "From": {
+      "description": "The kernel node a vertex was extracted from, and the access instance (an index into the skeleton's\n`accesses`; `None` for region bodies and the core's own vertices).",
+      "properties": {
+        "access": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "node": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "node"
+      ],
+      "type": "object"
+    },
+    "Input": {
+      "properties": {
+        "incidence": {
+          "description": "The iteration dims that index it.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "$ref": "#/$defs/InputKind"
+        },
+        "name": {
+          "description": "The skeleton operand's name (`in<j>`, `in<j>.<u>`, `indices`), or `core_result<i>`.",
+          "type": "string"
+        },
+        "node": {
+          "description": "The kernel node and result whose value it is.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "res": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "width": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "node",
+        "res",
+        "incidence",
+        "width"
+      ],
+      "type": "object"
+    },
+    "InputKind": {
+      "description": "What an input is.",
+      "oneOf": [
+        {
+          "const": "prologue",
+          "description": "Read by a prologue.",
+          "type": "string"
+        },
+        {
+          "const": "core_operand",
+          "description": "A core operand read directly.",
+          "type": "string"
+        },
+        {
+          "const": "epilogue_param",
+          "description": "An outside value read by the epilogue (a bias, a scale, a residual).",
+          "type": "string"
+        },
+        {
+          "const": "map",
+          "description": "Read by a map kernel.",
+          "type": "string"
+        },
+        {
+          "const": "address",
+          "description": "Data-dependent indices: address generation, not compute (no vertex reads it).",
+          "type": "string"
+        },
+        {
+          "const": "core_result",
+          "description": "A template's core result (the epilogue's input).",
+          "type": "string"
+        }
+      ]
+    },
+    "Order": {
+      "description": "A reduction order ω (docs/passes/normalize.md §4).",
+      "oneOf": [
+        {
+          "const": "seq",
+          "description": "One accumulator: the init value, then the elements in ascending lexicographic order of `axes`.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The elements in the same order, grouped by `fan_in` (each group left to right), level by level;\nthe init value is combined at the root.",
+          "properties": {
+            "tree": {
+              "properties": {
+                "fan_in": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "fan_in"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "tree"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "OrderFree": {
+      "description": "Whether the combiner is associative and commutative at one tuple (proof `order_file`).",
+      "properties": {
+        "free": {
+          "description": "`true`: any order gives the same bits (ω is free); `false`: ω binds (a counterexample is in the\nresult file).",
+          "type": "boolean"
+        },
+        "tuple": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tuple",
+        "free"
+      ],
+      "type": "object"
+    },
+    "Output": {
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/OutputKind"
+        },
+        "name": {
+          "description": "`out<j>`, or the core port's name (`lhs`, `rhs`).",
+          "type": "string"
+        },
+        "src": {
+          "$ref": "#/$defs/Src"
+        },
+        "width": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "src",
+        "width"
+      ],
+      "type": "object"
+    },
+    "OutputKind": {
+      "description": "What an output is.",
+      "oneOf": [
+        {
+          "const": "output",
+          "description": "A kernel output (`out<j>`).",
+          "type": "string"
+        },
+        {
+          "const": "core_operand",
+          "description": "A template's core operand (the end of a prologue stage).",
+          "type": "string"
+        }
+      ]
+    },
+    "Route": {
+      "enum": [
+        "template",
+        "datapath"
+      ],
+      "type": "string"
+    },
+    "SkelClass": {
+      "description": "What a class computes, from its accesses (design §4.7).",
+      "oneOf": [
+        {
+          "const": "map",
+          "description": "No reduction dim.",
+          "type": "string"
+        },
+        {
+          "const": "reduce",
+          "description": "Reduction dims, and every core input is indexed by every parallel dim (no reuse).",
+          "type": "string"
+        },
+        {
+          "const": "contraction",
+          "description": "Reduction dims, and some core input is not indexed by some parallel dim (reuse).",
+          "type": "string"
+        }
+      ]
+    },
+    "Src": {
+      "description": "A value a vertex reads.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Result `res` of vertex `v`.",
+          "properties": {
+            "vertex": {
+              "properties": {
+                "res": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "v": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "v",
+                "res"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "vertex"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "An input (by name).",
+          "properties": {
+            "input": {
+              "properties": {
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "input"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The current value of accumulator `index` (the combiner's left operand).",
+          "properties": {
+            "acc": {
+              "properties": {
+                "index": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "index"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "acc"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The final value of core result `index` (what the epilogue reads).",
+          "properties": {
+            "result": {
+              "properties": {
+                "index": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "index"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "result"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Stage": {
+      "description": "Where a vertex sits: once per element of a core operand (prologue of port `port`), once per iteration\n(core: the multiply and the combiner), once per result element (epilogue), or a map kernel's body.",
+      "oneOf": [
+        {
+          "enum": [
+            "core",
+            "epilogue",
+            "map"
+          ],
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "prologue": {
+              "properties": {
+                "port": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "port"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "prologue"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Tuple": {
+      "description": "A width tuple: the element type of every element class, and the structural attributes.",
+      "properties": {
+        "attrs": {
+          "additionalProperties": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "description": "Attributes that change an op's semantics (`n<i>.exponent_bits`, …).",
+          "type": "object"
+        },
+        "consts": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Per folded constant (value column), its element type.",
+          "type": "object"
+        },
+        "elems": {
+          "description": "Per element class, the MLIR element type (`i8`, `bf16`, `f8E4M3FN`).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "description": "`t<k>`, by the sorted order of the tuples.",
+          "type": "string"
+        },
+        "rows": {
+          "description": "Instance rows with this tuple.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "elems",
+        "consts",
+        "attrs",
+        "rows"
+      ],
+      "type": "object"
+    },
+    "Vertex": {
+      "properties": {
+        "args": {
+          "items": {
+            "$ref": "#/$defs/Arg"
+          },
+          "type": "array"
+        },
+        "attrs": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Literal attributes the semantics reads: `comparison_direction` (GT/GE are written as LT/LE with the\noperands exchanged), `compare_type`, `exponent_bits`, `mantissa_bits`; a constant's `column` (the\ninstance table's value column) or `value` (a literal).",
+          "type": "object"
+        },
+        "family": {
+          "type": "string"
+        },
+        "from": {
+          "$ref": "#/$defs/From"
+        },
+        "id": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "label": {
+          "description": "`<op>@<family>` (`add@sint`, `convert@float`, `const@sint`).",
+          "type": "string"
+        },
+        "op": {
+          "description": "The StableHLO op without its prefix, or `const`.",
+          "type": "string"
+        },
+        "stage": {
+          "$ref": "#/$defs/Stage"
+        },
+        "width": {
+          "description": "The result's width variable (`w<e>`, `e` its element class).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "op",
+        "family",
+        "width",
+        "attrs",
+        "stage",
+        "args",
+        "from"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`datapaths/<z>.json`.",
+  "properties": {
+    "accumulator": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Accumulator"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "class": {
+      "$ref": "#/$defs/SkelClass"
+    },
+    "core": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "inputs": {
+      "items": {
+        "$ref": "#/$defs/Input"
+      },
+      "type": "array"
+    },
+    "outputs": {
+      "items": {
+        "$ref": "#/$defs/Output"
+      },
+      "type": "array"
+    },
+    "route": {
+      "$ref": "#/$defs/Route"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "tuples": {
+      "items": {
+        "$ref": "#/$defs/Tuple"
+      },
+      "type": "array"
+    },
+    "vertices": {
+      "items": {
+        "$ref": "#/$defs/Vertex"
+      },
+      "type": "array"
+    },
+    "widths": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Per element class used: its width variable and family.",
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "route",
+    "class",
+    "core",
+    "widths",
+    "vertices",
+    "inputs",
+    "outputs",
+    "tuples"
+  ],
+  "title": "Datapath",
+  "type": "object"
+}

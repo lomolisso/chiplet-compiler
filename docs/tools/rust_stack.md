@@ -17,7 +17,7 @@ workspace `Cargo.toml` (`[workspace.dependencies]`) and commit `Cargo.lock`. Cra
 | `clap` | 4.6.7 (1.85) | MIT/Apache-2.0 | `chipc` CLI (derive API). |
 | `postcard` | 1.1.3 | MIT/Apache-2.0 | Compact binary for large graphs (with a JSON summary beside it). Chosen over `bincode`: RUSTSEC-2025-0141 marks bincode **unmaintained** ("the bincode team has taken the decision to cease development permanently"; 1.3.3 declared final; suggested alternatives: wincode, postcard, bitcode, rkyv). A `bincode` 3.0.0 exists on crates.io (2025-12-16) but is covered by the same advisory: do not use. |
 | `blake3` | 1.8.7 | CC0/Apache-2.0 | Content hashes for the pass cache key (inputs + config section + tool versions). Use `blake3::Hasher` with streamed file reads. Its `rayon` feature (multithreaded hashing) is unnecessary. |
-| `easy-smt` | 0.3.2 | MIT/Apache-2.0 | SMT-LIB2 over a **solver subprocess** (crate: "interacting with an SMT solver subprocess"). `ContextBuilder::new().with_z3_defaults()` spawns `z3 -smt2 -in -v:0`; `with_cvc5_defaults()`; generic `.solver(prog).solver_args([...])` (source `src/context.rs` on main; confirm in 0.3.2); `.replay_file(Some(File))` records the session → our SMT certificate; `check()` → `Response`, `get_value()`. |
+| `easy-smt` (not used) | 0.3.2 | MIT/Apache-2.0 | Evaluated, not adopted: `cc-smt` writes SMT-LIB files and runs the solvers in batch (docs/framework/smt.md); the files are the certificates and no query is incremental. SMT-LIB2 over a **solver subprocess** (crate: "interacting with an SMT solver subprocess"). `ContextBuilder::new().with_z3_defaults()` spawns `z3 -smt2 -in -v:0`; `with_cvc5_defaults()`; generic `.solver(prog).solver_args([...])` (source `src/context.rs` on main; confirm in 0.3.2); `.replay_file(Some(File))` records the session → our SMT certificate; `check()` → `Response`, `get_value()`. |
 | `z3` (alternative) | 0.22.0 (1.88) | MIT | In-process bindings to libz3. Rejected as default: links a C++ library (build/ABI friction on RHEL 8, a solver crash takes down the pass, no external memory cap). Keep `cc-smt` solver-agnostic via SMT-LIB text. |
 | `tracing` + `tracing-subscriber` | 0.1.44 / 0.3.23 (1.65) | MIT | Structured logs, spans per pass/model; JSON log layer into `build/.<pass>/log.jsonl`. |
 | `thiserror` / `anyhow` | 2.0.21 / 1.0.104 | MIT/Apache-2.0 | errors per crate / CLI only (conventions). |
@@ -66,7 +66,7 @@ rustup component add rustfmt clippy
 - rustup docs: https://rust-lang.github.io/rustup/installation/other.html (the `-y`, `--profile`, `--no-modify-path`
   flags of `rustup-init`).
 
-## 4. SMT solver binaries for `easy-smt`
+## 4. SMT solver binaries
 
 | Solver | Latest release (GitHub, 2026-10-30) | Host (glibc 2.28) | Docker |
 |---|---|---|---|
@@ -75,14 +75,12 @@ rustup component add rustfmt clippy
 
 - Install to `~/.local/opt/<solver>-<ver>/` (host) or `/opt` (image); expose through `config.toml`
   `[tools.smt] z3 = "…", bitwuzla = "…"`, never via `PATH` lookup alone; record `--version` in certificates.
-- Bitwuzla in `easy-smt`: `.solver("bitwuzla").solver_args([...])`; interactive/incremental SMT-LIB2 stdin flags
-  for bitwuzla (e.g. `--lang smt2`) (unverified); test once and freeze in config.
 - Memory: solver subprocesses go through `ToolRunner` (Docker or RSS watchdog); z3 also accepts `-memory:<MB>` and
   `-T:<sec>` command-line limits (z3 `-h`; (unverified) for 5.x).
 - In use (2026-11-01): `cc-smt` runs both solvers in batch mode on `.smt2` files (`<solver> <file>`, no flags: both
-  detect SMT-LIB 2 from the extension), not interactively through `easy-smt`; `datapaths` may add the interactive
-  mode. Observed in the image: both accept `(set-logic ALL)` with UF + BV + FP; Bitwuzla 0.9.1 rejects
-  non-IEEE float formats (`--fpexp` build option) and equalities over uninterpreted sorts; Z3 prints an error for
+  detect SMT-LIB 2 from the extension), not interactively. Observed in the image: both accept `(set-logic ALL)` with UF + BV + FP; Bitwuzla 0.9.1 rejects
+  non-IEEE float formats (`--fpexp` build option), equalities over uninterpreted sorts and `fp.to_ieee_bv`
+  (2026-11-02; uninterpreted functions over FP sorts are accepted); Z3 prints an error for
   `(get-model)` after `unsat` (exit 1) while Bitwuzla does not (docs/framework/smt.md).
 
 ## 5. Rationale summary

@@ -291,15 +291,28 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
 
 ### 4.8 `datapaths`
 
-- **Purpose.** A scalar datapath per non-template class.
+- **Purpose.** A scalar datapath per class: one iteration of a datapath class, the per-element prologue
+  and epilogue stages of a template class.
 - **Method.**
-  - One iteration of the class:
-    - a contraction becomes multiply + accumulate, with an accumulator vertex labelled (combiner, ω);
-    - a reduction body becomes its scalar ops;
-    - elementwise ops map one to one, and `convert` stays explicit.
-  - Labels: `op@family`; edges carry ports (`*` for commutative ops).
-  - This pass also creates the **SMT harness** (a SMT-LIB generator + `easy-smt` runner) used by the later passes.
-- **Verification.** For each class, an SMT proof that the scalar datapath equals the StableHLO semantics of the kernel's ops on symbolic scalars, per width tuple in T_z (QF_BV for integers, QF_FP for floats).
+  - One iteration of the class, from the op table only:
+    - a contraction becomes multiply + accumulate (operands converted to the result's element type, as
+      the spec's `dot_general` multiplies elements of one type), with an accumulator vertex labelled
+      (combiner, ω);
+    - a reduction or scatter body becomes its scalar ops on the accumulators; a scatter's indices are
+      an address input, not compute;
+    - elementwise ops map one to one, `convert` stays explicit, broadcasts are the identity on one
+      element, folded constants are `const` vertices whose values are instance parameters.
+  - Labels: `op@family` with the element class as width variable; edges carry ports (`*` for
+    commutative ops).
+  - This pass also creates the **SMT harness** used by the later passes: a typed SMT-LIB term builder,
+    the scalar semantics of every element-wise op, float encodings, and a batch runner
+    (docs/framework/smt.md).
+- **Verification.** For each class and width tuple in T_z, an SMT proof that the datapath equals the
+  StableHLO semantics of the kernel's ops on symbolic scalars (constants free, so every value is
+  covered), by Bitwuzla and re-checked by Z3; f16 and f32 in the FP theory, bf16 and FP8 through a Float32
+  carrier with an explicit rounding whose lemmas Z3 proves against native sorts. Per accumulator, an SMT
+  query decides whether the combiner is commutative and associative: integer sums are order-free,
+  float sums bind ω.
 
 ### 4.9 `characterize` (parallel branch)
 
@@ -567,4 +580,10 @@ build/         (ignored) build/.<pass>/ artifacts
 | Block-scaled GEMMs are batched contractions (block index as batch) with a scale epilogue | A separate class kind; cross-kernel fusion now | The partition already separates the block sum; fusing it into the array is a later cross-kernel step |
 | Window and padding values from shape operands are run-time parameters of the maps | Lift them into attributes upstream | The proofs are parametric anyway; the affected classes are reductions or keep their template eligibility |
 | Access proofs over variables in {0, …, 7} in 32-bit vectors | Integer arithmetic (QF_NIA) | Both sides are polynomials of low degree, so the grid proves the identity (Alon 1999, Lemma 2.1); Bitwuzla has no integer theory and both solvers must answer |
+| Datapath float encoding: f16/f32 in the FP theory; bf16 and FP8 as bit patterns computed in a Float32 carrier and rounded back explicitly, each encoding proven once by Z3 against a native sort | Bit-precise soft-float now; Z3-only proofs for bf16/FP8 | Bitwuzla has only the IEEE interchange sorts and both solvers must answer; soft-float circuits are `softfloat`'s; the lemmas make the carrier exact (an i32 → bf16 lemma failed through Float32 and now rounds to odd) |
+| Ops whose float result the spec leaves to an approximate function (`exponential`, `tanh`, `rsqrt`, …) are uninterpreted functions per op and format | Pick one approximation | The proof then holds for any implementation; `softfloat` implements and proves them |
+| Integer accumulators wrap; order freedom is proven per class and tuple | Saturating option; freedom stated by family | Two's-complement add is what the spec computes; the proof states it for every combiner (variadic bodies included) |
+| One datapath file per class, template stages included (vertices tagged by stage) | Separate files per stage | One proof per class and tuple covers every stage; mining sees one graph per class |
+| Width tuples: distinct element types (and constant types, structural attributes) over T_z; constants free | One proof per (tuple, constant values) | Fewer obligations, and the proof covers every constant value |
+| `cc-smt` writes SMT-LIB files and runs the solvers in batch | `easy-smt` interactive sessions | The file is the certificate; no query is incremental; one container per batch |
 
