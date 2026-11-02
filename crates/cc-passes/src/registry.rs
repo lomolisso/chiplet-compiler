@@ -17,5 +17,6 @@ pub fn registry() -> Vec<Box<dyn Pass>> {
         Box::new(crate::kernels::Kernels),
         Box::new(crate::kernel_classes::KernelClasses),
         Box::new(crate::iteration_space::IterationSpace),
+        Box::new(crate::datapaths::Datapaths),
     ]
 }

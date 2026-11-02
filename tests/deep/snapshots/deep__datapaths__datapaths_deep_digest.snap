@@ -1,0 +1,1750 @@
+---
+source: tests/deep/datapaths.rs
+expression: digest
+---
+{
+  "checks": 460,
+  "classes": [
+    {
+      "id": "z036424d17c97a2c5",
+      "labels": "convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z04834d61b2ac3689",
+      "labels": "convert@float abs@float maximum@float",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z0493dba8ab3268de",
+      "labels": "multiply@float convert@float multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z0680d8b9a1f05aa7",
+      "labels": "add@sint",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z0993ef684255df6c",
+      "labels": "convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z0a8e23d8a0216f94",
+      "labels": "const@sint select@sint add@sint add@sint convert@float multiply@float add@float convert@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "z0ae08f49bc07dec6",
+      "labels": "const@float multiply@float const@float multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z0d1d3bc525b7d6a2",
+      "labels": "convert@sint const@sint add@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z0d6b98b5a2f15ca0",
+      "labels": "multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z0fcead5845e47174",
+      "labels": "convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z100f1dab3f92cda9",
+      "labels": "convert@float multiply@float const@float multiply@float add@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "z1032c1f02ac3d613",
+      "labels": "add@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "z11a4bd9c2bb4f8ca",
+      "labels": "compare@bool",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z11a50280f205f2a7",
+      "labels": "convert@float divide@float maximum@float const@float minimum@float convert@float multiply@float multiply@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "z12d475672379a39b",
+      "labels": "negate@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z13bfb7bb639e3360",
+      "labels": "compare@bool",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z15ac7dc2a22e1550",
+      "labels": "convert@sint add@sint",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z15dabc3325156f48",
+      "labels": "subtract@float multiply@float add@float divide@float",
+      "order": [
+        false
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z16094aa2c6fd7bcd",
+      "labels": "subtract@float exponential@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z1613be008c1f80c9",
+      "labels": "const@sint const@sint compare@bool const@sint const@sint add@sint const@sint select@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z164c0b798cc8c144",
+      "labels": "multiply@float multiply@float add@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z1698be84d2bc58e6",
+      "labels": "convert@sint add@sint convert@float multiply@float",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z172e005fa9a1180d",
+      "labels": "multiply@float divide@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z17ff6facbd23a62b",
+      "labels": "multiply@float convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z183eec193cb26eac",
+      "labels": "multiply@float convert@float multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z197a820e8e0b3d6b",
+      "labels": "convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z19b4e33f031eaf14",
+      "labels": "subtract@float multiply@float add@float convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z1a9cfd54d134855e",
+      "labels": "convert@sint convert@sint multiply@sint add@sint const@sint convert@float multiply@float add@float convert@float",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z1b0028ee94d7d97e",
+      "labels": "const@float multiply@float const@float divide@float exponential@float const@float multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z1ca767097f30c940",
+      "labels": "const@float multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z1cbd4a79272ba109",
+      "labels": "convert@float multiply@float add@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "z2025dc5d80d41568",
+      "labels": "convert@float add@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z2072f4f5f5830292",
+      "labels": "const@float divide@float const@float add@float rsqrt@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z22f6558209be27ae",
+      "labels": "add@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 2
+    },
+    {
+      "id": "z248462ea5e172480",
+      "labels": "add@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z24e918e4078a110a",
+      "labels": "const@float multiply@float multiply@float multiply@float const@float multiply@float add@float const@float multiply@float tanh@float const@float add@float multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z27ca5dad04f9f845",
+      "labels": "const@float divide@float const@float add@float rsqrt@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z2ac68a011a1328c5",
+      "labels": "add@float divide@float",
+      "order": [
+        false
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z2b490bdd72a445d7",
+      "labels": "convert@float divide@float maximum@float minimum@float convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z2bb8e08ba71ebbc8",
+      "labels": "divide@float convert@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "z2c282eaf6e30a5f3",
+      "labels": "multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z2d348b63894385ec",
+      "labels": "const@float multiply@float negate@float const@float multiply@float convert@float abs@float const@float compare@bool const@float multiply@float const@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float subtract@float const@float compare@bool const@float negate@float const@float compare@bool const@float exponential@float const@float divide@float multiply@float const@float compare@bool const@float divide@float const@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float const@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float select@float multiply@float select@float subtract@float select@float select@float convert@float multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z2e339b745e2c0fb7",
+      "labels": "negate@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z2e776013462da1ae",
+      "labels": "convert@float subtract@float multiply@float convert@float subtract@float multiply@float add@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z2ea36606cb90008f",
+      "labels": "add@float const@float maximum@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z2fd49a2f840e1d24",
+      "labels": "multiply@float const@float multiply@float cosine@float sine@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z309058a8d8eae3b0",
+      "labels": "maximum@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z33366ad6c0e5e44b",
+      "labels": "add@sint",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z34c6d7dd1813967b",
+      "labels": "convert@float multiply@float add@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "z3700419432d36f59",
+      "labels": "convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 4
+    },
+    {
+      "id": "z378d9c75cc53d5ed",
+      "labels": "divide@float round_nearest_even@float maximum@float minimum@float convert@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z39c63809a109ae20",
+      "labels": "const@sint compare@bool compare@bool and@bool and@bool",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z3aba4ba5fa059ae9",
+      "labels": "multiply@float select@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z3c898d4b8b5e3e4a",
+      "labels": "add@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "z3cd1314f2036ed95",
+      "labels": "const@sint multiply@sint add@sint const@sint multiply@sint add@sint const@sint compare@bool const@sint add@sint select@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z3d47550670f28944",
+      "labels": "convert@float convert@float multiply@float add@float const@float add@float",
+      "order": [
+        false
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z3d7f058408e90c1f",
+      "labels": "convert@float divide@float maximum@float const@float minimum@float convert@float multiply@float multiply@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "z3e0a4cff6078ea19",
+      "labels": "const@float negate@float exponential@float const@float add@float divide@float multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 2
+    },
+    {
+      "id": "z3ef72557bae59ce7",
+      "labels": "multiply@float const@float multiply@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "z3f1107117b42779d",
+      "labels": "convert@float divide@float maximum@float minimum@float convert@float multiply@float add@float convert@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "z3f5e945d6ca55d49",
+      "labels": "const@float select@float multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z3f5f574e4341896c",
+      "labels": "cosine@float convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z40928e5a4555926c",
+      "labels": "const@float negate@float exponential@float const@float add@float divide@float multiply@float multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z4117f7ba293b5eed",
+      "labels": "",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "z439b3365ee5a41ca",
+      "labels": "divide@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z44c81c80ccf4e852",
+      "labels": "convert@float divide@float maximum@float minimum@float convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z45a4f1d8501ef8aa",
+      "labels": "const@sint compare@bool compare@bool and@bool and@bool const@sint select@sint add@sint const@sint compare@bool add@sint select@sint",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z471ed2d7ec49f549",
+      "labels": "multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z47b0ec0fed98bfd8",
+      "labels": "multiply@float sine@float convert@float cosine@float convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z4878e32eacb61249",
+      "labels": "sign@sint const@sint sign@sint compare@bool const@sint remainder@sint const@sint compare@bool and@bool const@sint divide@sint const@sint subtract@sint select@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z4b76229d70b8aeef",
+      "labels": "multiply@float const@float multiply@float cosine@float sine@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z4c3e695df5e903fd",
+      "labels": "const@sint compare@bool",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z4d7a882d628a3ef5",
+      "labels": "multiply@float multiply@float const@float multiply@float add@float const@float multiply@float tanh@float const@float add@float const@float multiply@float multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z5059a0d542ccd5d2",
+      "labels": "add@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "z51ad949a7a203d10",
+      "labels": "divide@float round_nearest_even@float add@float maximum@float minimum@float convert@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z51f1d93d4d1a8b85",
+      "labels": "compare@bool",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z5270d80f6723fa84",
+      "labels": "divide@float convert@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "z53132c2a683cb1d0",
+      "labels": "add@float",
+      "order": null,
+      "route": "template",
+      "tuples": 2
+    },
+    {
+      "id": "z543c11528f99b2cd",
+      "labels": "const@sint multiply@sint const@sint add@sint const@sint compare@bool add@sint select@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z56959defbc7254a9",
+      "labels": "convert@float add@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "z583927023059a418",
+      "labels": "const@float maximum@float const@float divide@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z587b422921aa3c68",
+      "labels": "add@float",
+      "order": [
+        false
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z59e729de19d07ef3",
+      "labels": "add@sint const@sint subtract@sint select@sint",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z5fcc8850c7cdffa4",
+      "labels": "const@sint compare@bool convert@bool const@float const@float select@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z624a1fc58204dae1",
+      "labels": "multiply@float multiply@float add@float convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z62ddced2a64b798e",
+      "labels": "convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 3
+    },
+    {
+      "id": "z641f72b73f7f8cdf",
+      "labels": "divide@float add@float convert@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "z673c1102ec66b226",
+      "labels": "add@float const@float divide@float",
+      "order": [
+        false
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z675223debe3ddfd6",
+      "labels": "convert@sint convert@sint multiply@sint add@sint const@sint convert@float multiply@float add@float",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z675edb4abe554f17",
+      "labels": "const@float select@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 3
+    },
+    {
+      "id": "z67d8f5d7db1e0f70",
+      "labels": "const@sint compare@bool compare@bool and@bool and@bool",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z68a0026ef3f41e57",
+      "labels": "select@float select@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z693e6f2fd46d2e2a",
+      "labels": "const@sint compare@bool add@sint select@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z6952d65188e7fea1",
+      "labels": "multiply@float add@float const@float divide@float",
+      "order": [
+        false
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z6a359b89b93f496a",
+      "labels": "multiply@float add@float",
+      "order": [
+        false
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z6bfe03b3dfba7b0b",
+      "labels": "convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z6cb60880729dc7b8",
+      "labels": "",
+      "order": null,
+      "route": "template",
+      "tuples": 2
+    },
+    {
+      "id": "z6da7e62c817bf66b",
+      "labels": "sign@sint const@sint sign@sint compare@bool const@sint remainder@sint const@sint compare@bool and@bool const@sint divide@sint const@sint subtract@sint select@sint sign@sint const@sint sign@sint compare@bool const@sint remainder@sint const@sint compare@bool and@bool const@sint divide@sint const@sint subtract@sint select@sint sign@sint const@sint sign@sint compare@bool const@sint remainder@sint const@sint compare@bool and@bool const@sint divide@sint const@sint subtract@sint select@sint multiply@sint sign@sint const@sint sign@sint compare@bool const@sint remainder@sint const@sint compare@bool and@bool const@sint divide@sint const@sint subtract@sint select@sint add@sint add@sint const@sint add@sint convert@float divide@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z717aa202a631bb6b",
+      "labels": "subtract@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z7418bb5b00269b7b",
+      "labels": "const@sint const@sint compare@bool convert@sint const@sint add@sint const@sint select@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z74308927d261314f",
+      "labels": "subtract@float exponential@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z744fe537042a9d3c",
+      "labels": "convert@float divide@float subtract@float multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z74cb717ecb42a058",
+      "labels": "subtract@float exponential@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z750e6e7ab17b8e58",
+      "labels": "convert@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 2
+    },
+    {
+      "id": "z76502fdfde009651",
+      "labels": "multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z76d88b7d2f5e1742",
+      "labels": "convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z7867554ca6734db7",
+      "labels": "const@sint select@sint",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "z78aee78d4677a99d",
+      "labels": "divide@float const@float divide@float round_nearest_even@float const@float add@float maximum@float minimum@float convert@sint convert@float const@float subtract@float const@float multiply@float const@float divide@float round_nearest_even@float add@float maximum@float minimum@float convert@uint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z7dfa581d8578629c",
+      "labels": "multiply@float cosine@float sine@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z7e0393e4c84187e3",
+      "labels": "const@float multiply@float negate@float const@float multiply@float convert@float abs@float const@float compare@bool const@float multiply@float const@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float subtract@float const@float compare@bool const@float negate@float const@float compare@bool const@float exponential@float const@float divide@float multiply@float const@float compare@bool const@float divide@float const@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float const@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float select@float multiply@float select@float subtract@float select@float select@float convert@float multiply@float multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z7e98a68a7e689971",
+      "labels": "compare@bool compare@bool or@bool select@sint compare@bool compare@bool and@bool or@bool select@sint const@sint compare@bool add@sint select@sint",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z7eb1756f0d7c629c",
+      "labels": "multiply@float divide@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z84ba21230e4b8840",
+      "labels": "",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "z84c55e7c5605a9a2",
+      "labels": "convert@float divide@float round_nearest_even@float maximum@float minimum@float convert@sint convert@float multiply@float add@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "z85db92483889a78b",
+      "labels": "add@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 2
+    },
+    {
+      "id": "z87c0ad74361f63a9",
+      "labels": "const@sint compare@bool const@sint add@sint select@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z895a4658b40b257d",
+      "labels": "const@sint compare@bool convert@sint add@sint select@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z8a24e05517c0ada0",
+      "labels": "add@float",
+      "order": [
+        false
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z8a62750ced1b61b3",
+      "labels": "add@float const@float maximum@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z8c06880a255e454b",
+      "labels": "convert@float multiply@float convert@float multiply@float add@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z8fd9957bc4a239e0",
+      "labels": "const@float maximum@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z8feb9298343b3c43",
+      "labels": "convert@sint convert@sint multiply@sint add@sint const@sint convert@float multiply@float add@float convert@float",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z904ae047dd71cb12",
+      "labels": "maximum@float const@float maximum@float",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z9077129bc774bc37",
+      "labels": "multiply@float multiply@float add@float convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z91a34645bef009ec",
+      "labels": "const@sint const@sint add@sint convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z93c91c9a972e97c3",
+      "labels": "convert@sint const@sint multiply@sint convert@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z95bcef552047d7e7",
+      "labels": "const@sint compare@bool const@sint add@sint select@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z966717d239e49f70",
+      "labels": "divide@float convert@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "z9773c9d6c6879b67",
+      "labels": "const@float maximum@float const@float divide@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z97b972c26c24e7b0",
+      "labels": "compare@bool convert@sint add@sint",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z985a4622d26e26af",
+      "labels": "const@sint subtract@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z988b316a8bf17a34",
+      "labels": "const@float select@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "z98ecce9d08800b63",
+      "labels": "maximum@float const@float maximum@float",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z9ac56cc631bd2265",
+      "labels": "multiply@float sine@float convert@float cosine@float convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z9afeb8be284a806a",
+      "labels": "const@sint multiply@sint const@sint add@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "z9cdba80687d25800",
+      "labels": "",
+      "order": null,
+      "route": "template",
+      "tuples": 2
+    },
+    {
+      "id": "z9ed5b4b50e8c3bac",
+      "labels": "convert@float multiply@float convert@float multiply@float divide@float round_nearest_even@float maximum@float minimum@float convert@sint convert@float multiply@float add@float const@float maximum@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "za00b14b4cc3053bb",
+      "labels": "const@float multiply@float negate@float const@float multiply@float convert@float abs@float const@float compare@bool const@float multiply@float const@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float subtract@float const@float compare@bool const@float negate@float const@float compare@bool const@float exponential@float const@float divide@float multiply@float const@float compare@bool const@float divide@float const@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float const@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float multiply@float const@float add@float select@float multiply@float select@float subtract@float select@float select@float convert@float multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "za03a087f511b4f1d",
+      "labels": "convert@float divide@float maximum@float minimum@float convert@float multiply@float convert@float",
+      "order": null,
+      "route": "template",
+      "tuples": 2
+    },
+    {
+      "id": "za27d0a3db93bbeb4",
+      "labels": "subtract@float exponential@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "za352b8f5a1736f05",
+      "labels": "add@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "za555e364d25264fc",
+      "labels": "maximum@sint",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "za65a80f2766aeb93",
+      "labels": "const@float sqrt@float convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "za6cfb7d5ba8a40c6",
+      "labels": "divide@float round_nearest_even@float maximum@float minimum@float convert@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "za6f7f45175b0d22c",
+      "labels": "const@float const@float multiply@float negate@float exponential@float const@float add@float divide@float multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "za810cdaf14d9db51",
+      "labels": "const@sint maximum@sint convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "za92060e2ca06b4ed",
+      "labels": "maximum@float const@float maximum@float",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zac52d2a9c58a93f3",
+      "labels": "multiply@float convert@float multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zae88bdf59e972bf3",
+      "labels": "multiply@float convert@float multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zae9f52bf90a2f8aa",
+      "labels": "add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint convert@float multiply@float add@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "zaf52768b9d88c9a6",
+      "labels": "sign@sint const@sint sign@sint compare@bool const@sint remainder@sint const@sint compare@bool and@bool const@sint divide@sint const@sint subtract@sint select@sint sign@sint const@sint sign@sint compare@bool const@sint remainder@sint const@sint compare@bool and@bool const@sint divide@sint const@sint subtract@sint select@sint sign@sint const@sint sign@sint compare@bool const@sint remainder@sint const@sint compare@bool and@bool const@sint divide@sint const@sint subtract@sint select@sint multiply@sint sign@sint const@sint sign@sint compare@bool const@sint remainder@sint const@sint compare@bool and@bool const@sint divide@sint const@sint subtract@sint select@sint add@sint add@sint const@sint add@sint convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zb1a161405ba5ec74",
+      "labels": "const@float multiply@float select@float convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zb52d49f36c2d58f9",
+      "labels": "convert@float divide@float round_nearest_even@float maximum@float minimum@float convert@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zb554abaafdbb4cff",
+      "labels": "divide@float round_nearest_even@float maximum@float minimum@float convert@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zb65965ba574ae777",
+      "labels": "add@float divide@float",
+      "order": [
+        false
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zb72312de5454b4c2",
+      "labels": "divide@float maximum@float minimum@float convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zb87c6f16d10c37de",
+      "labels": "add@float add@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zb883870404cf3ff5",
+      "labels": "divide@float const@float divide@float maximum@float minimum@float convert@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "zbae5fa5406eefcee",
+      "labels": "subtract@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zbc5894077c6ece44",
+      "labels": "sine@float convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zbce12cd3467d326e",
+      "labels": "convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zbce5b47f46656fe2",
+      "labels": "const@sint select@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint add@sint convert@float multiply@float add@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "zbe40f6861518e92d",
+      "labels": "const@float compare@bool const@float convert@float const@float select@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zbf06ff896cf37d3c",
+      "labels": "const@bool const@sint const@sint add@sint const@sint select@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zbf8866fb581d5533",
+      "labels": "multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zc0dd388138168556",
+      "labels": "const@sint subtract@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zc19b00ed2c958954",
+      "labels": "convert@float abs@float maximum@float",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zc2d54dd92d7e0491",
+      "labels": "divide@float convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zc2d5625cda83b35a",
+      "labels": "const@float add@float rsqrt@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zc37f7123809dffb5",
+      "labels": "const@sint convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zc753ffec0e2097d6",
+      "labels": "add@float add@float add@float add@float add@float add@float add@float add@float add@float add@float add@float add@float add@float add@float add@float add@float add@float add@float add@float add@float add@float add@float add@float add@float add@float add@float add@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "zc7c36324cb2a624d",
+      "labels": "convert@float const@float divide@float maximum@float minimum@float convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zca0786a92478a25a",
+      "labels": "multiply@float const@float multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zcae3e9adb8e7fd92",
+      "labels": "multiply@float add@float",
+      "order": [
+        false
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zcb6672554ac07871",
+      "labels": "divide@float maximum@float minimum@float convert@float multiply@float convert@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "zcbc52e6cc55288f7",
+      "labels": "add@float",
+      "order": [
+        false
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zccdf13bbadabf22d",
+      "labels": "const@float maximum@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 2
+    },
+    {
+      "id": "zcd5b22ed0e129469",
+      "labels": "convert@sint convert@sint multiply@sint add@sint const@sint add@sint convert@float multiply@float round_nearest_even@float add@float maximum@float minimum@float convert@sint",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zcd7a1c91eb56e56c",
+      "labels": "const@float multiply@float const@float multiply@float convert@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "zce19a515ec2f1e5e",
+      "labels": "add@float add@float add@float add@float add@float add@float add@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zcf9fba220a7ca2c4",
+      "labels": "convert@float subtract@float multiply@float divide@float round_nearest_even@float add@float maximum@float minimum@float convert@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zd168e6f9211cd985",
+      "labels": "const@sint subtract@sint convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zd31fd0a4df111891",
+      "labels": "multiply@float multiply@float add@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zd508e3449f1baa6d",
+      "labels": "convert@float convert@float multiply@float add@float const@float",
+      "order": [
+        false
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zd50f5bc8cce0dc67",
+      "labels": "const@sint multiply@sint const@sint add@sint const@sint add@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zd6b9e15c3a7afdb1",
+      "labels": "const@float convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 2
+    },
+    {
+      "id": "zd6f8eefd0cfc9292",
+      "labels": "convert@float multiply@float add@float",
+      "order": [
+        false
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zd761a834358b4df0",
+      "labels": "convert@float subtract@float multiply@float add@float convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zd8e753cf3f6e333e",
+      "labels": "convert@float subtract@float multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zd9052b35fc79dfaf",
+      "labels": "",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "zdb6947e4b365964a",
+      "labels": "convert@float multiply@float add@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zdb8e6251d2f9fe9a",
+      "labels": "const@float divide@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zdc5f586e672b84e8",
+      "labels": "convert@float add@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zdc676f557c55a007",
+      "labels": "const@sint compare@bool compare@bool and@bool and@bool",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zdce4f44d792b05b3",
+      "labels": "convert@float multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "ze1bf6ed56799b549",
+      "labels": "convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 4
+    },
+    {
+      "id": "ze2332e321be15bda",
+      "labels": "multiply@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "ze4419260a761787f",
+      "labels": "multiply@sint convert@sint const@sint multiply@sint convert@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "ze751170d93c088b7",
+      "labels": "convert@float convert@float convert@float multiply@float add@float const@float add@float",
+      "order": [
+        false
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "ze88b07cc8ff2ada1",
+      "labels": "convert@sint convert@sint multiply@sint add@sint const@sint add@sint convert@float multiply@float round_nearest_even@float add@float maximum@float minimum@float convert@sint",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zea0f6025f68fc166",
+      "labels": "add@float",
+      "order": [
+        false
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zea5ab30c4a1fb96a",
+      "labels": "add@float convert@float",
+      "order": [
+        false
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zec075138126bb5fb",
+      "labels": "const@float add@float rsqrt@float multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zeca300c38d5f7c80",
+      "labels": "multiply@sint convert@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zecabab501f520e4c",
+      "labels": "multiply@float add@float",
+      "order": [
+        false
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zed43c205efb01eca",
+      "labels": "multiply@float multiply@float add@float convert@float multiply@float multiply@float add@float convert@float const@float multiply@float convert@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "zed7acd766e3723f8",
+      "labels": "divide@float convert@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "zeeffd11c4cc8fd69",
+      "labels": "divide@float round_nearest_even@float maximum@float minimum@float convert@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zef6c8728306c43ab",
+      "labels": "add@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 2
+    },
+    {
+      "id": "zf186c92a6d6068c1",
+      "labels": "const@sint convert@sint maximum@sint const@sint convert@sint minimum@sint convert@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zf254ab28cd0df6b3",
+      "labels": "convert@float multiply@float add@float const@float maximum@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zf25a0f99b2bc96b9",
+      "labels": "convert@float multiply@float add@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "zf3776eb839fe65d8",
+      "labels": "divide@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zf4eb97d0f126d662",
+      "labels": "convert@sint const@sint add@sint convert@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zf5420b732a717e51",
+      "labels": "add@sint convert@float multiply@float round_nearest_even@float add@float maximum@float minimum@float convert@sint",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "zf640e410683472a6",
+      "labels": "maximum@float const@float maximum@float",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zf70692b6d7956699",
+      "labels": "convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zf811530642501ef7",
+      "labels": "const@float negate@float exponential@float const@float add@float divide@float multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zf82570a4a82cb44f",
+      "labels": "divide@float round_nearest_even@float maximum@float minimum@float convert@sint convert@float multiply@float add@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "zf87d507dcea4cff8",
+      "labels": "subtract@float multiply@float add@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zfab55eee260f008a",
+      "labels": "convert@float divide@float maximum@float minimum@float convert@float multiply@float add@float convert@float",
+      "order": null,
+      "route": "template",
+      "tuples": 1
+    },
+    {
+      "id": "zfb8a78dfed3ce0a0",
+      "labels": "convert@sint convert@sint multiply@sint add@sint const@sint add@sint convert@float multiply@float round_nearest_even@float add@float maximum@float minimum@float convert@sint",
+      "order": [
+        true
+      ],
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zfbb2df811222ea43",
+      "labels": "const@float divide@float const@float add@float rsqrt@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zfc838aec599afaf3",
+      "labels": "const@sint compare@bool",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zfd345a2b12588ded",
+      "labels": "multiply@sint convert@sint const@sint multiply@sint convert@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zfd5bb8e6ab8d4f48",
+      "labels": "const@sint compare@bool add@sint select@sint",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zfd9b8bf7078d496a",
+      "labels": "multiply@float multiply@float add@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    },
+    {
+      "id": "zfeeb1bfcf2e81d4d",
+      "labels": "multiply@float",
+      "order": null,
+      "route": "datapath",
+      "tuples": 1
+    }
+  ],
+  "summary": {
+    "allowed_unknown": 0,
+    "by_route": {
+      "datapath": 190,
+      "template": 38
+    },
+    "classes": 228,
+    "labels": {
+      "abs@float": 5,
+      "add@float": 182,
+      "add@sint": 99,
+      "and@bool": 18,
+      "compare@bool": 61,
+      "const@bool": 1,
+      "const@float": 184,
+      "const@sint": 112,
+      "convert@bool": 1,
+      "convert@float": 127,
+      "convert@sint": 45,
+      "convert@uint": 1,
+      "cosine@float": 6,
+      "divide@float": 59,
+      "divide@sint": 9,
+      "exponential@float": 12,
+      "maximum@float": 45,
+      "maximum@sint": 4,
+      "minimum@float": 27,
+      "minimum@sint": 1,
+      "multiply@float": 209,
+      "multiply@sint": 20,
+      "negate@float": 12,
+      "or@bool": 2,
+      "remainder@sint": 9,
+      "round_nearest_even@float": 16,
+      "rsqrt@float": 5,
+      "select@float": 21,
+      "select@sint": 28,
+      "sign@sint": 18,
+      "sine@float": 6,
+      "sqrt@float": 1,
+      "subtract@float": 22,
+      "subtract@sint": 13,
+      "tanh@float": 2
+    },
+    "lemmas": 6,
+    "order_bound": 17,
+    "order_free": 24,
+    "order_queries": 41,
+    "proofs": 249,
+    "schema": "cc.datapaths.summary/1",
+    "tuples": 249,
+    "uninterpreted": [
+      "cosine_f32",
+      "exponential_bf16",
+      "exponential_f16",
+      "exponential_f32",
+      "rsqrt_f32",
+      "sine_f32",
+      "tanh_bf16",
+      "tanh_f32"
+    ],
+    "vertices": 1383
+  }
+}

@@ -79,7 +79,7 @@ later stages get pipeline registers.
 | `eval_ir_main f.ir --input='…' / random inputs` | evaluate IR (interpreter/JIT) | Bazel-only; supports `--input_validator_expr`, traces, node coverage (tools doc) |
 | `eval_proc_main` | simulate procs/blocks for N cycles with channel I/O | Bazel-only |
 | `simulate_module_main` | run emitted Verilog in a simulator | Bazel-only |
-| `smtlib_emitter_main` | IR fn → SMT-LIB2 (via its Z3 representation) | Bazel-only; lets us run bitwuzla/z3 ourselves via `easy-smt` |
+| `smtlib_emitter_main` | IR fn → SMT-LIB2 (via its Z3 representation) | Bazel-only; lets us run bitwuzla/z3 ourselves (`cc-smt`) |
 
 Our certificate chain per FU: Allo `llvm` sim ≡ XLS IR eval (vectors) → `check_ir_equivalence_main` unopt vs opt
 IR (or bounded for procs) → RTL vs gate netlist with Formality/LEC (`synopsys.md`, `cadence.md`).

@@ -4,6 +4,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 mod components;
+mod datapaths;
 mod env;
 mod export;
 mod import;

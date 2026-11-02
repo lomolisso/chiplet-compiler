@@ -272,9 +272,13 @@ dependencies = [
 name = "cc-smt"
 version = "0.3.0"
 dependencies = [
+ "blake3",
  "cc-core",
+ "cc-ir",
+ "rayon",
  "schemars",
  "serde",
+ "thiserror",
 ]
 
 [[package]]
