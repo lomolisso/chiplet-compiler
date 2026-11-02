@@ -5,6 +5,13 @@
 //! toolchain image or as a host binary, and parses each answer into a [`Verdict`]. `unknown`, a timeout
 //! or an error is never a proof.
 
+pub mod float;
+pub mod ops;
+pub mod run;
+pub mod term;
+
+pub use run::{Cache, query_hash, run_sharded, solver_version};
+
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
