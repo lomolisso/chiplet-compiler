@@ -15,8 +15,9 @@
      (Wolf, Yosys Open SYnthesis Suite; Brayton and Mishchenko, "ABC: an academic industrial-strength
      verification tool", CAV 2010).
    - Equivalence of a gate netlist and its RTL by combinational equivalence checking with the
-     synthesis tool's guidance file (SVF) for Formality; Conformal with datapath analysis (`-XL`); ABC's
-     `cec` (`dsec` for sequential designs) for the Yosys flow.
+     synthesis tool's guidance file (SVF) for Formality; Conformal with datapath analysis (`-XL`); Yosys'
+     `equiv_make` / `equiv_simple` / `equiv_induct` (signal pairs by name, SAT per pair, induction over
+     registers) for the Yosys flow.
    - Cost growth: an `n x n` array or tree multiplier has Θ(n²) cells (Wallace, IEEE TEC 13(1), 1964),
      a ripple or prefix adder Θ(n) to Θ(n log n); a w-bit multiply composes from ⌈w/n⌉² n-bit products
      with shifts and adds (schoolbook; Jouppi et al., ISCA 2017 for the temporal form, Sharma et al.,
@@ -91,7 +92,13 @@
         one session.
       - Genus: `syn_generic`, `syn_map`, `syn_opt`; Conformal LEC (`-XL`, `analyze datapath`) per design.
       - Yosys: `synth -flatten`, `dfflibmap`, ABC mapping at the period (`map -D`, then `stime -p`),
-        `stat -liberty`; ABC `cec` (`dsec` for clocked designs) between the RTL's and the netlist's AIGs.
+        `stat -liberty`; then Yosys' equivalence flow between the RTL and the netlist (`equiv_make` pairs
+        signals by name, registers included; `equiv_simple -seq 2`, `equiv_induct -seq 2`,
+        `equiv_status -assert`; 600 s at most). ABC's `cec` was tried first: it matches AIGER ports by
+        position (the RTL's and the netlist's orders differ) and leaves an f32 multiplier undecided after
+        15 minutes. The mapping is plain `map` without choices (`dch`), which keeps the netlist close to
+        the RTL's structure for the SAT-based proofs. ABC reports no path for a design that is only
+        flip-flops, so Yosys rows of registers may have no delay.
         Rows record `estimator = yosys`; this flow needs no license and is chosen only by `tool`, never as
         a fallback after a license failure (which fails the pass after `EdaRunner`'s retries).
       - The `clock` target is the configured clock (`clock_ps`); `fast` is `fast_fraction` of it, tight
@@ -157,5 +164,10 @@
    - Leakage only: dynamic power needs switching activity, which a primitive alone does not have.
    - Delays are those of a primitive with ideal clocking and fixed driving cell and load; a merged unit
      re-synthesized as a whole will differ.
+   - The Yosys flow's equivalence check is SAT-based (ABC `cec`, 600 s): it proves the integer
+     primitives in seconds but leaves an f32 multiplier undecided (ABC's new and old engines both, more
+     than 15 minutes), and an undecided check fails the row. Formality, with DC's guidance file, proves
+     the same design in seconds; the Yosys flow is a license-free estimate for integer and structural
+     primitives.
    - Design Compiler may map arithmetic to DesignWare parts (recorded per row); another site without the
      DesignWare license gets other numbers.

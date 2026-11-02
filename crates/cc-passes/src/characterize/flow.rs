@@ -476,11 +476,13 @@ pub fn rows(
     for d in &j.designs {
         let p = cat[d.id.as_str()];
         let id = &d.id;
-        let seg = synth.get(id).cloned().unwrap_or_default();
+        let seg = synth.get(id).cloned();
+        let ran = seg.is_some();
+        let seg = seg.unwrap_or_default();
         let lseg = lec_log.get(id).cloned().unwrap_or_default();
         let check = read(&format!("{id}.check.rpt"));
         let mut problems = Vec::new();
-        if seg.is_empty() {
+        if !ran {
             problems.push("no log segment (the session stopped before this design)".to_string());
         }
         let (measured, lec) = match cfg.tool {
@@ -509,7 +511,7 @@ pub fn rows(
                     id,
                     j.period_ps,
                 ),
-                parse::abc_cec(&read(&format!("{id}.lec.rpt"))),
+                parse::yosys_equiv(&read(&format!("{id}.lec.rpt"))),
             ),
         };
         problems.extend(problems_of(
@@ -520,6 +522,8 @@ pub fn rows(
             &read(&format!("{id}.net.v")),
             &measured,
             &lec,
+            // ABC reports no path for a design that is only flip-flops.
+            !(cfg.tool == Tool::Yosys && d.clocked),
         ));
         // Copy the evidence.
         let rel_dir = format!("{}/{}", kit.name, j.target);
@@ -583,6 +587,7 @@ pub fn rows(
 
 /// Everything wrong with one design's synthesis and equivalence check. Shared with `verify`, which
 /// calls it on the copies in `out/library/`.
+#[allow(clippy::too_many_arguments)]
 pub fn problems_of(
     kit: &Kit,
     seg: &str,
@@ -591,6 +596,7 @@ pub fn problems_of(
     netlist: &str,
     m: &parse::Measured,
     lec: &parse::Lec,
+    need_delay: bool,
 ) -> Problems {
     let mut p = Vec::new();
     for e in parse::errors(seg).into_iter().chain(parse::errors(lec_seg)) {
@@ -625,7 +631,7 @@ pub fn problems_of(
     if m.area_um2.is_none_or(|a| a <= 0.0) && !netlist.trim().is_empty() && !is_wiring(netlist) {
         p.push("no area in the report".into());
     }
-    if m.delay_ps.is_none() && !is_wiring(netlist) {
+    if need_delay && m.delay_ps.is_none() && !is_wiring(netlist) {
         p.push("no delay in the report".into());
     }
     if !lec.equivalent {

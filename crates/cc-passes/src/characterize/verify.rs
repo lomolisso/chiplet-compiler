@@ -211,7 +211,7 @@ fn per_target(
         let lec = match cfg.tool {
             Tool::Dc => parse::formality(&lec_text),
             Tool::Genus => parse::conformal(&lec_text),
-            Tool::Yosys => parse::abc_cec(&lec_text),
+            Tool::Yosys => parse::yosys_equiv(&lec_text),
         };
         if lec.equivalent {
             proven += 1;
@@ -244,6 +244,8 @@ fn per_target(
             &net,
             &measured,
             &lec,
+            !(cfg.tool == Tool::Yosys
+                && matches!(r.kind, catalog::Kind::Register | catalog::Kind::Accumulator)),
         );
         for p in problems.into_iter().filter(|p| !p.starts_with("equivalence")) {
             log_bad.push(format!("{}: {p}", r.key));
@@ -392,7 +394,13 @@ pub fn datapath_keys(dp: &Datapath) -> Vec<Result<String, String>> {
                     .iter()
                     .find(|i| i.name == format!("core_result{index}"))
                     .map(|i| i.width.clone())
-                    .or_else(|| dp.accumulator.as_ref()?.entries.get(*index as usize).map(|a| a.width.clone()))
+                    .or_else(|| {
+                        dp.accumulator
+                            .as_ref()?
+                            .entries
+                            .get(*index as usize)
+                            .map(|a| a.width.clone())
+                    })
                     .and_then(|w| ty(&w)),
             }
         };

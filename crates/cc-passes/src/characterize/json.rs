@@ -65,7 +65,7 @@ pub struct Row {
     pub measured: Measured,
     /// `dc`, `genus` or `yosys`.
     pub estimator: String,
-    /// `formality`, `conformal` or `abc-cec`, and its outcome.
+    /// `formality`, `conformal` or `yosys-equiv`, and its outcome.
     pub lec_tool: String,
     pub lec: Lec,
     /// Design Compiler mapped arithmetic to DesignWare parts.

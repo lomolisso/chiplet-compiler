@@ -310,24 +310,33 @@ pub fn conformal(log: &str) -> Lec {
     }
 }
 
-/// ABC `cec` / `dsec`: `Networks are equivalent` or not.
-pub fn abc_cec(out: &str) -> Lec {
-    let eq = out.lines().any(|l| l.contains("Networks are equivalent"));
-    let ne = out
-        .lines()
-        .any(|l| l.contains("NOT EQUIVALENT") || l.contains("are not equivalent"));
+/// Yosys' `equiv_status`: `Equivalence successfully proven!` with no unproven cell.
+pub fn yosys_equiv(log: &str) -> Lec {
+    let proven = log.contains("Equivalence successfully proven!");
+    let count = |what: &str| {
+        log.lines()
+            .filter_map(|l| {
+                let t = l.trim();
+                let rest = t.strip_prefix("Of those cells ")?;
+                let (n, tail) = rest.split_once(" are proven and ")?;
+                let (u, _) = tail.split_once(" are unproven")?;
+                if what == "proven" { n } else { u }.trim().parse::<u64>().ok()
+            })
+            .next_back()
+    };
+    let passing = count("proven").unwrap_or(0);
+    let unproven = count("unproven").unwrap_or(u64::from(!proven));
+    let equivalent = proven && unproven == 0;
     Lec {
-        equivalent: eq && !ne,
-        passing: u64::from(eq && !ne),
-        failing: u64::from(ne),
-        aborted: u64::from(!eq && !ne),
+        equivalent,
+        passing,
+        failing: if equivalent { 0 } else { unproven.max(1) },
+        aborted: 0,
         unmatched: 0,
-        verdict: if eq && !ne {
+        verdict: if equivalent {
             "equivalent".into()
-        } else if ne {
-            "not equivalent".into()
         } else {
-            "undecided".into()
+            "not proven".into()
         },
     }
 }
@@ -424,9 +433,13 @@ mod tests {
         assert!(conformal(log).equivalent);
         let ab = "Compared points      PO        Total\nEquivalent           31        31\nAbort                 1         1\nCPU time\n";
         assert!(!conformal(ab).equivalent);
-        assert!(abc_cec("Networks are equivalent.  Time =     0.01 sec\n").equivalent);
-        assert!(!abc_cec("Networks are NOT EQUIVALENT.\n").equivalent);
-        assert!(!abc_cec("").equivalent);
+        let ok = "Found 64 $equiv cells in eq:\n  Of those cells 64 are proven and 0 are unproven.\n  Equivalence successfully proven!\n";
+        assert!(yosys_equiv(ok).equivalent);
+        assert_eq!(yosys_equiv(ok).passing, 64);
+        let bad = "  Of those cells 60 are proven and 4 are unproven.\n";
+        assert!(!yosys_equiv(bad).equivalent);
+        assert_eq!(yosys_equiv(bad).failing, 4);
+        assert!(!yosys_equiv("").equivalent);
     }
 
     #[test]

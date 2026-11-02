@@ -212,7 +212,7 @@ memory_gb = 8
 timeout_min = 120
 
 [passes.characterize]            # needs `chipc doctor` (build/.env: the .db files, the merged ASAP7 Liberty)
-tool = "dc"                      # "dc" (+ Formality) | "genus" (+ Conformal) | "yosys" (+ ABC cec, no license)
+tool = "dc"                      # "dc" (+ Formality) | "genus" (+ Conformal) | "yosys" (+ its equiv flow, no license)
 pdks = ["nangate45", "asap7"]
 clock_ps = { nangate45 = 2000, asap7 = 1000 }
 targets = ["clock", "fast"]      # clock: the area row at the clock target; fast: a tight constraint

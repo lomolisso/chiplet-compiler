@@ -217,7 +217,7 @@
           "$ref": "#/$defs/Lec"
         },
         "lec_tool": {
-          "description": "`formality`, `conformal` or `abc-cec`, and its outcome.",
+          "description": "`formality`, `conformal` or `yosys-equiv`, and its outcome.",
           "type": "string"
         },
         "measured": {

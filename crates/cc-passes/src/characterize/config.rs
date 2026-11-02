@@ -6,7 +6,8 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct CharacterizeConfig {
-    /// `dc` (Design Compiler + Formality), `genus` (Genus + Conformal) or `yosys` (Yosys + ABC, no license).
+    /// `dc` (Design Compiler + Formality), `genus` (Genus + Conformal) or `yosys` (Yosys + ABC, its
+    /// equivalence flow; no license).
     pub tool: Tool,
     /// Kits: `nangate45`, `asap7`.
     pub pdks: Vec<String>,
@@ -63,7 +64,7 @@ impl Tool {
         match self {
             Tool::Dc => "formality",
             Tool::Genus => "conformal",
-            Tool::Yosys => "abc-cec",
+            Tool::Yosys => "yosys-equiv",
         }
     }
 }

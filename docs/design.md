@@ -330,7 +330,7 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
 - **Verification.**
   - Synthesis logs are free of errors, unresolved references and latches; netlists use only library
     cells.
-  - Formality/Conformal LEC (ABC `cec` for Yosys) of netlist vs RTL for every primitive.
+  - Formality/Conformal LEC (Yosys' equivalence flow for Yosys) of netlist vs RTL for every primitive.
   - Sanity: area is monotone in width, multipliers grow about quadratically and adders linearly
     (flagged, not failed).
   - Coverage: every vertex of the datapaths maps to a primitive.
