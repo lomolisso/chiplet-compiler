@@ -433,31 +433,47 @@ fn area_check(fu: &FuFile, lib: &Lib) -> Vec<String> {
     bad
 }
 
-/// An independent exact search on a stored instance: the heaviest set closed under implications,
-/// free of conflicts and no-goods (branch and bound, nodes in index order).
+/// An independent exact search on a stored instance: the heaviest set closed under implications, free
+/// of conflicts and no-goods. Branch and bound over the nodes in index order with the current closure
+/// as a bitset; `None` when the instance is too large or the search runs out of steps.
 fn best(cert: &CliqueCert) -> Option<f64> {
     let n = cert.nodes.len();
     if n > 400 {
         return None;
     }
-    let mut conf = vec![vec![false; n]; n];
+    // Heaviest nodes first: good sets early, so the bound prunes sooner.
+    let mut ord: Vec<usize> = (0..n).collect();
+    ord.sort_by(|&a, &b| cert.nodes[b].weight.total_cmp(&cert.nodes[a].weight).then(a.cmp(&b)));
+    let mut pos = vec![0usize; n];
+    for (k, &i) in ord.iter().enumerate() {
+        pos[i] = k;
+    }
+    let words = n.div_ceil(64).max(1);
+    let mut conf = vec![vec![0u64; words]; n];
     for &(a, b) in &cert.conflicts {
-        if (a as usize) < n && (b as usize) < n {
-            conf[a as usize][b as usize] = true;
-            conf[b as usize][a as usize] = true;
+        let (a, b) = (a as usize, b as usize);
+        if a < n && b < n {
+            let (a, b) = (pos[a], pos[b]);
+            conf[a][b / 64] |= 1 << (b % 64);
+            conf[b][a / 64] |= 1 << (a % 64);
         }
     }
     let mut needs: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for &(a, v) in &cert.implies {
-        needs[a as usize].push(v as usize);
-    }
-    let w: Vec<f64> = cert.nodes.iter().map(|x| x.weight).collect();
     let mut target = vec![false; n];
-    for v in needs.iter().flatten() {
-        target[*v] = true;
+    for &(a, v) in &cert.implies {
+        if (a as usize) < n && (v as usize) < n {
+            needs[pos[a as usize]].push(pos[v as usize]);
+            target[pos[v as usize]] = true;
+        }
     }
+    let nogoods: Vec<Vec<u32>> = cert
+        .nogoods
+        .iter()
+        .map(|g| g.iter().filter(|&&v| (v as usize) < n).map(|&v| pos[v as usize] as u32).collect())
+        .collect();
+    let w: Vec<f64> = ord.iter().map(|&i| cert.nodes[i].weight.max(0.0)).collect();
     struct S<'a> {
-        conf: &'a [Vec<bool>],
+        conf: &'a [Vec<u64>],
         needs: &'a [Vec<usize>],
         w: &'a [f64],
         target: &'a [bool],
@@ -465,76 +481,68 @@ fn best(cert: &CliqueCert) -> Option<f64> {
         best: f64,
         steps: u64,
     }
-    fn closure(s: &S, cur: &[usize]) -> Vec<usize> {
-        let mut closed: Vec<usize> = cur.to_vec();
-        for &x in cur {
-            closed.extend(&s.needs[x]);
-        }
-        closed.sort_unstable();
-        closed.dedup();
-        closed
+    fn has(b: &[u64], i: usize) -> bool {
+        b[i / 64] >> (i % 64) & 1 == 1
     }
-    fn ok(s: &S, closed: &[usize]) -> bool {
-        for (i, &x) in closed.iter().enumerate() {
-            for &y in &closed[i + 1..] {
-                if s.conf[x][y] {
-                    return false;
-                }
-            }
-        }
-        !s.ng
-            .iter()
-            .any(|g| g.iter().all(|v| closed.binary_search(&(*v as usize)).is_ok()))
-    }
-    /// `cur` is feasible; its closure's weight is a candidate, and every closed extension adds only
-    /// nodes outside the closure that are at or after `i` or implied by something.
-    fn go(s: &mut S, i: usize, cur: &mut Vec<usize>) {
+    fn go(s: &mut S, i: usize, closed: &mut Vec<u64>, cw: f64) {
         s.steps += 1;
-        if s.steps > 5_000_000 {
+        if s.steps > 20_000_000 {
             return;
         }
-        let closed = closure(s, cur);
-        let cw: f64 = closed.iter().map(|&x| s.w[x]).sum();
         s.best = s.best.max(cw);
-        if i == s.w.len() {
+        let n = s.w.len();
+        if i == n {
             return;
         }
-        let rest: f64 = (0..s.w.len())
-            .filter(|&j| closed.binary_search(&j).is_err() && (j >= i || s.target[j]))
+        let rest: f64 = (0..n)
+            .filter(|&j| !has(closed, j) && (j >= i || s.target[j]))
             .map(|j| s.w[j])
             .sum();
         if cw + rest <= s.best + 1e-9 {
             return;
         }
-        if closed.binary_search(&i).is_err() {
-            cur.push(i);
-            let c2 = closure(s, cur);
-            if ok(s, &c2) {
-                go(s, i + 1, cur);
+        if !has(closed, i) {
+            let mut add: Vec<usize> = std::iter::once(i)
+                .chain(s.needs[i].iter().copied())
+                .filter(|&x| !has(closed, x))
+                .collect();
+            add.sort_unstable();
+            add.dedup();
+            let mut next = closed.clone();
+            for &x in &add {
+                next[x / 64] |= 1 << (x % 64);
             }
-            cur.pop();
+            let ok = add
+                .iter()
+                .all(|&x| s.conf[x].iter().zip(&next).all(|(c, m)| c & m == 0))
+                && !s.ng.iter().any(|g| g.iter().all(|&v| has(&next, v as usize)));
+            if ok {
+                let gain: f64 = add.iter().map(|&x| s.w[x]).sum();
+                go(s, i + 1, &mut next, cw + gain);
+            }
         }
-        go(s, i + 1, cur);
+        go(s, i + 1, closed, cw);
     }
     let mut s = S {
         conf: &conf,
         needs: &needs,
         w: &w,
         target: &target,
-        ng: &cert.nogoods,
+        ng: &nogoods,
         best: 0.0,
         steps: 0,
     };
-    go(&mut s, 0, &mut Vec::new());
-    (s.steps <= 5_000_000).then_some(s.best)
+    go(&mut s, 0, &mut vec![0u64; words], 0.0);
+    (s.steps <= 20_000_000).then_some(s.best)
 }
 
-fn clique_check(cert: &CliqueCert) -> Vec<String> {
+/// The notes of one certificate, and whether its optimality claim was re-derived.
+fn clique_check(cert: &CliqueCert) -> (Vec<String>, bool) {
     let mut bad = Vec::new();
     let n = cert.nodes.len() as u32;
     let chosen: BTreeSet<u32> = cert.chosen.iter().copied().collect();
     if chosen.iter().any(|&x| x >= n) {
-        return vec!["a chosen node does not exist".into()];
+        return (vec!["a chosen node does not exist".into()], false);
     }
     for &(a, b) in &cert.conflicts {
         if chosen.contains(&a) && chosen.contains(&b) {
@@ -555,18 +563,23 @@ fn clique_check(cert: &CliqueCert) -> Vec<String> {
     if !close(w, cert.objective) {
         bad.push(format!("objective {} recomputes to {w}", cert.objective));
     }
+    let mut searched = false;
     if cert.optimal
         && let Some(b) = best(cert)
-        && b > cert.objective + 1e-6 * (1.0 + b.abs())
     {
-        bad.push(format!("claimed optimal at {}, {b} exists", cert.objective));
+        searched = true;
+        if b > cert.objective + 1e-6 * (1.0 + b.abs()) {
+            bad.push(format!("claimed optimal at {}, {b} exists", cert.objective));
+        }
     }
-    bad
+    (bad, searched)
 }
 
 pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
     let cfg: MergeConfig = ctx.options()?;
     let mut r = VerifyReport::new(ctx.name());
+    let t0 = std::time::Instant::now();
+    let lap = |what: &str| tracing::info!(what, s = t0.elapsed().as_secs(), "verify");
     let out = ctx.output(MERGE)?;
     let inputs = load(ctx, &cfg)?;
     let lib = Lib::new(&inputs.library, &cfg.kit).map_err(PassError::failed)?;
@@ -650,6 +663,7 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
         r.push(check(format!("{id}:area"), a, &[]));
     }
 
+    lap("units");
     // Depth bounds: the derived bound is the deepest single unit in whole periods.
     let mut bound_bad = Vec::new();
     if cfg.max_logic_depth <= 0.0 {
@@ -685,6 +699,7 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
     }
     r.push(check("bounds", &bound_bad, &[]));
 
+    lap("bounds");
     // Proofs: regenerated byte for byte, stored results, the second solver.
     let fu_by: HashMap<&str, &FuFile> = fus.iter().map(|f| (f.id.as_str(), f)).collect();
     let mut queries: Vec<Result<proofs::Query, String>> = configs
@@ -808,8 +823,10 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
         &proof_bad,
         &[("queries", files.len() as u64), ("composed", zfiles.len() as u64)],
     ));
+    lap("proofs");
     r.push(sanity(ctx, &fus, &configs, &dps, solver, &runner, &location)?);
 
+    lap("sanity");
     // Arrays.
     let isp = ctx.input(ITERATION_SPACE)?;
     let routing: Routing = isp.read_json("routing.json")?;
@@ -848,32 +865,47 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
     }
     r.push(check("arrays", &arr_bad, &[("arrays", arrays.len() as u64)]));
 
-    // Cliques.
-    let mut cq_bad = Vec::new();
-    let mut certs = 0u64;
-    for t in &traces {
-        for s in &t.steps {
-            let Some(f) = &s.clique.certificate else { continue };
-            certs += 1;
+    lap("arrays");
+    // Cliques (each certificate independently, in parallel).
+    let todo: Vec<(&Trace, &Step, &String)> = traces
+        .iter()
+        .flat_map(|t| {
+            t.steps
+                .iter()
+                .filter_map(move |s| s.clique.certificate.as_ref().map(|f| (t, s, f)))
+        })
+        .collect();
+    let certs = todo.len() as u64;
+    let res: Vec<(Vec<String>, bool)> = todo
+        .par_iter()
+        .map(|(t, s, f)| {
+            let mut bad = Vec::new();
+            let mut searched = false;
             match out.read_json::<CliqueCert>(&format!("cliques/{}/{f}", t.family.name())) {
                 Ok(c) => {
-                    for b in clique_check(&c) {
-                        cq_bad.push(format!("{} step {}: {b}", t.family.name(), s.step));
+                    let (notes, done) = clique_check(&c);
+                    searched = done;
+                    for b in notes {
+                        bad.push(format!("{} step {}: {b}", t.family.name(), s.step));
                     }
                     if !close(c.objective, s.clique.objective) {
-                        cq_bad.push(format!(
-                            "{} step {}: objective differs from the trace",
-                            t.family.name(),
-                            s.step
-                        ));
+                        bad.push(format!("{} step {}: objective differs from the trace", t.family.name(), s.step));
                     }
                 }
-                Err(e) => cq_bad.push(format!("{} {f}: {e}", t.family.name())),
+                Err(e) => bad.push(format!("{} {f}: {e}", t.family.name())),
             }
-        }
-    }
-    r.push(check("cliques", &cq_bad, &[("certificates", certs)]));
+            (bad, searched)
+        })
+        .collect();
+    let searched = res.iter().filter(|r| r.1).count() as u64;
+    let cq_bad: Vec<String> = res.into_iter().flat_map(|r| r.0).collect();
+    r.push(check(
+        "cliques",
+        &cq_bad,
+        &[("certificates", certs), ("optimality_rederived", searched)],
+    ));
 
+    lap("cliques");
     // Trace.
     let mut tr_bad = Vec::new();
     for t in &traces {
@@ -957,7 +989,10 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
     Ok(r)
 }
 
-/// A configuration with a wrong select must be refuted by both solvers.
+/// Wrong selects must be refuted: up to `SANITY` configurations with one select moved to another source
+/// (some moves may pick an equivalent source), each solver must find a counterexample to at least one.
+const SANITY: usize = 8;
+
 fn sanity(
     ctx: &PassContext,
     fus: &[FuFile],
@@ -968,54 +1003,54 @@ fn sanity(
     location: &cc_smt::Location,
 ) -> Result<Check, PassError> {
     let fu_by: HashMap<&str, &FuFile> = fus.iter().map(|f| (f.id.as_str(), f)).collect();
-    // The first configuration whose select can move to a source of the same type giving another value.
-    let mut found = None;
+    let mut found: Vec<proofs::Query> = Vec::new();
     'outer: for c in configs {
         let fu = fu_by[c.fu.as_str()];
+        let Some(dp) = dps.get(c.class.as_str()) else { continue };
+        let Some(t) = dp.tuples.iter().find(|t| t.name == c.tuple) else { continue };
         for (k, s) in c.selects.iter().enumerate() {
             let n = fu.blocks[s.block as usize].sources[s.port as usize].len() as u32;
-            for alt in 0..n {
-                if alt == s.select {
-                    continue;
-                }
+            for alt in (0..n).filter(|&a| a != s.select) {
                 let mut bad = c.clone();
                 bad.selects[k].select = alt;
-                let Some(dp) = dps.get(c.class.as_str()) else {
-                    continue;
-                };
-                let Some(t) = dp.tuples.iter().find(|t| t.name == c.tuple) else {
-                    continue;
-                };
                 if let Ok(q) = proofs::config_query(fu, &bad, dp, t) {
-                    found = Some(q);
-                    break 'outer;
+                    found.push(q);
+                    // One mutation per configuration.
+                    if found.len() >= SANITY {
+                        break 'outer;
+                    }
+                    continue 'outer;
                 }
             }
         }
     }
-    let Some(q) = found else {
-        return Ok(
-            Check::new("solver_sanity", true).note("no multiplexer with a well-typed alternative source")
-        );
-    };
+    if found.is_empty() {
+        return Ok(Check::new("solver_sanity", true).note("no multiplexer with a well-typed alternative source"));
+    }
     let dir = ctx.dir().path().join("cache").join("sanity");
     std::fs::create_dir_all(&dir).map_err(|e| PassError::failed(format!("sanity: {e}")))?;
-    let file = "sanity.smt2".to_string();
-    std::fs::write(dir.join(&file), &q.text).map_err(|e| PassError::failed(format!("sanity: {e}")))?;
-    let mut notes = Vec::new();
-    for s in [solver, solver.other()] {
-        let b = cc_smt::run_batch(
-            runner,
-            location,
-            s,
-            &dir,
-            std::slice::from_ref(&file),
-            ctx.smt().timeout_s,
-        )?;
-        match b.verdicts.get(&file) {
-            Some(Verdict::Sat { .. }) => {}
-            v => notes.push(format!("{}: {v:?} (expected sat)", s.name())),
-        }
+    let mut files = Vec::new();
+    for (i, q) in found.iter().enumerate() {
+        let f = format!("sanity{i}.smt2");
+        std::fs::write(dir.join(&f), &q.text).map_err(|e| PassError::failed(format!("sanity: {e}")))?;
+        files.push(f);
     }
-    Ok(check("solver_sanity", &notes, &[]).note(format!("mutated: {}", q.file)))
+    let mut notes = Vec::new();
+    let mut refuted = 0u64;
+    for s in [solver, solver.other()] {
+        let b = cc_smt::run_batch(runner, location, s, &dir, &files, ctx.smt().timeout_s)?;
+        let sat = files
+            .iter()
+            .filter(|f| matches!(b.verdicts.get(*f), Some(Verdict::Sat { .. })))
+            .count() as u64;
+        if sat == 0 {
+            notes.push(format!("{}: no mutated configuration refuted", s.name()));
+        }
+        refuted = refuted.max(sat);
+    }
+    Ok(check(
+        "solver_sanity",
+        &notes,
+        &[("mutations", files.len() as u64), ("refuted", refuted)],
+    ))
 }

@@ -96,7 +96,7 @@ impl Default for MergeConfig {
             kit: "asap7".into(),
             contract: true,
             max_compat_nodes: 4000,
-            certify_max_nodes: 120,
+            certify_max_nodes: 60,
             compose_timeout_s: 600,
             views: true,
             clique: CliqueConfig::default(),

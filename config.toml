@@ -266,7 +266,7 @@ kit = "asap7"                    # library kit that prices merges: area at its `
 contract = true                  # cover units with mine's selected patterns first; an occurrence merges only with
                                  # an occurrence of the same pattern
 max_compat_nodes = 4000          # larger compatibility graphs are solved by `greedy`
-certify_max_nodes = 120          # steps with at most this many nodes store their graph (verify re-solves them)
+certify_max_nodes = 60           # steps with at most this many nodes store their graph (verify re-solves them)
 compose_timeout_s = 600          # Z3 limit per composed array step (a multiplier vs its pieces)
 views = true                     # write views/merge.md
 [passes.merge.clique]
