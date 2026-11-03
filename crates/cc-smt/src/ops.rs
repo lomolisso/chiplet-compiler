@@ -163,6 +163,7 @@ pub fn apply(c: &mut Ctx, op: &str, a: &Attrs, args: &[Val], ret: Ty) -> Res<Val
     let y = args.get(1).copied();
     match (op, n) {
         ("convert", 1) => convert(c, args[0], ret),
+        ("rescale", 2) if ret == Ty::Float(Format::F32) => rescale(c, args[0], args[1]),
         ("select", 3) => {
             let p = args[0];
             if p.ty != Ty::Bool || args[1].ty != args[2].ty {
@@ -918,4 +919,169 @@ pub fn convert(c: &mut Ctx, x: Val, to: Ty) -> Res<Val> {
         (Ty::Complex(f), _) => convert(c, Val::new(Ty::Float(f), x.t), to)?,
         _ => return Err(bad()),
     })
+}
+
+/// The widest integer operand of [`rescale`].
+pub const RESCALE_MAX_BITS: u32 = 32;
+
+/// `rescale(x, s)`: the fixed-point requantization primitive (not a StableHLO op; `merge` introduces it,
+/// docs/framework/smt.md, "rescale"). `x` is a signed integer of at most 32 bits, `s` an f32. The scale
+/// is decoded from its bits ([`scale_parts`]): significand `M` (24 bits, the implicit one when the
+/// exponent field `e` is not zero), `k = 150 - max(e, 1)`, so `|s| = M · 2^-k` exactly. The exact
+/// product `P = ±x · M` ([`rescale_product`]) is shifted with rounding half up, `(P + 2^(k-1)) >> k`
+/// (arithmetic; a shift beyond the product's width gives 0), or shifted left for `k <= 0` (more than 7
+/// places: saturated); the result saturates to i32 and is converted to f32 with rounding to nearest
+/// even ([`rescale_shift`]). Infinite and NaN scales follow the `k <= 0` branch (only finite scales are
+/// meaningful).
+pub fn rescale(c: &mut Ctx, x: Val, s: Val) -> Res<Val> {
+    let n = match (x.ty, s.ty) {
+        (Ty::Int { signed: true, w }, Ty::Float(f)) if w <= RESCALE_MAX_BITS && f == Format::F32 => w,
+        _ => {
+            return Err(SortError(format!(
+                "rescale: no encoding for ({}, {})",
+                x.ty.name(),
+                s.ty.name()
+            )));
+        }
+    };
+    let (neg, mant, k) = scale_parts(c, s.t)?;
+    let p = rescale_product(c, x.t, n, neg, mant)?;
+    rescale_shift(c, p, n, k)
+}
+
+/// The parts of an f32 scale: its sign (true: negative), its 24-bit significand `M` and the 10-bit
+/// signed shift `k = 150 - max(e, 1)` with `|s| = M · 2^-k` for every finite `s`.
+pub fn scale_parts(c: &mut Ctx, s: T) -> Res<(T, T, T)> {
+    let b = c.bits_of(s)?;
+    let sgn = c.extract(b, 31, 31)?;
+    let e = c.extract(b, 30, 23)?;
+    let m = c.extract(b, 22, 0)?;
+    let z8 = c.bv(0, 8);
+    let e_zero = c.eq(e, z8)?;
+    let one1 = c.bv(1, 1);
+    let zero1 = c.bv(0, 1);
+    let hidden = c.ite(e_zero, zero1, one1)?;
+    let mant = c.op2(Op::Concat, hidden, m)?;
+    let neg = c.eq(sgn, one1)?;
+    let e10 = c.resize(e, 10, false)?;
+    let one10 = c.bv(1, 10);
+    let e10 = c.ite(e_zero, one10, e10)?;
+    let k150 = c.bv(150, 10);
+    let k = c.op2(Op::BvSub, k150, e10)?;
+    Ok((neg, mant, k))
+}
+
+/// The exact signed product `±x · M` of an `n`-bit signed `x` and a 24-bit significand, in `n + 25` bits
+/// (`|x · M| < 2^(n+23)`).
+pub fn rescale_product(c: &mut Ctx, x: T, n: u32, neg: T, mant: T) -> Res<T> {
+    let w = n + 25;
+    let xw = c.resize(x, w, true)?;
+    let mw = c.resize(mant, w, false)?;
+    let p = c.op2(Op::BvMul, xw, mw)?;
+    let np = c.op1(Op::BvNeg, p)?;
+    c.ite(neg, np, p)
+}
+
+/// [`rescale`] after the product: `p` (`n + 25` bits, `|p| < 2^(n+23)`) times `2^-k` rounded half up,
+/// saturated to i32, as f32.
+pub fn rescale_shift(c: &mut Ctx, p: T, n: u32, k: T) -> Res<Val> {
+    let w = n + 25;
+    let zero10 = c.bv(0, 10);
+    let right = c.op2(Op::BvSlt, zero10, k)?;
+    // k >= 1: rounding half up, the shift capped at n + 24 (larger shifts give 0 too).
+    let cap = c.bv(u128::from(n + 24), 10);
+    let over = c.op2(Op::BvSlt, cap, k)?;
+    let kk = c.ite(over, cap, k)?;
+    let kw = c.resize(kk, w, false)?;
+    let one_w = c.bv(1, w);
+    let km1 = c.op2(Op::BvSub, kw, one_w)?;
+    let half = c.op2(Op::BvShl, one_w, km1)?;
+    let ph = c.op2(Op::BvAdd, p, half)?;
+    let qr = c.op2(Op::BvAshr, ph, kw)?;
+    // k <= 0: a left shift by L = -k; more than 7 places overflows i32 unless P = 0.
+    let w2 = n + 33;
+    let qr = c.resize(qr, w2, true)?;
+    let p2 = c.resize(p, w2, true)?;
+    let l = c.op1(Op::BvNeg, k)?;
+    let seven = c.bv(7, 10);
+    let near = c.op2(Op::BvUle, l, seven)?;
+    let lw = c.resize(l, w2, false)?;
+    let shifted = c.op2(Op::BvShl, p2, lw)?;
+    let zero_w = c.bv(0, w);
+    let p_zero = c.eq(p, zero_w)?;
+    let p_neg = c.op2(Op::BvSlt, p, zero_w)?;
+    let big_pos = c.bvs(1i128 << 32, w2);
+    let big_neg = c.bvs(-(1i128 << 32), w2);
+    let zero_w2 = c.bv(0, w2);
+    let big = c.ite(p_neg, big_neg, big_pos)?;
+    let big = c.ite(p_zero, zero_w2, big)?;
+    let ql = c.ite(near, shifted, big)?;
+    let q = c.ite(right, qr, ql)?;
+    // Saturate to i32, then convert.
+    let max = c.bvs(i128::from(i32::MAX), w2);
+    let min = c.bvs(i128::from(i32::MIN), w2);
+    let above = c.op2(Op::BvSlt, max, q)?;
+    let below = c.op2(Op::BvSlt, q, min)?;
+    let q = c.ite(above, max, q)?;
+    let q = c.ite(below, min, q)?;
+    let q32 = c.extract(q, 31, 0)?;
+    convert(
+        c,
+        Val::new(Ty::Int { signed: true, w: 32 }, q32),
+        Ty::Float(Format::F32),
+    )
+}
+
+/// [`rescale`] in plain integer arithmetic: the f32 bits of `rescale(x, s)` for `x` and the bits of
+/// `s` (the reference the SMT encoding and the RTL are checked against).
+pub fn rescale_reference(x: i64, s: u32) -> u32 {
+    (rescale_reference_int(x, s) as f32).to_bits()
+}
+
+/// The saturated integer before [`rescale`]'s final conversion to f32.
+pub fn rescale_reference_int(x: i64, s: u32) -> i32 {
+    let (sgn, e, m) = (s >> 31, (s >> 23) & 0xff, s & 0x7f_ffff);
+    let mant = if e == 0 {
+        i128::from(m)
+    } else {
+        i128::from(m | 1 << 23)
+    };
+    let k = 150 - i128::from(e.max(1));
+    let p = i128::from(x) * mant * if sgn == 1 { -1 } else { 1 };
+    let q = if k >= 1 {
+        if k > 100 { 0 } else { (p + (1i128 << (k - 1))) >> k }
+    } else if -k <= 7 {
+        p << -k
+    } else if p == 0 {
+        0
+    } else if p < 0 {
+        -(1i128 << 32)
+    } else {
+        1i128 << 32
+    };
+    q.clamp(i128::from(i32::MIN), i128::from(i32::MAX)) as i32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rescale_reference as r;
+
+    fn f(x: i64, s: f32) -> f32 {
+        f32::from_bits(r(x, s.to_bits()))
+    }
+
+    #[test]
+    fn rescale_reference_by_hand() {
+        assert_eq!(f(5, 0.5), 3.0); // 2.5 rounds half up
+        assert_eq!(f(-5, 0.5), -2.0); // -2.5 rounds half up
+        assert_eq!(f(-7, -0.5), 4.0);
+        assert_eq!(f(100, 0.75), 75.0);
+        assert_eq!(f(1, 8_388_608.0), 8_388_608.0); // 2^23: no shift
+        assert_eq!(f(3, 2f32.powi(31)), 2_147_483_648.0); // saturated to i32::MAX, then rounded
+        assert_eq!(f(-3, 2f32.powi(30)), -2_147_483_648.0);
+        assert_eq!(f(i64::from(i32::MAX), 2f32.powi(-40)), 0.0);
+        assert_eq!(f(7, f32::from_bits(1)), 0.0); // subnormal scale
+        assert_eq!(f(0, f32::INFINITY), 0.0);
+        assert_eq!(f(1000, 0.001), 1.0);
+    }
 }

@@ -113,11 +113,22 @@ exported models compute:
 | `convert` float→float | exact widening; narrowing rounds to nearest even once (E4M3FN overflow → NaN) | spec TBD, ml_dtypes |
 | `convert` bool, complex | 0/1, non-zero is true (NaN included); complex keeps or zeroes the imaginary part | spec |
 
+**`rescale`** is the one op that is not StableHLO's: `merge` puts it in place of a rescaling chain
+`round_nearest_even(convert(x) · s)` for its `fixed` requantization (design §6.3, docs/passes/merge.md
+§4.11). `rescale(x, s)` with `x` a signed integer of at most 32 bits and `s` an f32: `scale_parts`
+decodes the significand `M` (24 bits, the implicit one when the exponent field `e` is not zero) and
+`k = 150 − max(e, 1)`, so `|s| = M·2^-k` exactly; `rescale_product` forms `P = ±x·M` in `n + 25` bits;
+`rescale_shift` gives `(P + 2^(k−1)) >> k` (arithmetic, rounding half up; shifts past the product's
+width give 0) for `k ≥ 1`, `P << −k` for `−7 ≤ k ≤ 0` and saturation beyond, then saturates to i32 and
+converts to f32 (round to nearest even). `rescale_reference` is the same function in plain integer
+arithmetic; the RTL (`characterize`'s `rescale@i<n>`) is checked against it.
+
 `tests/smoke/smt.rs` checks the encodings against concrete cases in both solvers: the spec's examples
 (`remainder`, `round_nearest_even`), every open case above, ties and overflow at the OCP FP8 boundaries
 (448, the tie at 464, 470), subnormal ties, the whole E4M3FN decoding table against an independent
-formula, and two negative controls (exchanged `subtract` operands, a bf16 truncation instead of a
-rounding) that must be `sat`.
+formula, `rescale` against its reference (ties, left shifts, saturation, zero, subnormal and infinite
+scales, three widths), and two negative controls (exchanged `subtract` operands, a bf16 truncation instead
+of a rounding) that must be `sat`.
 
 ## Running
 

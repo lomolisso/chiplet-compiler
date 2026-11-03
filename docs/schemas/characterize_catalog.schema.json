@@ -26,6 +26,11 @@
           "const": "split",
           "description": "A wrapping w-bit multiply composed of n-bit unsigned piece multipliers and a shift-add tree.",
           "type": "string"
+        },
+        {
+          "const": "rescale",
+          "description": "The fixed-point requantization primitive (`cc_smt::ops::rescale`): an integer times an f32 scale\nby an exact integer multiply and a rounding shift, back to f32.",
+          "type": "string"
         }
       ]
     },
@@ -53,7 +58,7 @@
           "type": "string"
         },
         "key": {
-          "description": "Stable key: `<op>[.<variant>]@<type>[><type>]`, e.g. `add@i32`, `compare.LT@ui8`,\n`convert@f32>bf16`, `mux4@w8`, `register@w8`, `accumulator.add@i32`, `split@w32n8`.",
+          "description": "Stable key: `<op>[.<variant>]@<type>[><type>]`, e.g. `add@i32`, `compare.LT@ui8`,\n`convert@f32>bf16`, `mux4@w8`, `register@w8`, `accumulator.add@i32`, `split@w32n8`,\n`rescale@i32`.",
           "type": "string"
         },
         "kind": {

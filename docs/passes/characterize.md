@@ -60,7 +60,9 @@
       flop), an accumulator per commutative op of the table at every type it has RTL for (the combiner
       with its result register in the loop, and a `start` input that loads the first element: without a
       defined start value DC assumed one and removed the register of every multiply accumulator, which
-      the flip-flop check caught), and a split multiplier per `split_multipliers` (w, n).
+      the flip-flop check caught), a split multiplier per `split_multipliers` (w, n), and last, so that
+      adding them keeps the earlier job batches, a `rescale@i<n>` per signed width of `int_widths` when
+      `convert@i32>f32` has RTL (`merge`'s fixed requantization, `cc_smt::ops::rescale`).
    2. *RTL.* Integer and bool ops are DSLX mirroring `cc_smt::ops`: wrapping arithmetic, XLA's results for
       `x / 0 = -1`, `INT_MIN / -1 = INT_MIN`, `x % 0 = x`, `INT_MIN % -1 = 0`, a remainder with the sign of
       the dividend. Float ops call XLS's `apfloat` library (`add`, `sub`, `mul`, `eq_2`, `lt_2`, `lte_2`,
@@ -76,7 +78,12 @@
       accumulators and split multipliers are Verilog templates that instantiate the generated modules.
       The split multiplier `split@w<w>n<n>` keeps every partial product `a_i * b_j` with `(i + j) n < w`
       on its own `n x n` unsigned instance and sums them shifted: the low w bits of a product are the same
-      for signed and unsigned operands, so one split serves both families.
+      for signed and unsigned operands, so one split serves both families. `rescale@i<n>` is a template
+      too: `rescale_core_i<n>` decodes the f32 scale, multiplies `n x 24` bits exactly, shifts with
+      rounding half up (or left by at most 7 places), saturates to i32, and `rescale_i<n>` converts the
+      result with the characterized `convert_i32_f32`. Its rows are provisional with that conversion; the
+      smoke test `rescale_rtl_matches_its_reference` simulates the core (iverilog, in the image) against
+      `cc_smt::ops::rescale_reference` on edge cases and 3000 operands per width.
    3. *Jobs.* The designs go in batches of `batch`, one job per (kit, target, batch): a directory
       `eda/<kit>-<target>-<hash>/` named by the hash of its synthesis scripts, RTL, libraries and image,
       with the RTL copied in. `synth.done` marks a finished synthesis and `lec.done` a finished
