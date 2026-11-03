@@ -15,6 +15,7 @@ pub mod import;
 pub mod iteration_space;
 pub mod kernel_classes;
 pub mod kernels;
+pub mod mine;
 pub mod normalize;
 pub mod registry;
 
@@ -30,6 +31,7 @@ pub fn pass_schemas() -> Vec<(&'static str, serde_json::Value)> {
     v.extend(kernel_classes::json::schemas());
     v.extend(iteration_space::json::schemas());
     v.extend(datapaths::json::schemas());
+    v.extend(mine::json::schemas());
     v.extend(characterize::json::schemas());
     v
 }

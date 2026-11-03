@@ -1,0 +1,79 @@
+{
+  "$defs": {
+    "Family": {
+      "description": "A mining family: datapath classes by skeleton class, and the per-element stages of template classes.",
+      "enum": [
+        "map",
+        "reduce",
+        "contraction",
+        "stage"
+      ],
+      "type": "string"
+    },
+    "Reported": {
+      "description": "A pattern GraMi reported within `max_vertices`, after canonicalization.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "vertices": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "vertices"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`grami/<family>.json`: the final τ's GraMi result.",
+  "properties": {
+    "dropped": {
+      "description": "Patterns over `max_vertices` (counted, not canonicalized).",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "family": {
+      "$ref": "#/$defs/Family"
+    },
+    "patterns": {
+      "description": "The others, sorted by id.",
+      "items": {
+        "$ref": "#/$defs/Reported"
+      },
+      "type": "array"
+    },
+    "reported": {
+      "description": "GraMi's own pattern count (its `Output.txt`).",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "tau": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "schema",
+    "family",
+    "reported",
+    "dropped",
+    "patterns"
+  ],
+  "title": "GramiFile",
+  "type": "object"
+}

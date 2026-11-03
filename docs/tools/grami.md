@@ -23,7 +23,8 @@ graph) as candidates for shared functional units. Repo: https://github.com/ehab-
 
 Directedness is decided **only by which tree you run**: the `grami` script's `-t` picks the directory, and the Java
 `CommandLineParser` has no `type` key (it parses `freq`, `filename`, `datasetFolder`, `maxLabelAppearance`,
-`approximate`, `approxConst`, `automorphism`, `distinct`, `caching`, `partial`, `limitedtime`; unknown keys such as
+`approximate`, `approxConst`, `automorphism`, `distinct`, `caching`, `partial`, `limitedtime`, and in our image's
+directed tree `maxNodes`; unknown keys such as
 `type=`, `distance=`, `mlabels=` are silently ignored).
 
 ## 2. Input format (`.lg`, parsed by `Graph.loadFromFile_Ehab`)
@@ -68,6 +69,10 @@ java -Xmx8g -XX:ActiveProcessorCount=2 -XX:+UseSerialGC \
   → `datasetFolder` must end with `/`.
 - `freq` = minimum MNI support (default 1000 if omitted).
 - `maxLabelAppearance=k` limits repeats of a label in results (-1 = no limit).
+- `maxNodes=k` (directed tree, added by `third_party/patches/grami/0002-add-a-node-bound.patch`): a pattern with
+  more than `k` nodes counts as infrequent, so it is neither reported nor extended (-1 = no limit). Upstream GraMi
+  has no size bound; the authors left the same check commented out in `DFSCode.java`. Exact for patterns within
+  the bound, since the node count only grows along an extension.
 - `approximate=<α<1>` enables approximate mining (`approxConst` = β); `approximate=1` = exact.
 - `automorphism`, `distinct`, `caching`, `partial` default to `true` (`Settings.java`); leave as is.
 - **`limitedtime` defaults to `true`**: each per-candidate existence check runs under a 5 s timer
@@ -107,7 +112,7 @@ Our pass therefore: (1) parses `Output.txt`, (2) recomputes embeddings and MNI s
 | `type=` ignored | choose the DIRECTED tree via classpath |
 | Output in CWD, fixed name | one job dir per run |
 | Blank line / unsorted ids in `.lg` | generate with a strict writer and a round-trip test |
-| Exponential blow-up at low `freq` | start high, lower stepwise; cap with `maxLabelAppearance`; wall-clock timeout |
+| Exponential blow-up at low `freq` | start high, lower stepwise; bound the size with `maxNodes` (our patch); wall-clock timeout |
 | Edge labels truncated to int | integer labels only |
 
 ## Sources

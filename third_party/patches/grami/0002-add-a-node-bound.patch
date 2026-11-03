@@ -1,0 +1,45 @@
+Add a bound on the number of pattern nodes (directed subgraph build).
+
+maxNodes=k makes GraMi treat a pattern with more than k nodes as infrequent, at the
+same pruner as maxLabelAppearance (DFSCode.java): its frequency is 0, so it is neither
+reported nor extended. The node count only grows along an extension, so every pattern
+with at most k nodes is still found and its support is unchanged; the authors left
+the same check commented out there (`me.getNodeCount()>=6`). Default -1: no bound.
+Applied to GraMi d2875ae8 inside the Docker image build only; the submodule itself is
+never edited. Apply with: patch -p1 -d <grami> < this-file
+
+--- a/GRAMI_DIRECTED_SUBGRAPHS/src/dataStructures/DFSCode.java
++++ b/GRAMI_DIRECTED_SUBGRAPHS/src/dataStructures/DFSCode.java
+@@ -306,6 +306,11 @@
+ 				finalFrequency=new IntFrequency(0);
+ 				return finalFrequency;
+ 			}
++			if(Settings.maxNodes>-1 && me.getNodeCount()>Settings.maxNodes)
++			{
++				finalFrequency=new IntFrequency(0);
++				return finalFrequency;
++			}
+ //			if(me.getEdgeCount()>6)
+ //			{
+ //				finalFrequency=new IntFrequency(0);
+--- a/GRAMI_DIRECTED_SUBGRAPHS/src/utilities/CommandLineParser.java
++++ b/GRAMI_DIRECTED_SUBGRAPHS/src/utilities/CommandLineParser.java
+@@ -42,6 +42,8 @@
+ 			//assign the max number of label appearance
+ 			if(key.compareTo("maxLabelAppearance")==0)
+ 				Settings.numLabelAppears = Integer.parseInt(value);
++			if(key.compareTo("maxNodes")==0)
++				Settings.maxNodes = Integer.parseInt(value);
+ 			//approximate setting
+ 			if(key.compareTo("approximate")==0)
+ 			{
+--- a/GRAMI_DIRECTED_SUBGRAPHS/src/utilities/Settings.java
++++ b/GRAMI_DIRECTED_SUBGRAPHS/src/utilities/Settings.java
+@@ -49,4 +49,7 @@
+ 	
+ 	//the maximum number of the same label appears in the resulted pattern
+ 	public static int numLabelAppears = -1;	
++	
++	//the maximum number of nodes of a resulted pattern (-1: no bound)
++	public static int maxNodes = -1;
+ }

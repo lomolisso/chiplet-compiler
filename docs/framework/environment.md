@@ -99,7 +99,7 @@ Each step is a handful of process launches. The cost is the one-time LC compilat
 
 | Key | Default | Meaning |
 |---|---|---|
-| `tools.docker.{image,tag}` | `chiplet-compiler/toolchain`, `0.3.0` | the image doctor checks |
+| `tools.docker.{image,tag}` | `chiplet-compiler/toolchain`, `0.4.0` | the image doctor checks |
 | `tools.docker.build.*` | see `config.toml` | image-only pins and build caps (`docker/build.sh`) |
 | `tools.{xls,allo,grami}.*` | see `config.toml` | submodule and image pins |
 | `tools.pdk.{asap7_vt,asap7_corner,asap7_groups}` | `RVT`, `TT`, all five | which ASAP7 Liberty set becomes `.db` |

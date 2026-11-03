@@ -1,0 +1,129 @@
+{
+  "$defs": {
+    "EdgeEnd": {
+      "properties": {
+        "port": {
+          "$ref": "#/$defs/PortLabel"
+        },
+        "res": {
+          "description": "Result index of the source.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "res",
+        "port"
+      ],
+      "type": "object"
+    },
+    "PortLabel": {
+      "description": "The destination side of one dataflow edge.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Operand port of the destination.",
+          "properties": {
+            "port": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "port"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "commutative",
+          "description": "An operand of a commutative op: the ports are an unordered multiset.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Region `region`, argument `index` of the source (the owner) feeds the destination (the argument).",
+          "properties": {
+            "region": {
+              "properties": {
+                "index": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "region": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "region",
+                "index"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "region"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The terminator of region `region` of the destination (the owner) yields to it.",
+          "properties": {
+            "yield": {
+              "properties": {
+                "region": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "region"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "yield"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`labels.json`: node label `i` is `nodes[i]` (`op@family`, with `[…]` holding the attributes that change\nwhat the op computes); edge label `j` is `edges[j]` (the merged ends of the parallel dataflow edges\nbetween two vertices). Both lists are sorted.",
+  "properties": {
+    "edges": {
+      "items": {
+        "items": {
+          "$ref": "#/$defs/EdgeEnd"
+        },
+        "type": "array"
+      },
+      "type": "array"
+    },
+    "nodes": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "nodes",
+    "edges"
+  ],
+  "title": "Labels",
+  "type": "object"
+}

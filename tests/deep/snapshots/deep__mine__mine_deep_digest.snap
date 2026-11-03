@@ -1,0 +1,925 @@
+---
+source: tests/deep/mine.rs
+assertion_line: 72
+expression: digest
+---
+{
+  "checks": 23,
+  "families": [
+    {
+      "family": "map",
+      "selection": [
+        [
+          "pd07941c267ff00ee",
+          2,
+          78,
+          78
+        ],
+        [
+          "pd96b38addd9c22c9",
+          2,
+          61,
+          61
+        ],
+        [
+          "p8fc9226a09a766b0",
+          3,
+          59,
+          32
+        ],
+        [
+          "p597ca278e76aef4b",
+          4,
+          54,
+          30
+        ],
+        [
+          "p2939a3fb90afb473",
+          3,
+          54,
+          30
+        ],
+        [
+          "p7cf3c00ccbff3835",
+          4,
+          48,
+          27
+        ],
+        [
+          "pdce3d7be08fd4c21",
+          2,
+          14,
+          14
+        ],
+        [
+          "p8b4d6a4daf0d95a8",
+          2,
+          4,
+          4
+        ],
+        [
+          "p2e46a245038f6acd",
+          4,
+          4,
+          4
+        ],
+        [
+          "p8c148658a9ed8446",
+          3,
+          4,
+          4
+        ],
+        [
+          "p9fe3eae6bf2b8d05",
+          3,
+          4,
+          4
+        ],
+        [
+          "p364652b51f604cda",
+          2,
+          4,
+          4
+        ],
+        [
+          "pe28e138c303e73f1",
+          2,
+          4,
+          4
+        ],
+        [
+          "p62fa916ae189e617",
+          6,
+          39,
+          18
+        ],
+        [
+          "pc1876b42cca141de",
+          6,
+          45,
+          18
+        ],
+        [
+          "p1a41aa26cfe78d22",
+          5,
+          48,
+          18
+        ],
+        [
+          "pafada1844f7e43ee",
+          5,
+          45,
+          18
+        ],
+        [
+          "p3cbd562d3171ffdd",
+          2,
+          24,
+          21
+        ],
+        [
+          "p217a0f0af3e99ef6",
+          2,
+          12,
+          12
+        ],
+        [
+          "p93d76b3840799780",
+          2,
+          10,
+          10
+        ],
+        [
+          "p40f46dd1946a8adc",
+          2,
+          7,
+          7
+        ],
+        [
+          "pb9b3a3ba3f31dbe1",
+          3,
+          4,
+          4
+        ],
+        [
+          "pf9e3ace05ea35dba",
+          3,
+          6,
+          6
+        ],
+        [
+          "pd82360a0d6de6082",
+          2,
+          6,
+          6
+        ],
+        [
+          "pe2383c8c0b216160",
+          5,
+          4,
+          4
+        ],
+        [
+          "p951b65b5da429431",
+          4,
+          4,
+          4
+        ],
+        [
+          "p9941155416ca3b68",
+          4,
+          4,
+          4
+        ],
+        [
+          "pbf2541a7651a0b53",
+          3,
+          4,
+          4
+        ],
+        [
+          "pceea4ef482f912ee",
+          3,
+          4,
+          4
+        ],
+        [
+          "pebdc0748e1528754",
+          3,
+          4,
+          4
+        ],
+        [
+          "p29ce1e01516936a1",
+          2,
+          4,
+          4
+        ],
+        [
+          "pf836576ffb1adab8",
+          2,
+          4,
+          4
+        ]
+      ],
+      "sweep": {
+        "family": "map",
+        "schema": "cc.mine.sweep/1",
+        "steps": [
+          {
+            "finished": true,
+            "kept": 9,
+            "reported": 9,
+            "selection": "284c3ab87faf30ca",
+            "tau": 40
+          },
+          {
+            "finished": true,
+            "kept": 11,
+            "reported": 11,
+            "selection": "bcf4a26d77356fee",
+            "tau": 20
+          },
+          {
+            "finished": true,
+            "kept": 17,
+            "reported": 17,
+            "selection": "121fe34f20f5b676",
+            "tau": 10
+          },
+          {
+            "finished": true,
+            "kept": 140,
+            "reported": 140,
+            "selection": "78031ce9de808267",
+            "tau": 5
+          },
+          {
+            "finished": true,
+            "kept": 3051,
+            "reported": 3051,
+            "selection": "00404abace8a4b3e",
+            "tau": 2
+          }
+        ],
+        "stopped_by": "tau_min",
+        "tau": 2
+      }
+    },
+    {
+      "family": "reduce",
+      "selection": [
+        [
+          "pef8032e0be70b765",
+          3,
+          2,
+          2
+        ],
+        [
+          "p219be4bca6ea0b64",
+          2,
+          2,
+          2
+        ],
+        [
+          "p2551dc917b22feac",
+          2,
+          2,
+          2
+        ],
+        [
+          "pd07941c267ff00ee",
+          2,
+          6,
+          6
+        ],
+        [
+          "pe603595971be4180",
+          4,
+          4,
+          4
+        ],
+        [
+          "p5f21171a9dd2dee7",
+          3,
+          4,
+          4
+        ],
+        [
+          "pd3e3c5e444203e31",
+          3,
+          4,
+          4
+        ],
+        [
+          "p2a1d8bf51c8e81f3",
+          2,
+          4,
+          4
+        ],
+        [
+          "pfe185ea3f7b2510a",
+          2,
+          4,
+          4
+        ],
+        [
+          "p0f7b9c2cbcf4d1df",
+          2,
+          3,
+          3
+        ],
+        [
+          "paf6867c38f8e9731",
+          2,
+          2,
+          2
+        ],
+        [
+          "pc2efe3e3aeb0c372",
+          3,
+          2,
+          2
+        ],
+        [
+          "p0929eb02cec57a14",
+          2,
+          2,
+          2
+        ],
+        [
+          "p848fd4e9c34c6066",
+          2,
+          2,
+          2
+        ],
+        [
+          "pdac1c217f679d9dc",
+          2,
+          2,
+          2
+        ]
+      ],
+      "sweep": {
+        "family": "reduce",
+        "schema": "cc.mine.sweep/1",
+        "steps": [
+          {
+            "finished": true,
+            "kept": 0,
+            "reported": 0,
+            "selection": "a885262dc5acb8c0",
+            "tau": 40
+          },
+          {
+            "finished": true,
+            "kept": 0,
+            "reported": 0,
+            "selection": "a885262dc5acb8c0",
+            "tau": 20
+          },
+          {
+            "finished": true,
+            "kept": 0,
+            "reported": 0,
+            "selection": "a885262dc5acb8c0",
+            "tau": 10
+          },
+          {
+            "finished": true,
+            "kept": 1,
+            "reported": 1,
+            "selection": "bb92aac0f5083e41",
+            "tau": 5
+          },
+          {
+            "finished": true,
+            "kept": 15,
+            "reported": 15,
+            "selection": "31576741a213f682",
+            "tau": 2
+          }
+        ],
+        "stopped_by": "tau_min",
+        "tau": 2
+      }
+    },
+    {
+      "family": "contraction",
+      "selection": [
+        [
+          "paf6867c38f8e9731",
+          2,
+          9,
+          9
+        ],
+        [
+          "p500347f64d409923",
+          3,
+          6,
+          6
+        ],
+        [
+          "pd07941c267ff00ee",
+          2,
+          6,
+          6
+        ],
+        [
+          "p11080012b72048e5",
+          4,
+          3,
+          3
+        ],
+        [
+          "p5ba0869f498de36c",
+          3,
+          3,
+          3
+        ],
+        [
+          "p94221e36eb7f6bbc",
+          4,
+          6,
+          6
+        ],
+        [
+          "p914384ee0305f372",
+          3,
+          6,
+          6
+        ],
+        [
+          "pfd12a377b598c61f",
+          3,
+          6,
+          6
+        ],
+        [
+          "p635d9349481f1afb",
+          2,
+          6,
+          6
+        ],
+        [
+          "pb445037deff8a38a",
+          2,
+          6,
+          6
+        ],
+        [
+          "pd072e0358660fb62",
+          4,
+          2,
+          2
+        ],
+        [
+          "p76e569d3b910f20d",
+          3,
+          2,
+          2
+        ],
+        [
+          "p07ad665e80e28e8a",
+          2,
+          2,
+          2
+        ],
+        [
+          "p5882ea3c44e4d4cd",
+          6,
+          3,
+          3
+        ],
+        [
+          "p5dffc58eed4fa4e9",
+          6,
+          3,
+          3
+        ],
+        [
+          "pcc8edf19296ba36d",
+          6,
+          3,
+          3
+        ],
+        [
+          "p5bb598b3eda34e6f",
+          5,
+          3,
+          3
+        ],
+        [
+          "p746e92554577b0e4",
+          5,
+          3,
+          3
+        ],
+        [
+          "p7a182584484296d0",
+          5,
+          3,
+          3
+        ],
+        [
+          "p921dd277b01508c3",
+          5,
+          3,
+          3
+        ],
+        [
+          "p0098b4342c98dd74",
+          4,
+          3,
+          3
+        ],
+        [
+          "p5812f5700c3f5695",
+          4,
+          3,
+          3
+        ],
+        [
+          "p7afdab1d16dc72eb",
+          4,
+          3,
+          3
+        ],
+        [
+          "p8a255a7be2e3dc6b",
+          4,
+          3,
+          3
+        ],
+        [
+          "pfc29b9224b24af06",
+          4,
+          3,
+          3
+        ],
+        [
+          "p6457c2fa82fed379",
+          3,
+          3,
+          3
+        ],
+        [
+          "p64ebba29a2550da4",
+          3,
+          3,
+          3
+        ],
+        [
+          "pbd1df4b2e4c47e24",
+          3,
+          3,
+          3
+        ],
+        [
+          "pccd5a2c850082d39",
+          3,
+          3,
+          3
+        ],
+        [
+          "pcf13501003510b9d",
+          3,
+          3,
+          3
+        ],
+        [
+          "pddd87f6b69770631",
+          3,
+          3,
+          3
+        ],
+        [
+          "p1c705885cd1b903c",
+          2,
+          3,
+          3
+        ]
+      ],
+      "sweep": {
+        "family": "contraction",
+        "schema": "cc.mine.sweep/1",
+        "steps": [
+          {
+            "finished": true,
+            "kept": 0,
+            "reported": 0,
+            "selection": "a885262dc5acb8c0",
+            "tau": 40
+          },
+          {
+            "finished": true,
+            "kept": 0,
+            "reported": 0,
+            "selection": "a885262dc5acb8c0",
+            "tau": 20
+          },
+          {
+            "finished": true,
+            "kept": 0,
+            "reported": 0,
+            "selection": "a885262dc5acb8c0",
+            "tau": 10
+          },
+          {
+            "finished": true,
+            "kept": 8,
+            "reported": 8,
+            "selection": "6fe9fa329e1ea69c",
+            "tau": 5
+          },
+          {
+            "finished": true,
+            "kept": 37,
+            "reported": 37,
+            "selection": "eb4fddc7fadf204b",
+            "tau": 2
+          }
+        ],
+        "stopped_by": "tau_min",
+        "tau": 2
+      }
+    },
+    {
+      "family": "stage",
+      "selection": [
+        [
+          "p3cbd562d3171ffdd",
+          2,
+          4,
+          4
+        ],
+        [
+          "pdce3d7be08fd4c21",
+          2,
+          10,
+          10
+        ],
+        [
+          "p2e46a245038f6acd",
+          4,
+          7,
+          7
+        ],
+        [
+          "p8c148658a9ed8446",
+          3,
+          7,
+          7
+        ],
+        [
+          "p9fe3eae6bf2b8d05",
+          3,
+          7,
+          7
+        ],
+        [
+          "p364652b51f604cda",
+          2,
+          7,
+          7
+        ],
+        [
+          "pe28e138c303e73f1",
+          2,
+          7,
+          7
+        ],
+        [
+          "p8a7c357aaf7dbf93",
+          2,
+          6,
+          6
+        ],
+        [
+          "pf33cdf540dbce02c",
+          5,
+          5,
+          5
+        ],
+        [
+          "pd3f6f913ec96aa99",
+          4,
+          5,
+          5
+        ],
+        [
+          "pf8b667e061cc53e8",
+          3,
+          5,
+          5
+        ],
+        [
+          "pd07941c267ff00ee",
+          2,
+          13,
+          13
+        ],
+        [
+          "p07ad665e80e28e8a",
+          2,
+          6,
+          6
+        ],
+        [
+          "p76e569d3b910f20d",
+          3,
+          5,
+          5
+        ],
+        [
+          "p804b4d7ccf44d67e",
+          2,
+          3,
+          3
+        ],
+        [
+          "peb7bbebfdc7cce08",
+          2,
+          4,
+          4
+        ],
+        [
+          "p7ca89a7c79686b2b",
+          2,
+          51,
+          27
+        ],
+        [
+          "pdd81540781676e18",
+          3,
+          48,
+          16
+        ],
+        [
+          "pd135954e8dea8b22",
+          4,
+          46,
+          12
+        ],
+        [
+          "pd348fbf65c02bf9c",
+          5,
+          44,
+          10
+        ],
+        [
+          "p9f2727afc2a86828",
+          6,
+          42,
+          8
+        ],
+        [
+          "paf6867c38f8e9731",
+          2,
+          10,
+          10
+        ],
+        [
+          "p500347f64d409923",
+          3,
+          8,
+          8
+        ],
+        [
+          "p6457c2fa82fed379",
+          3,
+          3,
+          3
+        ],
+        [
+          "p1c705885cd1b903c",
+          2,
+          3,
+          3
+        ],
+        [
+          "pa40b3ff7ef927c95",
+          5,
+          2,
+          2
+        ],
+        [
+          "p2a6b1f50e476a209",
+          4,
+          2,
+          2
+        ],
+        [
+          "pa586712721a8a4ee",
+          4,
+          2,
+          2
+        ],
+        [
+          "pbfcf19852f96f50c",
+          3,
+          2,
+          2
+        ],
+        [
+          "pede3409e2449a315",
+          3,
+          2,
+          2
+        ],
+        [
+          "p2d747033661ad8f7",
+          2,
+          2,
+          2
+        ],
+        [
+          "p59a64b1368e6d247",
+          2,
+          2,
+          2
+        ]
+      ],
+      "sweep": {
+        "family": "stage",
+        "schema": "cc.mine.sweep/1",
+        "steps": [
+          {
+            "finished": true,
+            "kept": 5,
+            "reported": 5,
+            "selection": "eca9da9816744f3d",
+            "tau": 40
+          },
+          {
+            "finished": true,
+            "kept": 10,
+            "reported": 10,
+            "selection": "763481e746f8aa98",
+            "tau": 20
+          },
+          {
+            "finished": true,
+            "kept": 13,
+            "reported": 13,
+            "selection": "fdb46068b71bb11c",
+            "tau": 10
+          },
+          {
+            "finished": true,
+            "kept": 25,
+            "reported": 25,
+            "selection": "64746cb2dd0a7ae9",
+            "tau": 5
+          },
+          {
+            "finished": true,
+            "kept": 51,
+            "reported": 51,
+            "selection": "11f016bfbe063904",
+            "tau": 2
+          }
+        ],
+        "stopped_by": "tau_min",
+        "tau": 2
+      }
+    }
+  ],
+  "summary": {
+    "edge_labels": 5,
+    "families": {
+      "contraction": {
+        "edges": 57,
+        "kept": 37,
+        "occurrences": 153,
+        "reported": 37,
+        "selected": 32,
+        "stopped_by": "tau_min",
+        "tau": 2,
+        "units": 9,
+        "vertices": 74,
+        "workload": 164083273728
+      },
+      "map": {
+        "edges": 657,
+        "kept": 3051,
+        "occurrences": 6758,
+        "reported": 3051,
+        "selected": 32,
+        "stopped_by": "tau_min",
+        "tau": 2,
+        "units": 149,
+        "vertices": 709,
+        "workload": 624609080250
+      },
+      "reduce": {
+        "edges": 46,
+        "kept": 15,
+        "occurrences": 53,
+        "reported": 15,
+        "selected": 15,
+        "stopped_by": "tau_min",
+        "tau": 2,
+        "units": 32,
+        "vertices": 90,
+        "workload": 2553880957404
+      },
+      "stage": {
+        "edges": 164,
+        "kept": 51,
+        "occurrences": 530,
+        "reported": 51,
+        "selected": 32,
+        "stopped_by": "tau_min",
+        "tau": 2,
+        "units": 49,
+        "vertices": 213,
+        "workload": 2519042149184
+      }
+    },
+    "mis_algorithm": "exact_ilp",
+    "node_labels": 37,
+    "overlap": 52,
+    "schema": "cc.mine.summary/1"
+  }
+}

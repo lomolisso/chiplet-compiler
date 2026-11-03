@@ -318,6 +318,56 @@ pub fn isomorphism<N, M>(
     Ok(found)
 }
 
+/// Every monomorphism `a -> b` (non-induced subgraph isomorphism: injective, `node_eq` on every pair, every
+/// edge of `a` maps to an edge of `b` with an equal label; `b` may have more edges between the images),
+/// in VF2's deterministic order. `f` receives each map (`map[i]` is the node of `b` for node `i` of
+/// `a`). Returns the number of maps; `budget` bounds the number of candidate pairs.
+pub fn monomorphisms<N, M>(
+    a: &Graph<N>,
+    b: &Graph<M>,
+    node_eq: impl Fn(usize, usize) -> bool,
+    budget: u64,
+    mut f: impl FnMut(&[usize]),
+) -> Result<u64, BudgetExceeded> {
+    if a.node_count() == 0 || a.node_count() > b.node_count() || a.edge_count() > b.edge_count() {
+        return Ok(0);
+    }
+    let va = View {
+        g: a,
+        ids: (0..a.node_count()).collect(),
+    };
+    let vb = View {
+        g: b,
+        ids: (0..b.node_count()).collect(),
+    };
+    let calls = std::cell::Cell::new(0u64);
+    let over = std::cell::Cell::new(false);
+    let mut it = vf2::subgraph_isomorphisms(&va, &vb)
+        .node_eq(|&i: &usize, &j: &usize| {
+            let k = calls.get() + 1;
+            calls.set(k);
+            if k > budget {
+                over.set(true);
+                return false;
+            }
+            node_eq(i, j)
+        })
+        .edge_eq(|x: &EdgeLabel, y: &EdgeLabel| x == y)
+        .iter();
+    let mut n = 0u64;
+    while let Some(m) = it.next_ref() {
+        if over.get() {
+            break;
+        }
+        f(m);
+        n += 1;
+    }
+    if over.get() {
+        return Err(BudgetExceeded(budget));
+    }
+    Ok(n)
+}
+
 /// Check that `map` (node `i` of `a` -> node `map[i]` of `b`) is an isomorphism: a bijection, `node_eq`
 /// on every pair, and every edge of `a` maps to an edge of `b` with an equal label, with equal edge counts
 /// (so the edge map is a bijection too). O(V + E log d) and independent of the search.
@@ -435,6 +485,53 @@ mod tests {
         res: 0,
         port: PortLabel::Commutative,
     };
+
+    /// The 4-tap chain `((((p0 + p1) + p2) + p3) + c)`, `p_j` products: `mul -> add -> add` has four
+    /// embeddings (one per product); a triangle's path embeds only non-induced.
+    #[test]
+    fn monomorphisms_are_non_induced() {
+        let mut h: Graph<&str> = Graph::default();
+        let p: Vec<u32> = (0..4).map(|_| h.add_node("mul")).collect();
+        let s: Vec<u32> = (0..4).map(|_| h.add_node("add")).collect();
+        h.add_edge(p[0], s[0], STAR);
+        h.add_edge(p[1], s[0], STAR);
+        for j in 1..4 {
+            h.add_edge(s[j - 1], s[j], STAR);
+            if j + 1 < 4 {
+                h.add_edge(p[j + 1], s[j], STAR);
+            }
+        }
+        let mut q: Graph<&str> = Graph::default();
+        let (m, a1, a2) = (q.add_node("mul"), q.add_node("add"), q.add_node("add"));
+        q.add_edge(m, a1, STAR);
+        q.add_edge(a1, a2, STAR);
+        let mut maps = Vec::new();
+        let n = monomorphisms(
+            &q,
+            &h,
+            |i, j| q.nodes[i] == h.nodes[j],
+            1 << 20,
+            |x| maps.push(x.to_vec()),
+        )
+        .unwrap();
+        assert_eq!(n, 4);
+        let mut mul_images: Vec<usize> = maps.iter().map(|x| x[0]).collect();
+        mul_images.sort_unstable();
+        assert_eq!(mul_images, vec![0, 1, 2, 3]);
+
+        let mut t: Graph<&str> = Graph::default();
+        let (a, b, c) = (t.add_node("x"), t.add_node("x"), t.add_node("x"));
+        t.add_edge(a, b, e(0, 0));
+        t.add_edge(b, c, e(0, 0));
+        t.add_edge(a, c, e(0, 1));
+        let mut path: Graph<&str> = Graph::default();
+        let (u, v, w) = (path.add_node("x"), path.add_node("x"), path.add_node("x"));
+        path.add_edge(u, v, e(0, 0));
+        path.add_edge(v, w, e(0, 0));
+        let n = monomorphisms(&path, &t, |_, _| true, 1 << 20, |_| {}).unwrap();
+        assert_eq!(n, 1);
+        assert!(monomorphisms(&path, &t, |_, _| true, 1, |_| {}).is_err());
+    }
 
     /// `t = mul(a, b); y = add(t, c)` with commutative ports.
     fn pq(order: &[&str]) -> Graph<&'static str> {

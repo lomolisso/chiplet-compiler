@@ -17,6 +17,7 @@ The Allo pin also fixes LLVM. Allo's own submodule `externals/llvm-project` reco
 | Patch | Why |
 |---|---|
 | `patches/grami/0001-drop-unused-javax-imports.patch` | Removes `import javax.jws.Oneway;` and `import javax.rmi.CORBA.Util;` (both unused) from the two `*_SUBGRAPHS` trees. Java 11 removed those modules (JEP 320), so GraMi does not compile with the image's Java 17 otherwise (`docs/tools/grami.md` §3). |
+| `patches/grami/0002-add-a-node-bound.patch` | Adds `maxNodes=k` to the directed subgraph tree: a pattern with more than `k` nodes counts as infrequent at the pruner that implements `maxLabelAppearance`, so it is neither reported nor extended (the authors left the same check commented out there). GraMi has no size bound otherwise, and on the `map` family it enumerated every frequent pattern of any size: over 16 minutes at τ = 10 for patterns `mine` drops (docs/passes/mine.md §7). Every pattern within the bound is still found with its support (deep test `grami_equals_brute_force_on_random_graphs`). |
 
 `chipc doctor` checks that every patch still applies (`git apply --check`).
 

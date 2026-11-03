@@ -1,0 +1,139 @@
+{
+  "$defs": {
+    "FamilySummary": {
+      "properties": {
+        "edges": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kept": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "occurrences": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reported": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "selected": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stopped_by": {
+          "$ref": "#/$defs/Stop"
+        },
+        "tau": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "units": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "vertices": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "workload": {
+          "description": "Σ workload of the units.",
+          "format": "uint128",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "units",
+        "vertices",
+        "edges",
+        "stopped_by",
+        "reported",
+        "kept",
+        "selected",
+        "occurrences",
+        "workload"
+      ],
+      "type": "object"
+    },
+    "Stop": {
+      "description": "Why the sweep stopped.",
+      "oneOf": [
+        {
+          "const": "stable",
+          "description": "The selection equals the previous τ's.",
+          "type": "string"
+        },
+        {
+          "const": "tau_min",
+          "description": "τ reached `tau_min`.",
+          "type": "string"
+        },
+        {
+          "const": "budget",
+          "description": "A GraMi run hit the time budget: the last finished τ is kept (depends on the machine).",
+          "type": "string"
+        },
+        {
+          "const": "empty",
+          "description": "The family's graph has no edge: nothing to mine.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`summary.json`.",
+  "properties": {
+    "edge_labels": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "families": {
+      "additionalProperties": {
+        "$ref": "#/$defs/FamilySummary"
+      },
+      "type": "object"
+    },
+    "mis_algorithm": {
+      "type": "string"
+    },
+    "node_labels": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "overlap": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "families",
+    "node_labels",
+    "edge_labels",
+    "overlap",
+    "mis_algorithm"
+  ],
+  "title": "Summary",
+  "type": "object"
+}

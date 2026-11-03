@@ -2,6 +2,8 @@
 //! tool runner.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+pub mod brute;
+
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;

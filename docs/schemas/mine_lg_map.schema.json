@@ -1,0 +1,136 @@
+{
+  "$defs": {
+    "Family": {
+      "description": "A mining family: datapath classes by skeleton class, and the per-element stages of template classes.",
+      "enum": [
+        "map",
+        "reduce",
+        "contraction",
+        "stage"
+      ],
+      "type": "string"
+    },
+    "Stage": {
+      "description": "Where a vertex sits: once per element of a core operand (prologue of port `port`), once per iteration\n(core: the multiply and the combiner), once per result element (epilogue), or a map kernel's body.",
+      "oneOf": [
+        {
+          "enum": [
+            "core",
+            "epilogue",
+            "map"
+          ],
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "prologue": {
+              "properties": {
+                "port": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "port"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "prologue"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Unit": {
+      "description": "One mining unit: a datapath class, or one stage (`prologue {port}` or `epilogue`) of a template class.",
+      "properties": {
+        "class": {
+          "type": "string"
+        },
+        "first": {
+          "description": "Its first vertex in the `.lg` graph.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "id": {
+          "description": "`<class>`, `<class>/prologue<port>` or `<class>/epilogue`.",
+          "type": "string"
+        },
+        "stage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Stage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "vertices": {
+          "description": "Its datapath vertices, in `.lg` order (constants are not vertices).",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "workload": {
+          "description": "How often the unit runs over the model set: the class's weighted workload, or for a stage the\ntrip-count-weighted number of elements of the core operand (prologue) or result (epilogue).",
+          "format": "uint128",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "class",
+        "workload",
+        "first",
+        "vertices"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`lg/<family>.map.json`.",
+  "properties": {
+    "edges": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "family": {
+      "$ref": "#/$defs/Family"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "units": {
+      "items": {
+        "$ref": "#/$defs/Unit"
+      },
+      "type": "array"
+    },
+    "vertices": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema",
+    "family",
+    "units",
+    "vertices",
+    "edges"
+  ],
+  "title": "LgMap",
+  "type": "object"
+}
