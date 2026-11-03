@@ -51,8 +51,8 @@ pub struct ResourcesConfig {
 impl Default for ResourcesConfig {
     fn default() -> Self {
         Self {
-            memory_budget_gb: 32.0,
-            threads_total: 16,
+            memory_budget_gb: 128.0,
+            threads_total: 32,
         }
     }
 }
@@ -260,8 +260,8 @@ impl Default for DockerConfig {
         Self {
             image: "chiplet-compiler/toolchain".into(),
             tag: "dev".into(),
-            memory_gb: 8.0,
-            cpus: 4.0,
+            memory_gb: 16.0,
+            cpus: 8.0,
             pids_limit: 4096,
             build: DockerBuildConfig::default(),
         }

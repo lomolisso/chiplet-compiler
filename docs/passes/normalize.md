@@ -104,7 +104,7 @@
    (default `"seq"`), `float`, `complex` (required): `"seq"` or `"tree:<fan-in>"` with fan-in ≥ 2.
    `[tools.smt]`: `solver` (`bitwuzla` proves, the other re-checks), `timeout_s` per query, `runner`
    (`docker`: the solvers of the toolchain image; `host`: the binaries `z3` and `bitwuzla`). The solver and
-   the image tag enter the cache key. Resources: `threads = 8`, `memory_gb = 2`, `timeout_min = 30`.
+   the image tag enter the cache key. Resources: `threads = 8`, `memory_gb = 8` (shared by the solver jobs), `timeout_min = 30`.
 
 6. **Verification** (`verify.rs`; it reads the input components and the written files and never calls the
    pass's rewriter; its rule predicates and applier are its own):

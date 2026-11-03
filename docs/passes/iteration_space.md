@@ -192,7 +192,7 @@
    `enabled = true` (false: every class goes to datapaths), `min_reuse = 8` (reuse of each input in a
    row that counts), `min_share = 0.5` (share of the weighted workload in such rows), `max_dims = 7`
    (bound on the mapping search's space; after grouping it has at most 3 dims). Resources: `threads = 8`,
-   `memory_gb = 2`, `timeout_min = 30`. The solver and its runner are `[tools.smt]`.
+   `memory_gb = 8` (shared by the solver jobs), `timeout_min = 30`. The solver and its runner are `[tools.smt]`.
 
 6. **Verification** (`verify.rs`). The checks read the inputs and the written files and never call the
    hooks, the skeleton builder, the grouping, the search, the router or the embedding search:
