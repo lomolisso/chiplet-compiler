@@ -22,6 +22,7 @@ blake3 = "1.8.7"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 clap = { version = "4.6.7", features = ["derive"] }
 good_lp = { version = "1.15.3", default-features = false, features = ["microlp"] }
+microlp = "0.6.0"
 insta = { version = "1.49.0", features = ["json"] }
 libc = "0.2.191"
 memory-stats = { version = "1.2.0", features = ["always_use_statm"] }

@@ -243,6 +243,7 @@ dependencies = [
  "cc-pipeline",
  "cc-smt",
  "good_lp",
+ "microlp",
  "postcard",
  "rayon",
  "schemars",

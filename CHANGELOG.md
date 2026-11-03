@@ -16,6 +16,7 @@ All notable changes to this project are listed here. The format follows
 - `datapaths` pass and the SMT harness: every class's scalar datapath, proven equal to the kernel's StableHLO semantics for every width tuple.
 - `characterize` pass: area, delay and leakage of every element-wise op at every type the SMT semantics defines, multiplexers, registers, accumulators and split multipliers, on Nangate45 and ASAP7 at two timing points, each netlist checked by LEC and sanity checks.
 - `mine` pass: frequent datapath patterns per family by GraMi, re-matched with VF2, kept when convex, counted by a maximum independent set per class (exact ILP, branch and bound or greedy) and ranked by covered workload.
+- `merge` pass: configurable functional units by datapath merging (compatibility graph and maximum-weight clique, agglomerated under a depth bound) and parameterized arrays for template classes, every configuration proven equal to its datapath.
 - `iteration_space` pass and the op table's iteration semantics: per class its affine accesses proven against the spec, dependences, the embedding relation, and routing of uniform contractions to systolic templates by a proven space-time mapping.
 
 ### Changed
