@@ -452,7 +452,7 @@ pub fn agglomerate(cx: &Ctx, units_idx: &[u32]) -> Result<Agglomerated, String> 
             depth_ps: v.cost.depth,
             clique: v.stat.clone(),
         });
-        if step_no % 25 == 0 {
+        if step_no.is_multiple_of(25) {
             tracing::info!(
                 step = step_no,
                 units = count,
