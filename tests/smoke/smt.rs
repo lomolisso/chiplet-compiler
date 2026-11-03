@@ -415,7 +415,13 @@ fn rescale_lemma_holds_and_its_controls_fail() {
     let cfg: toml::Value =
         toml::from_str(&std::fs::read_to_string(repo_root().join("config.toml")).unwrap()).unwrap();
     let tag = cfg["tools"]["docker"]["tag"].as_str().unwrap().to_string();
-    let lc = env.config("[models]\nkeys = []\n", &[&format!("tools.docker.tag={tag}")]);
+    let host = std::env::var("CC_SMT_RUNNER").as_deref() == Ok("host");
+    let mut sets = vec![format!("tools.docker.tag={tag}")];
+    if host {
+        sets.push("tools.smt.runner=host".into());
+    }
+    let sets: Vec<&str> = sets.iter().map(String::as_str).collect();
+    let lc = env.config("[models]\nkeys = []\n", &sets);
     let dir = env.root().join("rescale");
     std::fs::create_dir_all(&dir).unwrap();
     let i8t = Ty::Int { signed: true, w: 8 };
@@ -427,8 +433,15 @@ fn rescale_lemma_holds_and_its_controls_fail() {
     for (f, t, _) in &qs {
         std::fs::write(dir.join(f), t).unwrap();
     }
+    let runners = Runners::from_config(&lc);
+    let c = &lc.config.tools.smt;
+    let (r, loc) = if host {
+        (runners.host, cc_smt::host_paths(&c.z3, &c.bitwuzla))
+    } else {
+        (runners.docker, Location::Image)
+    };
     let runner = BoundRunner::new(
-        Runners::from_config(&lc).docker,
+        r,
         Caps {
             memory_gb: 4.0,
             cpus: 1.0,
@@ -440,7 +453,7 @@ fn rescale_lemma_holds_and_its_controls_fail() {
     );
     let files: Vec<String> = qs.iter().map(|q| q.0.to_string()).collect();
     for solver in Solver::ALL {
-        let b = cc_smt::run_batch(&runner, &Location::Image, solver, &dir, &files, 300).unwrap();
+        let b = cc_smt::run_batch(&runner, &loc, solver, &dir, &files, 300).unwrap();
         for (f, _, holds) in &qs {
             let v = b.verdicts.get(*f);
             if *holds {

@@ -82,7 +82,7 @@
       too: `rescale_core_i<n>` decodes the f32 scale, multiplies `n x 24` bits exactly, shifts with
       rounding half up (or left by at most 7 places), saturates to i32, and `rescale_i<n>` converts the
       result with the characterized `convert_i32_f32`. Its rows are provisional with that conversion; the
-      smoke test `rescale_rtl_matches_its_reference` simulates the core (iverilog, in the image) against
+      deep test `rescale_rtl_matches_its_reference` simulates the core (iverilog, in the image) against
       `cc_smt::ops::rescale_reference` on edge cases and 3000 operands per width.
    3. *Jobs.* The designs go in batches of `batch`, one job per (kit, target, batch): a directory
       `eda/<kit>-<target>-<hash>/` named by the hash of its synthesis scripts, RTL, libraries and image,
