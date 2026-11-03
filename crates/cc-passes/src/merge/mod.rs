@@ -138,6 +138,7 @@ impl Pass for Merge {
             configs: 0,
             proofs: 0,
             array_proofs: 0,
+            widenings: 0,
             cliques: BTreeMap::new(),
             not_optimal: 0,
             estimated_blocks: 0,
@@ -238,7 +239,13 @@ impl Pass for Merge {
         for q in built {
             queries.push(q.map_err(fail)?);
         }
-        let nfu = queries.len();
+        let fu_map: BTreeMap<String, &FuFile> = fu_files.iter().map(|f| (f.id.clone(), f)).collect();
+        let widen = proofs::widenings(&fu_map, &configs).map_err(fail)?;
+        for w in &widen {
+            queries.push(proofs::widen_query(w).map_err(fail)?);
+        }
+        summary.widenings = widen.len() as u64;
+        let nfu = queries.len() - widen.len();
         // Composed array steps go to Z3 with a longer limit (`compose_timeout_s`).
         let mut composed: Vec<proofs::Query> = Vec::new();
         for a in &arr {
@@ -254,7 +261,7 @@ impl Pass for Merge {
             }
         }
         summary.proofs = nfu as u64;
-        summary.array_proofs = (queries.len() - nfu + composed.len()) as u64;
+        summary.array_proofs = (queries.len() - nfu - widen.len() + composed.len()) as u64;
         let files: Vec<(String, String)> = queries.iter().map(|q| (q.file.clone(), q.text.clone())).collect();
         let zfiles: Vec<(String, String)> = composed
             .iter()

@@ -271,8 +271,10 @@ compose_timeout_s = 600          # Z3 limit per composed array step (a multiplie
 views = true                     # write views/merge.md
 [passes.merge.clique]
 algorithm = "exact_ilp"          # "exact_ilp" (microlp) | "ostergard" | "greedy"
-node_budget = 200000             # branch-and-bound nodes per solve (deterministic); then the incumbent, not optimal
-timeout_s = 300                  # wall-clock limit per solve (safety net); on expiry `greedy` answers
+rank = "greedy"                  # rank candidate pairs by "greedy" cliques (the accepted merge is solved by
+                                 # `algorithm`) or by "algorithm" itself (an exact solve per candidate)
+node_budget = 2000               # branch-and-bound nodes per solve (deterministic); then the incumbent, not optimal
+timeout_s = 30                   # wall-clock limit per solve (safety net); on expiry `greedy` answers
 [passes.merge.resources]
 threads = 8
 memory_gb = 8

@@ -82,32 +82,67 @@ pub fn feasible(m: &Model, chosen: &[usize], nogoods: &[Vec<usize>]) -> bool {
 }
 
 pub fn greedy(m: &Model, nogoods: &[Vec<usize>]) -> Solved {
+    let nv = m.vm.len();
     let mut order: Vec<usize> = (0..m.n()).collect();
     order.sort_by(|&a, &b| m.weight(b).total_cmp(&m.weight(a)).then(a.cmp(&b)));
-    let mut chosen: Vec<usize> = Vec::new();
+    // Incremental state: the same decisions as checking every chosen node, without the quadratic scan.
+    let mut chosen = vec![false; m.n()];
+    let mut used_a = vec![false; m.sa.members.len()];
+    let mut used_b = vec![false; m.sb.members.len()];
+    let mut vms: Vec<usize> = Vec::new();
+    let mut perm: std::collections::HashMap<u32, bool> = Default::default();
+    let mut wires_a: std::collections::HashSet<(u32, u32, u32, u32)> = Default::default();
+    let mut wires_b: std::collections::HashSet<(u32, u32, u32, u32)> = Default::default();
+    let fits = |x: usize, used_a: &[bool], used_b: &[bool], vms: &[usize], chosen: &[bool]| -> bool {
+        if chosen[x] {
+            return true;
+        }
+        let v = &m.vm[x];
+        !used_a[v.sa as usize] && !used_b[v.sb as usize] && vms.iter().all(|&y| !m.order_conflict(x, y))
+    };
     for i in order {
-        if chosen.binary_search(&i).is_ok() {
+        if chosen[i] {
             continue;
         }
-        let mut add: Vec<usize> = m.ends(i);
-        add.push(i);
-        add.sort_unstable();
-        add.dedup();
-        add.retain(|x| chosen.binary_search(x).is_err());
-        let ok = add
-            .iter()
-            .all(|&x| chosen.iter().all(|&y| m.compatible(x, y)) && add.iter().all(|&y| m.compatible(x, y)));
+        let ends = m.ends(i);
+        let mut ok = ends.iter().all(|&x| fits(x, &used_a, &used_b, &vms, &chosen));
+        if ok && ends.len() == 2 && ends[0] != ends[1] && !chosen[ends[0]] && !chosen[ends[1]] {
+            ok = !m.vm_conflict(ends[0], ends[1]);
+        }
+        if ok && i >= nv {
+            let a = &m.am[i - nv];
+            ok = perm.get(&a.dst).is_none_or(|&p| p == a.perm) && !wires_a.contains(&a.a) && !wires_b.contains(&a.b);
+        }
         if !ok {
             continue;
         }
-        let mut next = chosen.clone();
-        next.extend(add);
-        next.sort_unstable();
-        if violates(&next, nogoods) {
-            continue;
+        if !nogoods.is_empty() {
+            let mut next: Vec<usize> = (0..m.n()).filter(|&x| chosen[x]).collect();
+            next.extend(ends.iter().copied().chain([i]));
+            next.sort_unstable();
+            next.dedup();
+            if violates(&next, nogoods) {
+                continue;
+            }
         }
-        chosen = next;
+        for x in ends.iter().copied().chain([i]) {
+            if chosen[x] {
+                continue;
+            }
+            chosen[x] = true;
+            if x < nv {
+                used_a[m.vm[x].sa as usize] = true;
+                used_b[m.vm[x].sb as usize] = true;
+                vms.push(x);
+            } else {
+                let a = &m.am[x - nv];
+                perm.insert(a.dst, a.perm);
+                wires_a.insert(a.a);
+                wires_b.insert(a.b);
+            }
+        }
     }
+    let chosen: Vec<usize> = (0..m.n()).filter(|&x| chosen[x]).collect();
     Solved {
         objective: m.objective(&chosen),
         chosen,

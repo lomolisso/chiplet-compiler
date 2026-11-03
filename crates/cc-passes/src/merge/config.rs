@@ -35,6 +35,9 @@ pub struct MergeConfig {
 #[serde(deny_unknown_fields, default)]
 pub struct CliqueConfig {
     pub algorithm: CliqueAlgorithm,
+    /// How candidate pairs are ranked: by `greedy` cliques (the accepted merge is then solved by
+    /// `algorithm`), or by `algorithm` itself.
+    pub rank: Rank,
     /// Branch-and-bound nodes one solve may expand (both exact algorithms); the incumbent is then
     /// reported as not optimal. Deterministic, unlike `timeout_s`.
     pub node_budget: u64,
@@ -71,6 +74,13 @@ impl CliqueAlgorithm {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum Rank {
+    Greedy,
+    Algorithm,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum RequantVariant {
     Recipe,
     Fp32,
@@ -98,8 +108,9 @@ impl Default for CliqueConfig {
     fn default() -> Self {
         Self {
             algorithm: CliqueAlgorithm::ExactIlp,
-            node_budget: 200_000,
-            timeout_s: 300,
+            rank: Rank::Greedy,
+            node_budget: 2_000,
+            timeout_s: 30,
         }
     }
 }

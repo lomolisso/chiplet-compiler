@@ -298,7 +298,25 @@ pub fn model(
             });
         }
     }
-    Model { vm, am, sa, sb }
+    // Mappings that save nothing themselves (ports, equal-priced pairs) matter only as ends of arcs.
+    let mut used = vec![false; vm.len()];
+    for a in &am {
+        used[a.src as usize] = true;
+        used[a.dst as usize] = true;
+    }
+    let mut new_id = vec![u32::MAX; vm.len()];
+    let mut kept = Vec::new();
+    for (i, v) in vm.into_iter().enumerate() {
+        if v.w > 0.0 || used[i] {
+            new_id[i] = kept.len() as u32;
+            kept.push(v);
+        }
+    }
+    for a in &mut am {
+        a.src = new_id[a.src as usize];
+        a.dst = new_id[a.dst as usize];
+    }
+    Model { vm: kept, am, sa, sb }
 }
 
 impl Model {

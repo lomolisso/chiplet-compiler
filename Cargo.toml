@@ -49,3 +49,10 @@ missing_debug_implementations = "warn"
 unwrap_used = "warn"            # conventions: no unwrap() outside tests (clippy.toml allows it in tests)
 expect_used = "warn"
 dbg_macro = "warn"
+
+# The LP solver runs inside debug builds of the passes (clique and independent-set ILPs); unoptimized it is
+# one to two orders of magnitude slower.
+[profile.dev.package.microlp]
+opt-level = 3
+[profile.dev.package.sprs]
+opt-level = 3

@@ -701,6 +701,11 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
             proofs::config_query(fu_by[c.fu.as_str()], c, dp, t)
         })
         .collect();
+    let fu_map: BTreeMap<String, &FuFile> = fus.iter().map(|f| (f.id.clone(), f)).collect();
+    match proofs::widenings(&fu_map, &configs) {
+        Ok(ws) => queries.extend(ws.iter().map(proofs::widen_query)),
+        Err(e) => queries.push(Err(e)),
+    }
     let mut zq: Vec<Result<proofs::Query, String>> = Vec::new();
     for a in &arrays {
         for cv in &a.covers {

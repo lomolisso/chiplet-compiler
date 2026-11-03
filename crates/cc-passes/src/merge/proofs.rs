@@ -19,10 +19,39 @@ use cc_smt::term::{Ctx, Op};
 
 use crate::datapaths::eval;
 use crate::datapaths::json::{Datapath, Tuple};
-use crate::datapaths::spec::ty;
 use crate::merge::json::{ArrayFile, ArrayMode, ArrayTuple, BlockKind, ConfigFile, FuFile, Mode};
 
 type R<X> = Result<X, String>;
+
+/// The scalar type of a type name as `Ty::name` writes it (`i8`, `ui16`, `i1`, `bf16`, `f8e4m3fn`, `cf32`).
+pub fn ty(name: &str) -> R<Ty> {
+    use cc_smt::float::Format;
+    let float = |n: &str| -> Option<Format> {
+        Some(match n {
+            "f16" => Format::F16,
+            "bf16" => Format::BF16,
+            "f32" => Format::F32,
+            "f64" => Format::F64,
+            "f8e4m3fn" => Format::E4M3FN,
+            "f8e5m2" => Format::E5M2,
+            _ => return None,
+        })
+    };
+    if name == "i1" {
+        return Ok(Ty::Bool);
+    }
+    if let Some(f) = float(name) {
+        return Ok(Ty::Float(f));
+    }
+    if let Some(f) = name.strip_prefix('c').and_then(float) {
+        return Ok(Ty::Complex(f));
+    }
+    let int = |w: &str, signed: bool| w.parse::<u32>().ok().map(|w| Ty::Int { signed, w });
+    name.strip_prefix("ui")
+        .and_then(|w| int(w, false))
+        .or_else(|| name.strip_prefix('i').and_then(|w| int(w, true)))
+        .ok_or_else(|| format!("element type {name}"))
+}
 
 /// One query (`file` relative to `proofs/`).
 #[derive(Debug, Clone)]
@@ -143,23 +172,10 @@ pub fn fu_values(c: &mut Ctx, fu: &FuFile, cfg: &ConfigFile) -> R<BTreeMap<Strin
                     compare_type: blk.attrs.get("compare_type").cloned(),
                     precision: bits,
                 };
-                match bd.mode {
-                    Mode::Native => {
-                        let xs: Vec<Val> = args.iter().map(|x| x.1).collect();
-                        ops::apply(c, &blk.op, &a, &xs, out_ty).map_err(smt)?
-                    }
-                    Mode::Widen => {
-                        let mut xs = Vec::new();
-                        for (p, x) in &args {
-                            let bt = ty(blk.types.get(*p as usize).ok_or("a port without a type")?)?;
-                            xs.push(ops::convert(c, *x, bt).map_err(smt)?);
-                        }
-                        let bt: Vec<&String> = blk.types.iter().filter(|t| !t.starts_with("rp:")).collect();
-                        let wide = ty(bt.last().ok_or("a block without types")?)?;
-                        let r = ops::apply(c, &blk.op, &a, &xs, wide).map_err(smt)?;
-                        ops::convert(c, r, out_ty).map_err(smt)?
-                    }
-                }
+                // A widened block computes at its own types; its widening lemma (`widen_query`) proves
+                // that equal to the op at the configuration's types, which is what is evaluated here.
+                let xs: Vec<Val> = args.iter().map(|x| x.1).collect();
+                ops::apply(c, &blk.op, &a, &xs, out_ty).map_err(smt)?
             }
         };
         memo.insert((b, res), v);
@@ -193,6 +209,91 @@ pub fn fu_values(c: &mut Ctx, fu: &FuFile, cfg: &ConfigFile) -> R<BTreeMap<Strin
         }
     }
     Ok(out)
+}
+
+/// A widening: an op at narrow types run on a block at wide types.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Widening {
+    pub op: String,
+    pub direction: Option<String>,
+    pub compare_type: Option<String>,
+    pub narrow: Vec<String>,
+    pub wide: Vec<String>,
+}
+
+impl Widening {
+    pub fn file(&self) -> String {
+        let mut s = format!("widen/{}", self.op);
+        for x in [&self.direction, &self.compare_type].into_iter().flatten() {
+            s.push('.');
+            s.push_str(x);
+        }
+        s.push_str(&format!("_{}_{}.smt2", self.narrow.join("-"), self.wide.join("-")));
+        s.replace(':', "")
+    }
+}
+
+/// Every widening used by a configuration.
+pub fn widenings(fus: &BTreeMap<String, &FuFile>, cfgs: &[ConfigFile]) -> R<Vec<Widening>> {
+    let mut set = std::collections::BTreeSet::new();
+    for c in cfgs {
+        let fu = fus.get(&c.fu).ok_or_else(|| format!("{}: no unit", c.fu))?;
+        for b in c.bindings.iter().filter(|b| b.mode == Mode::Widen) {
+            let blk = fu.blocks.get(b.block as usize).ok_or_else(|| format!("block {}", b.block))?;
+            if blk.kind != BlockKind::Op {
+                continue;
+            }
+            set.insert(Widening {
+                op: blk.op.clone(),
+                direction: blk.attrs.get("comparison_direction").cloned(),
+                compare_type: blk.attrs.get("compare_type").cloned(),
+                narrow: b.types.clone(),
+                wide: blk.types.clone(),
+            });
+        }
+    }
+    Ok(set.into_iter().collect())
+}
+
+/// The widening lemma: the op at the wide types on operands extended by their signedness, truncated to
+/// the narrow result, differs from the op at the narrow types (expect unsat).
+pub fn widen_query(w: &Widening) -> R<Query> {
+    let mut c = Ctx::new();
+    let narrow: Vec<Ty> = w.narrow.iter().filter(|t| !t.starts_with("rp:")).map(|t| ty(t)).collect::<R<_>>()?;
+    let wide: Vec<Ty> = w.wide.iter().filter(|t| !t.starts_with("rp:")).map(|t| ty(t)).collect::<R<_>>()?;
+    if narrow.len() != wide.len() || narrow.is_empty() {
+        return Err(format!("{}: types {:?} and {:?}", w.op, w.narrow, w.wide));
+    }
+    let a = Attrs {
+        direction: w.direction.clone(),
+        compare_type: w.compare_type.clone(),
+        precision: None,
+    };
+    let k = narrow.len() - 1;
+    let mut xs = Vec::new();
+    let mut ws = Vec::new();
+    for i in 0..k {
+        let x = ops::input(&mut c, &format!("x{i}"), narrow[i]).map_err(smt)?;
+        ws.push(ops::convert(&mut c, x, wide[i]).map_err(smt)?);
+        xs.push(x);
+    }
+    let want = ops::apply(&mut c, &w.op, &a, &xs, narrow[k]).map_err(smt)?;
+    let r = ops::apply(&mut c, &w.op, &a, &ws, wide[k]).map_err(smt)?;
+    let got = ops::convert(&mut c, r, narrow[k]).map_err(smt)?;
+    let same = ops::same(&mut c, got, want).map_err(smt)?;
+    let goal = c.not(same).map_err(smt)?;
+    let mut s = Script::new();
+    s.comment(format!(
+        "merge widening {}: ({}) on a ({}) block, truncated, differs from the narrow op (expect unsat)",
+        w.op,
+        w.narrow.join(", "),
+        w.wide.join(", ")
+    ));
+    c.render(&mut s, &[goal]);
+    Ok(Query {
+        file: w.file(),
+        text: s.render(),
+    })
 }
 
 /// The query of one configuration.

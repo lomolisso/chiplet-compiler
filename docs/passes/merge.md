@@ -67,6 +67,8 @@
        constant column, accumulator, output name), its types at tuple `t`, its mode (`native`, `widen`)
        and, for an operator, the block port of each operand; the select of every multiplexer it uses.
      - `proofs/<F>/<unit>/<t>.smt2` and `.result`: the configured unit differs from the datapath.
+     - `proofs/widen/<op>_<narrow>_<wide>.smt2` and `.result`: a widened block differs from the op at the
+       narrow types.
      - `arrays/<A>.json` (`ArrayFile`): dataflow, host class, array dims as functions of the host's group
        extents (parameters), the processing element `(lhs, rhs, acc)` and its price, and per covered
        class its selected mapping and per tuple its mode (`native`, `widen`, `compose` with the pieces
@@ -105,13 +107,15 @@
       - `exact_ilp`: max Σ wᵢxᵢ subject to Σ ≤ 1 over the mappings of each super-node of A and of B,
         x_arc ≤ x_end for both ends, Σ ≤ 1 over the arcs of one wire, an orientation variable per block
         with both orientations, Σ ≤ |g| − 1 per no-good g, and the order conflicts added when a solution
-        violates one (re-solved until none does). microlp's branch and bound, `node_budget` nodes,
-        `timeout_s`; out of budget it reports its incumbent as not optimal.
+        violates one (re-solved until none does). microlp's branch and bound, `node_budget` nodes; out of
+        budget it reports its incumbent as not optimal.
       - `ostergard`: Östergård's search on the compatibility graph as adjacency bitsets (vertices by
         increasing weight), the same no-goods; `node_budget`.
       - `greedy`: by weight, a node (with its arc ends) kept when compatible with every kept node.
-      A graph over `max_compat_nodes` nodes, or an exact solve out of time or budget, is answered by
-      `greedy`, recorded as the step's `fallback`. Both exact strategies maximize over the same set (an
+      A graph over `max_compat_nodes` nodes, an exact solve without an incumbent, an evaluation past
+      `timeout_s` (one deadline for all its cycle rounds) or past 20 cycle rounds is answered by `greedy`,
+      recorded as the step's `fallback`. Mappings that save nothing (ports, pairs of equal price) are kept
+      only as ends of arc mappings. Both exact strategies maximize over the same set (an
       arc's ends are compatible with everything the arc is, and weights are non-negative, so a maximum
       clique closes under arc ends).
    5. **Rebuild** (`algo/rebuild.rs`). Each vertex mapping becomes one block per member with the joined
@@ -125,9 +129,11 @@
       (the stages of one template class run at the same time). A lazy greedy picks the merge with the
       largest gain = area(A) + area(B) − area(merged): every pair is queued under an upper bound (per
       label, the best pairing of super-node prices, sorted, Σ min; a merge saves at most the cheaper of
-      two shared blocks and never reduces existing multiplexers); the top entries' exact gains (clique,
+      two shared blocks and never reduces existing multiplexers); the top entries' gains (clique,
       rebuild, area, critical path) replace their bounds, in parallel batches of a fixed size; the top
-      entry is accepted when it is exact. A merge whose critical path exceeds the bound is not
+      entry is accepted when it is evaluated. With `rank = "greedy"` the candidates are evaluated with
+      `greedy` cliques and only the accepted pair is solved by `algorithm` (its solution replaces the
+      greedy one when it saves at least as much): one exact solve per step instead of one per candidate. A merge whose critical path exceeds the bound is not
       admissible. The family stops when the best exact gain is ≤ 0, or at `target_units` units.
    7. **Depth bound.** With `max_logic_depth = 0`, per family: the deepest single unit's critical path
       (operators and multiplexers at their `fast` delays; inputs, constants and accumulator outputs at 0)
@@ -145,9 +151,13 @@
    9. **Configurations and proofs** (`proofs.rs`). Per covered unit and tuple: the bindings, the selects
       (the position of the configuration's own source in each multiplexer). The query evaluates the unit
       along its wiring only: each multiplexer takes its selected source; a block computes `ops::apply`
-      at its own types, extending narrower operands and truncating the result back in `widen` mode; the
-      datapath side is `datapaths::eval::values`, with the same variables for inputs, constants and
-      accumulators; outputs and accumulator next/init values are compared bit-exactly (all NaNs equal).
+      at the configuration's types; the datapath side is `datapaths::eval::values`, with the same
+      variables for inputs, constants and accumulators; outputs and accumulator next/init values are
+      compared bit-exactly (all NaNs equal). A block in `widen` mode is justified by its **widening
+      lemma**, one per distinct (op, narrow types, wide types): the op at the wide types on operands
+      extended by their signedness, truncated, equals the op at the narrow types. Splitting the proof
+      this way keeps the configuration query structurally equal to the datapath (an i8 `select` widened
+      to i32 in front of two f32 multiplies took the solver over a minute as one query).
       Array queries compare the element's step with `acc + convert(lhs)·convert(rhs)` at the class's
       types. Queries run in the configured solver, cached by hash; composed steps (a multiplier against
       its decomposition, which bit-blasting handles badly: Kaufmann, Biere, Kauers, FMCAD 2019) run in
@@ -180,8 +190,9 @@
    - `certify_max_nodes` (120): steps with at most this many nodes store their graph for `verify`.
    - `compose_timeout_s` (600): Z3's limit per composed-step proof.
    - `views` (true): write `views/merge.md`.
-   - `[passes.merge.clique]`: `algorithm` (`"exact_ilp"` | `"ostergard"` | `"greedy"`), `node_budget`
-     (200000), `timeout_s` (300).
+   - `[passes.merge.clique]`: `algorithm` (`"exact_ilp"` | `"ostergard"` | `"greedy"`), `rank`
+     (`"greedy"` | `"algorithm"`: how candidate pairs are evaluated), `node_budget` (2000), `timeout_s`
+     (30, one deadline per evaluation).
 
 6. **Verification** (`verify.rs`, `verify.json`; never runs the compatibility graph, the solvers of
    step 4, the rebuild or the agglomeration):
@@ -198,7 +209,7 @@
      critical path recomputed is the stored one and within the bound. `bounds`: each family's derived
      bound recomputed from its units alone.
    - `proofs`: every query regenerated byte for byte from the stored unit, configuration and datapath
-     (or array); every result is the configured solver's `unsat` for that text (Z3 for composed steps);
+     (or array), and the widening lemmas from the widened bindings; every result is the configured solver's `unsat` for that text (Z3 for composed steps);
      the other solver agrees on every configuration query, Z3 again on composed steps.
    - `solver_sanity`: a configuration with one select moved to another source is `sat` in both solvers.
    - `arrays`: each covered class is a template class with the array's dataflow, the host or a guest of
@@ -223,6 +234,9 @@
 8. **Known limitations.**
    - Merging is pairwise and greedy (Moreano Sec. VI-A); the result depends on the merge order, which the
      lazy greedy fixes by gain. A clique answered by `greedy` or out of budget is not optimal (recorded).
+     With `rank = "greedy"` the order follows greedy gains; the exact solve improves only the accepted pair.
+   - `timeout_s` is wall-clock: a solve that reaches it makes the output machine-dependent (recorded as
+     `fallback = "timeout"`); `node_budget` is the deterministic limit.
    - The cost model is area only: operator and multiplexer areas from the library, wires free, no
      throughput term. Units serving many classes are time-multiplexed; whether they keep up is a
      scheduling question for later passes.

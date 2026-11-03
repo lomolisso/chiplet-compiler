@@ -132,6 +132,12 @@
     },
     "schema": {
       "type": "string"
+    },
+    "widenings": {
+      "description": "Widening lemmas (`proofs/widen/…`): one per (op, narrow types, wide types) used.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
     }
   },
   "required": [
@@ -145,6 +151,7 @@
     "configs",
     "proofs",
     "array_proofs",
+    "widenings",
     "cliques",
     "not_optimal",
     "estimated_blocks",

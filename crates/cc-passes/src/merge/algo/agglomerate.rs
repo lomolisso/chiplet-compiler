@@ -36,6 +36,9 @@ pub struct Agglomerated {
     pub evaluated: u64,
 }
 
+/// Cycle rounds an exact strategy gets per evaluation before `greedy` takes over.
+const MAX_ROUNDS: u32 = 20;
+
 /// An evaluated pair.
 #[derive(Debug, Clone)]
 struct Eval {
@@ -138,25 +141,71 @@ impl Ctx<'_> {
         self.host(&a.host, &b.host)
     }
 
-    fn evaluate(&self, a: &Fu, ca: &Costed, b: &Fu, cb: &Costed, bound_ps: f64) -> Option<Eval> {
+    #[allow(clippy::too_many_arguments)]
+    fn evaluate(
+        &self,
+        a: &Fu,
+        ca: &Costed,
+        b: &Fu,
+        cb: &Costed,
+        bound_ps: f64,
+        alg: CliqueAlgorithm,
+    ) -> Option<Eval> {
         let host = self.admissible(a, b)?;
         let mut prices = HashMap::new();
+        let t0 = std::time::Instant::now();
         let m = model(a, ca, b, cb, self.lib, &mut prices);
+        let r = self.solve_model(a, ca, b, cb, bound_ps, &host, &m, alg);
+        let ms = t0.elapsed().as_millis();
+        if ms > 5000 {
+            tracing::info!(
+                vertex_mappings = m.vm.len(),
+                arc_mappings = m.am.len(),
+                blocks = a.blocks.len() + b.blocks.len(),
+                ms,
+                "slow evaluation"
+            );
+        }
+        r
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn solve_model(
+        &self,
+        a: &Fu,
+        ca: &Costed,
+        b: &Fu,
+        cb: &Costed,
+        bound_ps: f64,
+        host: &str,
+        m: &Model,
+        algorithm: CliqueAlgorithm,
+    ) -> Option<Eval> {
+        let m = m.clone();
         let cq = &self.cfg.clique;
-        let timeout = Duration::from_secs(cq.timeout_s);
+        // One deadline for every round of the evaluation; past it, or after `MAX_ROUNDS` cycle rounds,
+        // `greedy` answers the remaining rounds.
+        let deadline = std::time::Instant::now() + Duration::from_secs(cq.timeout_s);
         let mut nogoods: Vec<Vec<usize>> = Vec::new();
         let mut rounds = 0u32;
+        let mut late: Option<&str> = None;
         loop {
             rounds += 1;
-            let s = solve(
-                &m,
-                cq.algorithm,
-                &nogoods,
-                cq.node_budget,
-                timeout,
-                self.cfg.max_compat_nodes,
-            );
-            let fu = rebuild(a, b, &m, &s.chosen, &host);
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            if late.is_none() && left.is_zero() {
+                late = Some("timeout");
+            }
+            if late.is_none() && rounds > MAX_ROUNDS {
+                late = Some("rounds");
+            }
+            let alg = if late.is_some() { CliqueAlgorithm::Greedy } else { algorithm };
+            let mut s = solve(&m, alg, &nogoods, cq.node_budget, left, self.cfg.max_compat_nodes);
+            if let Some(why) = late
+                && algorithm != CliqueAlgorithm::Greedy
+            {
+                s.fallback = Some(why.into());
+            }
+            let fu = rebuild(a, b, &m, &s.chosen, host);
             let c = cost(&fu, self.units, self.lib);
             match topo(&fu, &c.wiring) {
                 Ok(_) => {
@@ -185,7 +234,7 @@ impl Ctx<'_> {
                 }
                 Err(cycle) => {
                     let g = nogood(a, &m, &s.chosen, &cycle);
-                    if g.is_empty() || nogoods.contains(&g) || rounds > 200 {
+                    if g.is_empty() || nogoods.contains(&g) || rounds > 4 * MAX_ROUNDS {
                         return None;
                     }
                     nogoods.push(g);
@@ -290,6 +339,7 @@ pub fn agglomerate(cx: &Ctx, units_idx: &[u32]) -> Result<Agglomerated, String> 
             })
         })
         .collect();
+    tracing::info!(units = n0, pairs = pairs.len(), bound_ps, "agglomerating");
     heap.extend(pairs);
     let mut cache: HashMap<(usize, usize), Eval> = HashMap::new();
     let mut steps = Vec::new();
@@ -298,6 +348,10 @@ pub fn agglomerate(cx: &Ctx, units_idx: &[u32]) -> Result<Agglomerated, String> 
     let mut area = initial_area;
     let mut count = n0;
     let batch = rayon::current_num_threads().max(1) * 2;
+    let rank = match cx.cfg.clique.rank {
+        crate::merge::config::Rank::Greedy => CliqueAlgorithm::Greedy,
+        crate::merge::config::Rank::Algorithm => cx.cfg.clique.algorithm,
+    };
     let stopped_by;
     loop {
         if cx.cfg.target_units > 0 && count <= cx.cfg.target_units {
@@ -327,7 +381,7 @@ pub fn agglomerate(cx: &Ctx, units_idx: &[u32]) -> Result<Agglomerated, String> 
             let evals: Vec<(Entry, Option<Eval>)> = todo
                 .into_par_iter()
                 .map(|e| {
-                    let r = cx.evaluate(&fus[e.a], &costs[e.a], &fus[e.b], &costs[e.b], bound_ps);
+                    let r = cx.evaluate(&fus[e.a], &costs[e.a], &fus[e.b], &costs[e.b], bound_ps, rank);
                     (e, r)
                 })
                 .collect();
@@ -358,6 +412,14 @@ pub fn agglomerate(cx: &Ctx, units_idx: &[u32]) -> Result<Agglomerated, String> 
             break;
         }
         let mut v = cache.remove(&(e.a, e.b)).ok_or("an evaluated pair is missing")?;
+        // The accepted merge is solved by the configured algorithm when candidates were ranked by another;
+        // its solution replaces the ranking one when it saves at least as much.
+        if rank != cx.cfg.clique.algorithm
+            && let Some(w) = cx.evaluate(&fus[e.a], &costs[e.a], &fus[e.b], &costs[e.b], bound_ps, cx.cfg.clique.algorithm)
+            && w.gain >= v.gain - 1e-9
+        {
+            v = w;
+        }
         alive[e.a] = false;
         alive[e.b] = false;
         let id = fus.len();
@@ -378,6 +440,16 @@ pub fn agglomerate(cx: &Ctx, units_idx: &[u32]) -> Result<Agglomerated, String> 
             depth_ps: v.cost.depth,
             clique: v.stat.clone(),
         });
+        if step_no % 25 == 0 {
+            tracing::info!(
+                step = step_no,
+                units = count,
+                area = area,
+                gain = v.gain,
+                evaluated,
+                "merge step"
+            );
+        }
         profiles.push(profile(&v.fu, &v.cost));
         fus.push(v.fu);
         costs.push(v.cost);

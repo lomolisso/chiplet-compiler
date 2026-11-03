@@ -6,6 +6,7 @@
 //! - `configs/<F>/<unit>/<t>.json` (`ConfigFile`): the configuration of one covered unit and width tuple:
 //!   the block of every datapath vertex, the multiplexer selects, the width mode of every block;
 //! - `proofs/<F>/<unit>/<t>.smt2` and `.result`: the unit under that configuration equals the datapath;
+//! - `proofs/widen/<op>_<narrow>_<wide>.smt2` and `.result`: a widened block equals the narrow op;
 //! - `arrays/<A>.json` (`ArrayFile`): a parameterized array unit and the template classes it serves;
 //! - `proofs/arrays/<A>/<z>/<t>.smt2` and `.result`: its processing element equals the class's core step;
 //! - `trace/<family>.json` (`Trace`): every agglomeration step (the area-vs-units curve);
@@ -353,6 +354,8 @@ pub struct Summary {
     pub configs: u64,
     pub proofs: u64,
     pub array_proofs: u64,
+    /// Widening lemmas (`proofs/widen/…`): one per (op, narrow types, wide types) used.
+    pub widenings: u64,
     /// Steps by the algorithm that answered, and those not proven optimal.
     pub cliques: BTreeMap<String, u64>,
     pub not_optimal: u64,
