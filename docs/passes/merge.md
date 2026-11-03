@@ -182,7 +182,10 @@
        `(P + 2^(k−1)) >> k`, or left by at most 7 places (saturating beyond), saturated to i32 and
        converted to f32. The hardware is a 32×24 integer multiplier, a shifter and an adder in place of
        an f32 multiplier, an f32 round and an int-to-f32 convert, and the scale input stays f32 (no
-       offline step). The chain's readers (the zero point, the clip) are unchanged.
+       offline step). The chain's readers (the zero point, the clip) are unchanged. At ASAP7 (DC)
+       `rescale@i32` is 636 µm² against 331 µm² for the three f32 blocks it replaces (the fp32 multiply
+       works on the integer rounded to 24 bits; `rescale` keeps the exact 32×24 product): `fixed` is a
+       verified alternative, not a saving, and `fp32` stays the default.
        - **Tolerance lemma**, one per integer type (`proofs/lemmas/rescale_<type>.smt2`). Part 1: the
          scale decode is exact (`±M·2^-k = s` for every finite s). Part 2: for every product P of the
          type, every shift k and every f32 `p` that IEEE 754 allows for the fp32 chain's product, with
@@ -277,6 +280,8 @@
    and a clique solve, bounded by `node_budget`, `timeout_s` and `max_compat_nodes`. Exact gains run in
    parallel batches of twice the thread count; families run in parallel. Proofs are one query per
    (unit, configuration, tuple) and per (array, class, tuple), milliseconds each except composed steps.
+   With `fixed`, one tolerance lemma per integer type rescaled (one CPU: Bitwuzla 23 s at i8, 57 s at
+   i32; Z3, in `verify`, 91 s at i8, 11 minutes at i32).
 
 8. **Known limitations.**
    - Merging is pairwise and greedy (Moreano Sec. VI-A); the result depends on the merge order, which the
@@ -292,6 +297,9 @@
    - Prices of pending soft-float operators are estimates (`estimated`), and array element prices use the
      multiply at the accumulator type (what the semantics computes), not a narrower multiplier.
    - Composed array steps are proven by Z3 alone, as encoding lemmas are.
+   - `fixed` costs more area than `fp32` at ASAP7 (one `rescale` block per family that has the chains:
+     +576 µm², 0.3 % of the model set's units); a cheaper form would round the integer or the scale's
+     significand first, which changes the tolerance lemma.
    - `fixed` matches the chain `convert → multiply → round` only; a scale applied by a divide, or a chain
      whose convert or product has other readers, stays fp32. The zero point and the clip after the round
      stay f32 (the models pass the zero point as an f32 input). The tolerance lemma rests on the IEEE 754
