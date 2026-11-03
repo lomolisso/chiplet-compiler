@@ -239,16 +239,22 @@ threads = 2                      # parallel tool sessions (each also holds one o
 memory_gb = 8
 timeout_min = 600
 
-[passes.mine]
-tau_start = 40
-tau_min = 2
-budget_s = 3600
-top_k = 32
+[passes.mine]                     # GraMi per family (map, reduce, contraction, template stages)
+tau_start = 40                    # first MNI support threshold; the sweep halves it
+tau_min = 2                       # last threshold
+max_vertices = 8                  # larger GraMi patterns are dropped (GraMi has no size bound)
+top_k = 32                        # patterns selected per family, by score
+budget_s = 3600                   # GraMi wall clock per family (safety net; hitting it is recorded)
+run_timeout_s = 600               # one GraMi run
+heap_gb = 6                       # Java heap of one run; its container gets heap_gb + 2
+vf2_budget = 100000000            # candidate pairs of one re-match (one pattern in one datapath)
+views = true                      # write views/mine.md
 [passes.mine.mis]
 algorithm = "exact_ilp"          # "exact_ilp" | "branch_and_bound" | "greedy_min_degree"
+node_budget = 1000000             # branch_and_bound search nodes per component
 [passes.mine.resources]
 threads = 8
-memory_gb = 8
+memory_gb = 8                     # one GraMi container at a time per 8 GB
 timeout_min = 120
 
 [passes.merge]

@@ -87,6 +87,55 @@ fn eda_watchdog_kills_a_real_eda_run_process_over_its_cap() {
     assert_eq!(out.killed, Some(KillReason::MemoryCap), "{out:#?}");
 }
 
+/// GraMi (the directed build, exact) and the brute-force miner find the same frequent patterns on
+/// random labelled DAGs, at several thresholds.
+#[test]
+fn grami_equals_brute_force_on_random_graphs() {
+    let cfg = repo_config();
+    let runners = Runners::from_config(&cfg);
+    for seed in 0..6u64 {
+        let g = tests::brute::random_dag(seed, 12, 3, 2, 1, 4);
+        let all = tests::brute::patterns(&g, g.nodes.len());
+        for tau in [2u64, 3] {
+            let d = tempfile::tempdir().unwrap();
+            std::fs::write(d.path().join("g.lg"), g.to_lg()).unwrap();
+            let inv = Invocation::new("grami", "sh")
+                .args([
+                    "-c",
+                    &format!(
+                        "exec java -Xmx512m -XX:ActiveProcessorCount=1 -XX:+UseSerialGC -cp \"$GRAMI_DIRECTED_CP\" \
+                         Dijkstra.main filename=g.lg datasetFolder=/work/ freq={tau} limitedtime=false \
+                         maxLabelAppearance=-1 approximate=1"
+                    ),
+                ])
+                .cwd("/work")
+                .mount(Mount {
+                    src: d.path().to_path_buf(),
+                    dst: "/work".into(),
+                    readonly: false,
+                });
+            runners
+                .docker
+                .run(
+                    &inv,
+                    &CONTAINER,
+                    &ToolLog::new("deep", d.path().join("logs")),
+                    &CancelToken::new(),
+                )
+                .unwrap()
+                .check()
+                .unwrap();
+            let got = tests::brute::parse_output(&std::fs::read_to_string(d.path().join("Output.txt")).unwrap());
+            let want: std::collections::BTreeSet<String> = all
+                .iter()
+                .filter(|(_, (_, m))| *m >= tau)
+                .map(|(c, _)| c.clone())
+                .collect();
+            assert_eq!(got, want, "seed {seed}, tau {tau}");
+        }
+    }
+}
+
 #[test]
 fn grami_toy_graph_finds_exactly_the_frequent_patterns() {
     let cfg = repo_config();
