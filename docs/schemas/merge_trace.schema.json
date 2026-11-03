@@ -1,0 +1,173 @@
+{
+  "$defs": {
+    "CliqueStat": {
+      "properties": {
+        "algorithm": {
+          "type": "string"
+        },
+        "arc_mappings": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "certificate": {
+          "description": "The stored instance (`cliques/<family>/<step>.json`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fallback": {
+          "description": "Why another algorithm answered (`size`, `timeout`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "objective": {
+          "format": "double",
+          "type": "number"
+        },
+        "optimal": {
+          "type": "boolean"
+        },
+        "rounds": {
+          "description": "Solves after adding cycle no-goods.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "vertex_mappings": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "algorithm",
+        "vertex_mappings",
+        "arc_mappings",
+        "objective",
+        "optimal",
+        "rounds"
+      ],
+      "type": "object"
+    },
+    "Family": {
+      "description": "A mining family: datapath classes by skeleton class, and the per-element stages of template classes.",
+      "enum": [
+        "map",
+        "reduce",
+        "contraction",
+        "stage"
+      ],
+      "type": "string"
+    },
+    "Step": {
+      "description": "One agglomeration step.",
+      "properties": {
+        "a": {
+          "description": "The merged units (by their first covered unit) and the area saved.",
+          "type": "string"
+        },
+        "area_um2": {
+          "format": "double",
+          "type": "number"
+        },
+        "b": {
+          "type": "string"
+        },
+        "clique": {
+          "$ref": "#/$defs/CliqueStat"
+        },
+        "depth_ps": {
+          "format": "double",
+          "type": "number"
+        },
+        "gain_um2": {
+          "format": "double",
+          "type": "number"
+        },
+        "step": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "units": {
+          "description": "The family after the step.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "step",
+        "a",
+        "b",
+        "gain_um2",
+        "units",
+        "area_um2",
+        "depth_ps",
+        "clique"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`trace/<family>.json`.",
+  "properties": {
+    "bound_ps": {
+      "format": "double",
+      "type": "number"
+    },
+    "evaluated": {
+      "description": "Exact gains evaluated (compatibility graphs solved).",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "family": {
+      "$ref": "#/$defs/Family"
+    },
+    "initial_area_um2": {
+      "format": "double",
+      "type": "number"
+    },
+    "initial_units": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "period_ps": {
+      "format": "double",
+      "type": "number"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/Step"
+      },
+      "type": "array"
+    },
+    "stopped_by": {
+      "description": "`gain`: no admissible pair saves area; `target`: `target_units` reached; `none`: no pair.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "family",
+    "period_ps",
+    "bound_ps",
+    "initial_units",
+    "initial_area_um2",
+    "steps",
+    "stopped_by",
+    "evaluated"
+  ],
+  "title": "Trace",
+  "type": "object"
+}

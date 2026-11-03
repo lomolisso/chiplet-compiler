@@ -257,13 +257,24 @@ threads = 8
 memory_gb = 8                     # one GraMi container at a time per 8 GB
 timeout_min = 120
 
-[passes.merge]
-requant_variant = "recipe"       # "recipe" | "fp32" | "fixed"
-target_units = 0                 # 0 = stop when area gain <= 0
-max_logic_depth = 0              # 0 = derive from the clock target and the characterize library
+[passes.merge]                    # functional units: datapath merging (compatibility graph + max-weight clique), arrays
+requant_variant = "recipe"       # "recipe" | "fp32" ("fixed" is not implemented yet; every recipe rescales in fp32)
+target_units = 0                 # stop a family at this many units; 0 = stop when no merge saves area
+max_logic_depth = 0              # critical-path bound in ps; 0 = per family, the deepest single unit rounded up to
+                                 # whole clock periods of `kit` (merging adds no pipeline stage)
+kit = "asap7"                    # library kit that prices merges: area at its `clock` target, delay at `fast`
+contract = true                  # cover units with mine's selected patterns first; an occurrence merges only with
+                                 # an occurrence of the same pattern
+max_compat_nodes = 4000          # larger compatibility graphs are solved by `greedy`
+certify_max_nodes = 60           # steps with at most this many nodes store their graph (verify re-solves them)
+compose_timeout_s = 600          # Z3 limit per composed array step (a multiplier vs its pieces)
+views = true                     # write views/merge.md
 [passes.merge.clique]
-algorithm = "exact_ilp"          # "exact_ilp" | "ostergard" | "greedy"
-timeout_s = 300
+algorithm = "exact_ilp"          # "exact_ilp" (microlp) | "ostergard" | "greedy"
+rank = "greedy"                  # rank candidate pairs by "greedy" cliques (the accepted merge is solved by
+                                 # `algorithm`) or by "algorithm" itself (an exact solve per candidate)
+node_budget = 2000               # branch-and-bound nodes per solve (deterministic); then the incumbent, not optimal
+timeout_s = 30                   # wall-clock limit per solve (safety net); on expiry `greedy` answers
 [passes.merge.resources]
 threads = 8
 memory_gb = 8

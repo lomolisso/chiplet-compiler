@@ -357,13 +357,15 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
 
 - **Purpose.** Functional units F with configurations.
 - **Method.**
-  - Cover datapaths with the top patterns; one FU per class to start.
-  - Merge admissible pairs (same class, skeleton embedding ⊑) with Moreano's compatibility graph + maximum-weight clique (algorithm selectable). Weights come from A.
-  - Agglomerate greedily by area gain under a logic-depth bound. Stop at gain ≤ 0 or a target count.
-  - **Precision decomposition (section 6.2).**
+  - Cover datapaths with the top patterns; one FU per unit (a datapath class, or one stage of a template class) to start.
+  - Merge admissible pairs (same family, skeleton embedding ⊑ between their hosts, no class in both) with Moreano's compatibility graph + maximum-weight clique (algorithm selectable). Weights come from A.
+  - Agglomerate greedily by area gain under a logic-depth bound (by default the family's deepest datapath in whole clock periods). Stop at gain ≤ 0 or a target count.
+  - Template classes share parameterized arrays: the host's space-time mapping with its dims as parameters, one element type per array, narrower integers widened and a wider integer operand composed from pieces (**precision decomposition, section 6.2**).
   - The clique solution *is* each covered class's configuration (mux selects, constant registers): **configuration by construction**.
 - **Verification.**
   - For every F and z ∈ cover(F), per width tuple: SMT proof of FU(cfg_z) ≡ datapath_z (∀ inputs).
+  - Per array, covered class and tuple: the element's step equals the class's core step.
+  - Every merged unit is acyclic and every multiplexer has at least two inputs.
   - Coverage: Z_compute ⊆ ⋃ cover(F).
 
 ### 4.12 `softfloat` (parallel branch)
@@ -608,3 +610,10 @@ build/         (ignored) build/.<pass>/ artifacts
 | DesignWare parts kept as blocks (`compile_ultra_ungroup_dw false`) | Flattened netlists | Formality then proves a DesignWare divider against its model in seconds; flattened it stayed unverified for hours |
 | LEC bounded at 2 minutes per design; a check that runs out of time with no failing point passes with clean sanity checks and is reported | A hand-kept allow-list; unbounded LEC | Everything else proves in at most 47 s; some timing-driven 32-bit dividers do not finish at all (general-purpose engines need hours to never at this width); the sanity checks catch what LEC does not (they found accumulators whose register DC had removed) |
 | GraMi patched with a node bound (`maxNodes`) | Drop large patterns after GraMi | GraMi enumerates every frequent pattern of any size: on the map family it ran over 16 minutes at τ = 10 for patterns the pass drops; the bound prunes them in the search, exactly for patterns within it |
+| Merge per family of units (as `mine`); a pair is admissible when its hosts are related by ⊑ and no class is in both | One merge over all classes | The stages of one template class run at the same time; ⊑ keeps one loop nest per unit |
+| Integer blocks widen (operands extended by signedness, result truncated); floats share only within one format | Widen floats too | Two's-complement arithmetic commutes with truncation; narrower float results through a wider unit round twice |
+| Depth bound = the family's deepest datapath in whole clock periods | One clock period; a relative slack | XLS pipelines every unit; merging should not add stages |
+| Lazy greedy agglomeration on upper bounds of the gain, exact gains in parallel batches of fixed size | Exact gains of all pairs each step | The bound prunes almost all clique solves; fixed batches keep the result thread-independent |
+| A cycle of the rebuilt unit becomes a no-good and the clique is solved again | Only the pairwise order constraint | Longer cycles pass every pairwise check |
+| Array units: dims as parameters, one element type per array, wider integer operands composed (pieces, one pass each) | One array per class; fixed dims | Extents are symbolic; the TPU and Bit Fusion schemes |
+| Composed array steps proven by Z3 with a lemma-length limit | Both solvers with the query limit | A multiplier against its pieces is hard for bit-blasting (Bitwuzla over 100 s on 16×8) |

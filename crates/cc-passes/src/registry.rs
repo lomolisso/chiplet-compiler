@@ -19,6 +19,7 @@ pub fn registry() -> Vec<Box<dyn Pass>> {
         Box::new(crate::iteration_space::IterationSpace),
         Box::new(crate::datapaths::Datapaths),
         Box::new(crate::mine::Mine),
+        Box::new(crate::merge::Merge),
         // Parallel branch: the primitive library.
         Box::new(crate::characterize::Characterize),
     ]

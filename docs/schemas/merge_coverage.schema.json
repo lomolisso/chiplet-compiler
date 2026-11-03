@@ -1,0 +1,84 @@
+{
+  "$defs": {
+    "ClassCover": {
+      "description": "How one class is covered.",
+      "properties": {
+        "array": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "class": {
+          "type": "string"
+        },
+        "empty_stages": {
+          "description": "Template stages without vertices (nothing to cover).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "route": {
+          "type": "string"
+        },
+        "units": {
+          "description": "`(unit, fu)` for every unit of the class (the class, or its stages).",
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "type": "array"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "class",
+        "route",
+        "units",
+        "empty_stages"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`coverage.json`: Z_compute ⊆ ⋃ cover(F).",
+  "properties": {
+    "classes": {
+      "items": {
+        "$ref": "#/$defs/ClassCover"
+      },
+      "type": "array"
+    },
+    "covered": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "total": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema",
+    "classes",
+    "total",
+    "covered"
+  ],
+  "title": "CoverageFile",
+  "type": "object"
+}

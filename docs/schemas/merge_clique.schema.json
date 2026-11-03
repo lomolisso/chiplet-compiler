@@ -1,0 +1,125 @@
+{
+  "$defs": {
+    "CertNode": {
+      "description": "One node of a stored compatibility graph.",
+      "properties": {
+        "kind": {
+          "description": "`vertex` (a block pair) or `arc` (a wire pair).",
+          "type": "string"
+        },
+        "weight": {
+          "format": "double",
+          "type": "number"
+        },
+        "what": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "weight",
+        "kind",
+        "what"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`cliques/<family>/<step>.json`: the maximum-weight problem of one step.",
+  "properties": {
+    "algorithm": {
+      "type": "string"
+    },
+    "chosen": {
+      "items": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "type": "array"
+    },
+    "conflicts": {
+      "description": "Pairs that cannot both be chosen.",
+      "items": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        ],
+        "type": "array"
+      },
+      "type": "array"
+    },
+    "implies": {
+      "description": "`(arc, vertex)`: the arc needs the vertex mapping.",
+      "items": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        ],
+        "type": "array"
+      },
+      "type": "array"
+    },
+    "nodes": {
+      "items": {
+        "$ref": "#/$defs/CertNode"
+      },
+      "type": "array"
+    },
+    "nogoods": {
+      "description": "Sets that cannot all be chosen (cycles found in earlier rounds).",
+      "items": {
+        "items": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": "array"
+      },
+      "type": "array"
+    },
+    "objective": {
+      "format": "double",
+      "type": "number"
+    },
+    "optimal": {
+      "type": "boolean"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "nodes",
+    "conflicts",
+    "implies",
+    "nogoods",
+    "chosen",
+    "objective",
+    "algorithm",
+    "optimal"
+  ],
+  "title": "CliqueCert",
+  "type": "object"
+}

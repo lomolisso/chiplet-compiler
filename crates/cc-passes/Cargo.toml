@@ -13,6 +13,7 @@ cc-ir.workspace = true
 cc-pipeline.workspace = true
 cc-smt.workspace = true
 good_lp.workspace = true
+microlp.workspace = true
 postcard.workspace = true
 rayon.workspace = true
 schemars.workspace = true

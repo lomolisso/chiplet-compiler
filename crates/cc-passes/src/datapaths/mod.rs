@@ -299,7 +299,7 @@ pub fn build(inputs: &Inputs, i: usize, max_tuples: usize) -> Result<(Datapath, 
 
 /// Answers for `files` (relative to `dir`): cached ones, then one sharded run for the rest.
 #[allow(clippy::too_many_arguments)]
-fn solve(
+pub(crate) fn solve(
     runner: &cc_core::runner::BoundRunner,
     location: &cc_smt::Location,
     solver: Solver,

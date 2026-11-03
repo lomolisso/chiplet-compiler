@@ -1,0 +1,137 @@
+{
+  "$defs": {
+    "Binding": {
+      "description": "What one block does in one configuration.",
+      "properties": {
+        "block": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mode": {
+          "$ref": "#/$defs/Mode"
+        },
+        "node": {
+          "description": "The datapath node: `v<id>`, `in:<name>`, `acc<i>`, `out:<name>`.",
+          "type": "string"
+        },
+        "ports": {
+          "description": "For an operator: the block port of each datapath operand (a permutation of a commutative pair).",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "types": {
+          "description": "The types at this tuple (operands then result, as `Block::types`).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "var": {
+          "description": "The SMT variable of a source (input name, constant column, `acc<i>`/`res<i>`), the output's\nname; `None` for operators and literal constants.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "block",
+        "node",
+        "types",
+        "mode",
+        "ports"
+      ],
+      "type": "object"
+    },
+    "Mode": {
+      "description": "How a block runs for one configuration.",
+      "oneOf": [
+        {
+          "const": "native",
+          "description": "At the block's own types.",
+          "type": "string"
+        },
+        {
+          "const": "widen",
+          "description": "Narrower integers extended by their signedness, the result truncated back.",
+          "type": "string"
+        }
+      ]
+    },
+    "Select": {
+      "description": "The select of one multiplexer.",
+      "properties": {
+        "block": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "port": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "select": {
+          "description": "Index into the port's sources.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "block",
+        "port",
+        "select"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`configs/<F>/<unit>/<t>.json`.",
+  "properties": {
+    "bindings": {
+      "items": {
+        "$ref": "#/$defs/Binding"
+      },
+      "type": "array"
+    },
+    "class": {
+      "type": "string"
+    },
+    "fu": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "selects": {
+      "items": {
+        "$ref": "#/$defs/Select"
+      },
+      "type": "array"
+    },
+    "tuple": {
+      "type": "string"
+    },
+    "unit": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "fu",
+    "unit",
+    "class",
+    "tuple",
+    "bindings",
+    "selects"
+  ],
+  "title": "ConfigFile",
+  "type": "object"
+}
