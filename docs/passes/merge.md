@@ -133,7 +133,9 @@
       rebuild, area, critical path) replace their bounds, in parallel batches of a fixed size; the top
       entry is accepted when it is evaluated. With `rank = "greedy"` the candidates are evaluated with
       `greedy` cliques and only the accepted pair is solved by `algorithm` (its solution replaces the
-      greedy one when it saves at least as much): one exact solve per step instead of one per candidate. A merge whose critical path exceeds the bound is not
+      greedy one when it saves at least as much, else the step records `fallback = "rank"`): one exact
+      solve per step instead of one per candidate. The clique objective is linear in the multiplexer
+      inputs; the area of the rebuilt unit is not, so the exact clique can save less. A merge whose critical path exceeds the bound is not
       admissible. The family stops when the best exact gain is ≤ 0, or at `target_units` units.
    7. **Depth bound.** With `max_logic_depth = 0`, per family: the deepest single unit's critical path
       (operators and multiplexers at their `fast` delays; inputs, constants and accumulator outputs at 0)

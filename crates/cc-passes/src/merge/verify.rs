@@ -443,7 +443,12 @@ fn best(cert: &CliqueCert) -> Option<f64> {
     }
     // Heaviest nodes first: good sets early, so the bound prunes sooner.
     let mut ord: Vec<usize> = (0..n).collect();
-    ord.sort_by(|&a, &b| cert.nodes[b].weight.total_cmp(&cert.nodes[a].weight).then(a.cmp(&b)));
+    ord.sort_by(|&a, &b| {
+        cert.nodes[b]
+            .weight
+            .total_cmp(&cert.nodes[a].weight)
+            .then(a.cmp(&b))
+    });
     let mut pos = vec![0usize; n];
     for (k, &i) in ord.iter().enumerate() {
         pos[i] = k;
@@ -469,7 +474,12 @@ fn best(cert: &CliqueCert) -> Option<f64> {
     let nogoods: Vec<Vec<u32>> = cert
         .nogoods
         .iter()
-        .map(|g| g.iter().filter(|&&v| (v as usize) < n).map(|&v| pos[v as usize] as u32).collect())
+        .map(|g| {
+            g.iter()
+                .filter(|&&v| (v as usize) < n)
+                .map(|&v| pos[v as usize] as u32)
+                .collect()
+        })
         .collect();
     let w: Vec<f64> = ord.iter().map(|&i| cert.nodes[i].weight.max(0.0)).collect();
     struct S<'a> {
@@ -889,7 +899,11 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
                         bad.push(format!("{} step {}: {b}", t.family.name(), s.step));
                     }
                     if !close(c.objective, s.clique.objective) {
-                        bad.push(format!("{} step {}: objective differs from the trace", t.family.name(), s.step));
+                        bad.push(format!(
+                            "{} step {}: objective differs from the trace",
+                            t.family.name(),
+                            s.step
+                        ));
                     }
                 }
                 Err(e) => bad.push(format!("{} {f}: {e}", t.family.name())),
@@ -1006,8 +1020,12 @@ fn sanity(
     let mut found: Vec<proofs::Query> = Vec::new();
     'outer: for c in configs {
         let fu = fu_by[c.fu.as_str()];
-        let Some(dp) = dps.get(c.class.as_str()) else { continue };
-        let Some(t) = dp.tuples.iter().find(|t| t.name == c.tuple) else { continue };
+        let Some(dp) = dps.get(c.class.as_str()) else {
+            continue;
+        };
+        let Some(t) = dp.tuples.iter().find(|t| t.name == c.tuple) else {
+            continue;
+        };
         for (k, s) in c.selects.iter().enumerate() {
             let n = fu.blocks[s.block as usize].sources[s.port as usize].len() as u32;
             for alt in (0..n).filter(|&a| a != s.select) {
@@ -1025,7 +1043,9 @@ fn sanity(
         }
     }
     if found.is_empty() {
-        return Ok(Check::new("solver_sanity", true).note("no multiplexer with a well-typed alternative source"));
+        return Ok(
+            Check::new("solver_sanity", true).note("no multiplexer with a well-typed alternative source")
+        );
     }
     let dir = ctx.dir().path().join("cache").join("sanity");
     std::fs::create_dir_all(&dir).map_err(|e| PassError::failed(format!("sanity: {e}")))?;

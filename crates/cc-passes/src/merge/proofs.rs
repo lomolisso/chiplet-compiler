@@ -228,7 +228,11 @@ impl Widening {
             s.push('.');
             s.push_str(x);
         }
-        s.push_str(&format!("_{}_{}.smt2", self.narrow.join("-"), self.wide.join("-")));
+        s.push_str(&format!(
+            "_{}_{}.smt2",
+            self.narrow.join("-"),
+            self.wide.join("-")
+        ));
         s.replace(':', "")
     }
 }
@@ -239,7 +243,10 @@ pub fn widenings(fus: &BTreeMap<String, &FuFile>, cfgs: &[ConfigFile]) -> R<Vec<
     for c in cfgs {
         let fu = fus.get(&c.fu).ok_or_else(|| format!("{}: no unit", c.fu))?;
         for b in c.bindings.iter().filter(|b| b.mode == Mode::Widen) {
-            let blk = fu.blocks.get(b.block as usize).ok_or_else(|| format!("block {}", b.block))?;
+            let blk = fu
+                .blocks
+                .get(b.block as usize)
+                .ok_or_else(|| format!("block {}", b.block))?;
             if blk.kind != BlockKind::Op {
                 continue;
             }
@@ -259,8 +266,18 @@ pub fn widenings(fus: &BTreeMap<String, &FuFile>, cfgs: &[ConfigFile]) -> R<Vec<
 /// the narrow result, differs from the op at the narrow types (expect unsat).
 pub fn widen_query(w: &Widening) -> R<Query> {
     let mut c = Ctx::new();
-    let narrow: Vec<Ty> = w.narrow.iter().filter(|t| !t.starts_with("rp:")).map(|t| ty(t)).collect::<R<_>>()?;
-    let wide: Vec<Ty> = w.wide.iter().filter(|t| !t.starts_with("rp:")).map(|t| ty(t)).collect::<R<_>>()?;
+    let narrow: Vec<Ty> = w
+        .narrow
+        .iter()
+        .filter(|t| !t.starts_with("rp:"))
+        .map(|t| ty(t))
+        .collect::<R<_>>()?;
+    let wide: Vec<Ty> = w
+        .wide
+        .iter()
+        .filter(|t| !t.starts_with("rp:"))
+        .map(|t| ty(t))
+        .collect::<R<_>>()?;
     if narrow.len() != wide.len() || narrow.is_empty() {
         return Err(format!("{}: types {:?} and {:?}", w.op, w.narrow, w.wide));
     }

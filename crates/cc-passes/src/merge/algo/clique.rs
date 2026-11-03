@@ -111,7 +111,9 @@ pub fn greedy(m: &Model, nogoods: &[Vec<usize>]) -> Solved {
         }
         if ok && i >= nv {
             let a = &m.am[i - nv];
-            ok = perm.get(&a.dst).is_none_or(|&p| p == a.perm) && !wires_a.contains(&a.a) && !wires_b.contains(&a.b);
+            ok = perm.get(&a.dst).is_none_or(|&p| p == a.perm)
+                && !wires_a.contains(&a.a)
+                && !wires_b.contains(&a.b);
         }
         if !ok {
             continue;

@@ -35,8 +35,8 @@ slow-timeout = { period = "600s", terminate-after = 9 }
 filter = "binary(deep) and test(mine)"
 slow-timeout = { period = "600s", terminate-after = 6 }
 
-# merge: the analysis chain and mining on the deep models, a Yosys library, merging with real proofs and a
-# forced rerun.
+# merge: the analysis chain and mining on the deep models, a Yosys library (about 20 minutes), merging with
+# real proofs and a forced rerun.
 [[profile.deep.overrides]]
 filter = "binary(deep) and test(merge)"
 slow-timeout = { period = "600s", terminate-after = 9 }

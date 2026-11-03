@@ -1,12 +1,14 @@
 //! Deep check: every pass up to `merge` on `[testing] deep_models` at the `full` config, with a
-//! license-free library (Yosys on Nangate45, a reduced integer catalog: the operators the merges weigh;
-//! the others are priced as estimates), real solvers for every configuration proof and every check of its
+//! license-free library (`chipc doctor`, then Yosys on Nangate45 over the whole catalog, about 20
+//! minutes), real solvers for every configuration proof and every check of its
 //! `verify`, a golden snapshot of the summary and the traces, and byte-identical outputs on a forced
 //! rerun. Writes into the build area's ephemeral `runs/deep-merge/` and removes it when the test passes.
 
+use cc_core::runner::Runners;
 use cc_core::{CheckStatus, LoadedConfig};
 use cc_passes::merge::MERGE;
 use cc_passes::merge::json::{Summary, Trace};
+use cc_pipeline::env::{DoctorOptions, doctor};
 use cc_pipeline::{Pipeline, RunOptions, RunStatus};
 use tests::repo_root;
 
@@ -26,16 +28,21 @@ fn merge_deep_models_at_full() {
         "tools.smt.runner=docker".to_string(),
         "passes.characterize.tool=yosys".to_string(),
         "passes.characterize.pdks=[\"nangate45\"]".to_string(),
-        "passes.characterize.ops=[\"add\", \"subtract\", \"multiply\", \"maximum\", \"minimum\", \"compare\", \"select\", \"convert\"]".to_string(),
-        "passes.characterize.int_widths=[8, 32]".to_string(),
-        "passes.characterize.float_formats=[]".to_string(),
-        "passes.characterize.mux_widths=[1, 8, 32]".to_string(),
-        "passes.characterize.register_widths=[1, 8, 32]".to_string(),
-        "passes.characterize.split_multipliers=[]".to_string(),
-        "passes.characterize.resources.threads=8".to_string(),
+        "passes.characterize.resources.threads=16".to_string(),
         "passes.merge.kit=nangate45".to_string(),
     ];
     let cfg = LoadedConfig::load(&repo_root().join("config.toml"), &sets).unwrap();
+    // `characterize` reads the libraries `chipc doctor` prepares.
+    let mut text = Vec::new();
+    let env = doctor(
+        &cfg,
+        &Runners::from_config(&cfg),
+        DoctorOptions::default(),
+        &mut text,
+    )
+    .unwrap();
+    let db = env.checks.iter().find(|c| c.name == "pdk.db").unwrap();
+    assert_eq!(db.status, CheckStatus::Pass, "{}", String::from_utf8_lossy(&text));
     let models = cfg.config.testing.deep_models.clone();
     let p = Pipeline::new(cc_passes::registry(), cfg).unwrap();
     let opts = RunOptions {

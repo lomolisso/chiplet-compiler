@@ -198,7 +198,11 @@ impl Ctx<'_> {
             if late.is_none() && rounds > MAX_ROUNDS {
                 late = Some("rounds");
             }
-            let alg = if late.is_some() { CliqueAlgorithm::Greedy } else { algorithm };
+            let alg = if late.is_some() {
+                CliqueAlgorithm::Greedy
+            } else {
+                algorithm
+            };
             let mut s = solve(&m, alg, &nogoods, cq.node_budget, left, self.cfg.max_compat_nodes);
             if let Some(why) = late
                 && algorithm != CliqueAlgorithm::Greedy
@@ -414,11 +418,19 @@ pub fn agglomerate(cx: &Ctx, units_idx: &[u32]) -> Result<Agglomerated, String> 
         let mut v = cache.remove(&(e.a, e.b)).ok_or("an evaluated pair is missing")?;
         // The accepted merge is solved by the configured algorithm when candidates were ranked by another;
         // its solution replaces the ranking one when it saves at least as much.
-        if rank != cx.cfg.clique.algorithm
-            && let Some(w) = cx.evaluate(&fus[e.a], &costs[e.a], &fus[e.b], &costs[e.b], bound_ps, cx.cfg.clique.algorithm)
-            && w.gain >= v.gain - 1e-9
-        {
-            v = w;
+        if rank != cx.cfg.clique.algorithm {
+            match cx.evaluate(
+                &fus[e.a],
+                &costs[e.a],
+                &fus[e.b],
+                &costs[e.b],
+                bound_ps,
+                cx.cfg.clique.algorithm,
+            ) {
+                Some(w) if w.gain >= v.gain - 1e-9 => v = w,
+                // The ranking solution saves more area (or the exact one is not admissible): kept.
+                _ => v.stat.fallback = Some("rank".into()),
+            }
         }
         alive[e.a] = false;
         alive[e.b] = false;
