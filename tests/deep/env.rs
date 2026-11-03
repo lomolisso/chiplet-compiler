@@ -88,7 +88,7 @@ fn eda_watchdog_kills_a_real_eda_run_process_over_its_cap() {
 }
 
 /// GraMi (the directed build, exact) and the brute-force miner find the same frequent patterns on
-/// random labelled DAGs, at several thresholds.
+/// random labelled DAGs, at several thresholds, with and without the node bound (`maxNodes`).
 #[test]
 fn grami_equals_brute_force_on_random_graphs() {
     let cfg = repo_config();
@@ -96,7 +96,8 @@ fn grami_equals_brute_force_on_random_graphs() {
     for seed in 0..6u64 {
         let g = tests::brute::random_dag(seed, 12, 3, 2, 1, 4);
         let all = tests::brute::patterns(&g, g.nodes.len());
-        for tau in [2u64, 3] {
+        // (τ, maxNodes): unbounded, and bounded by our patch.
+        for (tau, max) in [(2u64, -1i64), (3, -1), (2, 3), (3, 4)] {
             let d = tempfile::tempdir().unwrap();
             std::fs::write(d.path().join("g.lg"), g.to_lg()).unwrap();
             let inv = Invocation::new("grami", "sh")
@@ -105,7 +106,7 @@ fn grami_equals_brute_force_on_random_graphs() {
                     &format!(
                         "exec java -Xmx512m -XX:ActiveProcessorCount=1 -XX:+UseSerialGC -cp \"$GRAMI_DIRECTED_CP\" \
                          Dijkstra.main filename=g.lg datasetFolder=/work/ freq={tau} limitedtime=false \
-                         maxLabelAppearance=-1 approximate=1"
+                         maxLabelAppearance=-1 maxNodes={max} approximate=1"
                     ),
                 ])
                 .cwd("/work")
@@ -128,10 +129,10 @@ fn grami_equals_brute_force_on_random_graphs() {
             let got = tests::brute::parse_output(&std::fs::read_to_string(d.path().join("Output.txt")).unwrap());
             let want: std::collections::BTreeSet<String> = all
                 .iter()
-                .filter(|(_, (_, m))| *m >= tau)
+                .filter(|(_, (p, m))| *m >= tau && (max < 0 || p.nodes.len() as i64 <= max))
                 .map(|(c, _)| c.clone())
                 .collect();
-            assert_eq!(got, want, "seed {seed}, tau {tau}");
+            assert_eq!(got, want, "seed {seed}, tau {tau}, maxNodes {max}");
         }
     }
 }

@@ -1,8 +1,8 @@
 //! One GraMi run (docs/tools/grami.md §4): the directed subgraph build of our image, exact
 //! (`limitedtime=false`), in its own job directory, under the container's memory and time caps.
-//! `maxLabelAppearance` is `max_vertices`: a pattern within `max_vertices` repeats no label more often,
-//! and the bound is anti-monotone (GraMi's pruner treats a pattern over it as infrequent, so it is not
-//! extended), so nothing the pass keeps is lost. Results
+//! `maxNodes` is `max_vertices` (our patch `third_party/patches/grami/0002`): GraMi treats a larger
+//! pattern as infrequent, so it is neither reported nor extended; the node count only grows along an
+//! extension, so every pattern within the bound is still found with its support. Results
 //! are cached in `cache/grami/<key>/tau<τ>/` (outside `out/`): `Output.txt` holds GraMi's timing, which
 //! must not reach the artifacts.
 
@@ -65,7 +65,7 @@ pub fn run(
     let cmd = format!(
         "exec java -Xmx{heap_gb}g -XX:ActiveProcessorCount=1 -XX:+UseSerialGC -cp \"$GRAMI_DIRECTED_CP\" \
          Dijkstra.main filename=graph.lg datasetFolder=/work/ freq={tau} limitedtime=false \
-         maxLabelAppearance={max_vertices} approximate=1"
+         maxLabelAppearance=-1 maxNodes={max_vertices} approximate=1"
     );
     let inv = Invocation::new("grami", "sh")
         .args(["-c", &cmd])

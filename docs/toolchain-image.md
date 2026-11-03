@@ -24,7 +24,7 @@ scripts/on-build-host chipc doctor             # then check it (image.pins, imag
 - **Another host** gets a copy streamed, not rebuilt: `docker save chiplet-compiler/toolchain:<tag> | ssh <host> docker load`. The build-stage cache is not copied, so the next image change on that host rebuilds every stage once (~75 min).
 - **Old tags** are removed by name (`docker rmi chiplet-compiler/toolchain:<old>`) once a new tag is verified; never prune globally.
 
-- **Tag.** The image is `chiplet-compiler/toolchain:<tools.docker.tag>`, currently `0.3.0`: the release in which the image inputs last changed. Bump it (to the upcoming release's version) whenever `docker/`, `[tools.docker.build]`, `[tools.xls]`, `[tools.allo]` or `[tools.grami]` changes.
+- **Tag.** The image is `chiplet-compiler/toolchain:<tools.docker.tag>`, currently `0.4.0`: the release in which the image inputs last changed. Bump it (to the upcoming release's version) whenever `docker/`, `[tools.docker.build]`, `[tools.xls]`, `[tools.allo]` or `[tools.grami]` changes.
 - **Pins.** `build.sh` gets every pin from `chipc doctor --build-args`, so `config.toml` is the only place they are written. It also checks that `third_party/` sits at the pinned commits.
 
 | Pinned | How |
@@ -47,7 +47,7 @@ scripts/on-build-host chipc doctor             # then check it (image.pins, imag
 | `build` | base | compilers, cmake, ninja, git |
 | `xls-release` | base | XLS release binaries (`codegen_main`, `opt_main`, `ir_converter_main`, `interpreter_main`, `prove_quickcheck_main`, DSLX tools, stdlib) |
 | `solvers` | base | z3 (glibc-2.39 build) and bitwuzla. The "static" bitwuzla binary still needs `libgmp10` and `libmpfr6` |
-| `grami` | base + JDK 17 | GraMi with `third_party/patches/grami/*.patch` applied; both `*_SUBGRAPHS` trees compiled |
+| `grami` | base + JDK 17 | GraMi with `third_party/patches/grami/*.patch` applied (Java 17 imports; the `maxNodes` bound in the directed tree); both `*_SUBGRAPHS` trees compiled |
 | `llvm-allo` | build | LLVM `6b09f739` (clang, mlir, openmp; cmake flags from Allo's setup docs) and Allo installed editable into `/opt/cc/venv` |
 | `xls-bazel` | 22.04 | `xlscc`, `eval_ir_main` and `check_ir_equivalence_main` from the same XLS commit; `synth_only` + `ac_datatypes` headers. Built as a non-root user, as upstream does |
 | `final` | base | runtime libraries, JRE 17, yosys / iverilog / verilator, a compiler (Verilator needs one), and the copied stage outputs. `cc-selftest` runs, then `cc-probe` writes `versions.json` |

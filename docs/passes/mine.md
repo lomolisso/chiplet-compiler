@@ -56,7 +56,7 @@
        by unit); `lg/<family>.map.json` (`LgMap`): per unit its id, class, stage, workload, first vertex
        and datapath vertices.
      - `grami/<family>.json` (`GramiFile`): the final τ, GraMi's pattern count, the patterns over
-       `max_vertices` (counted only) and the others by canonical id.
+       `max_vertices` (counted only; none with GraMi's node bound) and the others by canonical id.
      - `patterns/<family>/<p>.json` (`PatternFile`): the canonical code and id, vertex labels and edges,
        τ, MNI, the number of embeddings and of non-convex images, the convex occurrences (unit, the
        datapath vertex of each pattern vertex, and every operand fed from outside: `const`, `input`,
@@ -69,7 +69,7 @@
      - `summary.json` (`Summary`); `views/mine.md`.
    - `cache/grami/<key>/tau<τ>/` (outside `out/`): GraMi's job directory (`graph.lg`, `Output.txt`, a
      `done` marker with the wall time), keyed by the graph, the GraMi commit, the image and the label
-     bound. GraMi's timing never reaches `out/`, so outputs are byte-identical across runs.
+     node bound. GraMi's timing never reaches `out/`, so outputs are byte-identical across runs.
 
 4. **Algorithm.**
    1. *Units and labels* (`algo/family.rs`): units, their graphs and workloads, the label tables, one
@@ -78,11 +78,12 @@
       τ = `tau_start`, then τ halved (rounded down, at least `tau_min`) until `tau_min`.
       - *GraMi* (`algo/grami.rs`): the directed subgraph build of the image, `limitedtime=false` (its
         default `true` adds a candidate to a domain when a 5 s timer fires, so it can report infrequent
-        patterns), `maxLabelAppearance = max_vertices` (a kept pattern repeats no label more often, and
-        the bound is anti-monotone: GraMi treats a pattern over it as infrequent), one CPU, `heap_gb` of
+        patterns), `maxNodes = max_vertices` (our patch `third_party/patches/grami/0002`: a larger pattern
+        counts as infrequent, so it is neither reported nor extended; the node count only grows along an
+        extension, so every pattern within the bound is found with its support), one CPU, `heap_gb` of
         heap, in a container of `heap_gb + 2` GB, within `run_timeout_s` and what is left of `budget_s`.
-      - *Parse and filter* (`algo/lg.rs`): `Output.txt` strictly (its count must match); patterns over
-        `max_vertices` are dropped (GraMi has no size bound); the others are canonicalized
+      - *Parse and filter* (`algo/lg.rs`): `Output.txt` strictly (its count must match); a pattern over
+        `max_vertices` (none with the bound) would be counted as dropped; the others are canonicalized
         (`algo/canon.rs`: among the vertex orders that sort the labels, the one with the smallest sorted
         edge list; id `p` + 16 hex digits of the code's hash).
       - *Re-match* (`algo/rematch.rs`), each new pattern once (results carry over to lower τ): every
@@ -160,8 +161,8 @@
      below that τ is not mined even if its score (workload-weighted MIS) would place it in the top-k:
      GraMi's output is monotone in τ, so only a lower τ could reveal it.
    - A sweep stopped by the budget depends on the machine's speed; the sweep file records it.
-   - GraMi enumerates every frequent pattern, also those over `max_vertices`, which the pass discards;
-     `maxLabelAppearance` prunes only those that repeat a label more than `max_vertices` times.
+   - Upstream GraMi has no size bound; the pass relies on the image's patched build (`maxNodes`). Without
+     it the `map` family does not finish below τ = 40 (§7).
    - Convexity is checked per unit: a template's stages are separate units, so a path through the array
      between a prologue and the epilogue is not seen (it cannot exist: the core sits between them).
    - Constants are inputs: `x · c` and `x · y` match the same pattern; the occurrence records which

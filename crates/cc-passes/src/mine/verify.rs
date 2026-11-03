@@ -170,7 +170,8 @@ fn vunits(inp: &Inputs) -> Result<Vec<VUnit>, String> {
     Ok(out)
 }
 
-/// The canonical code by plain search over every order that sorts the labels.
+/// The canonical code by plain search over every order that sorts the labels: the product of the
+/// permutations of each label class, each order scored by its sorted edge list.
 fn code_of(labels: &[String], edges: &[(u32, u32, EdgeLabel)]) -> String {
     let n = labels.len();
     let text = |l: &EdgeLabel| -> String {
@@ -183,52 +184,74 @@ fn code_of(labels: &[String], edges: &[(u32, u32, EdgeLabel)]) -> String {
             .collect::<Vec<_>>()
             .join("+")
     };
-    let mut sorted: Vec<&String> = labels.iter().collect();
-    sorted.sort();
-    let mut best: Option<Vec<(u32, u32, String)>> = None;
-    // Every permutation, keeping those whose label sequence is sorted.
-    let mut perm: Vec<usize> = (0..n).collect();
-    let mut c = vec![0usize; n];
-    let mut consider = |perm: &[usize]| {
-        // perm[pos] = vertex
-        if perm.iter().map(|&v| &labels[v]).ne(sorted.iter().copied()) {
-            return;
+    let texts: Vec<(u32, u32, String)> = edges.iter().map(|(a, b, l)| (*a, *b, text(l))).collect();
+    // Classes: (label, members), in label order.
+    let mut classes: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
+    for (v, l) in labels.iter().enumerate() {
+        classes.entry(l.as_str()).or_default().push(v);
+    }
+    let groups: Vec<Vec<usize>> = classes.into_values().collect();
+    // Heap's algorithm per class, the classes combined as an odometer.
+    let perms = |m: &[usize]| -> Vec<Vec<usize>> {
+        let mut a = m.to_vec();
+        let mut out = vec![a.clone()];
+        let mut c = vec![0usize; a.len()];
+        let mut i = 0;
+        while i < a.len() {
+            if c[i] < i {
+                if i % 2 == 0 {
+                    a.swap(0, i);
+                } else {
+                    a.swap(c[i], i);
+                }
+                out.push(a.clone());
+                c[i] += 1;
+                i = 0;
+            } else {
+                c[i] = 0;
+                i += 1;
+            }
         }
+        out
+    };
+    let all: Vec<Vec<Vec<usize>>> = groups.iter().map(|g| perms(g)).collect();
+    let mut idx = vec![0usize; all.len()];
+    let mut best: Option<Vec<(u32, u32, String)>> = None;
+    loop {
+        let order: Vec<usize> = idx.iter().zip(&all).flat_map(|(&k, p)| p[k].iter().copied()).collect();
         let mut pos = vec![0u32; n];
-        for (p, &v) in perm.iter().enumerate() {
+        for (p, &v) in order.iter().enumerate() {
             pos[v] = p as u32;
         }
-        let mut e: Vec<(u32, u32, String)> = edges
+        let mut e: Vec<(u32, u32, String)> = texts
             .iter()
-            .map(|(a, b, l)| (pos[*a as usize], pos[*b as usize], text(l)))
+            .map(|(a, b, l)| (pos[*a as usize], pos[*b as usize], l.clone()))
             .collect();
         e.sort();
         if best.as_ref().is_none_or(|b| e < *b) {
             best = Some(e);
         }
-    };
-    consider(&perm);
-    // Heap's algorithm.
-    let mut i = 0;
-    while i < n {
-        if c[i] < i {
-            if i % 2 == 0 {
-                perm.swap(0, i);
-            } else {
-                perm.swap(c[i], i);
+        let mut c = 0;
+        while c < idx.len() {
+            idx[c] += 1;
+            if idx[c] < all[c].len() {
+                break;
             }
-            consider(&perm);
-            c[i] += 1;
-            i = 0;
-        } else {
-            c[i] = 0;
-            i += 1;
+            idx[c] = 0;
+            c += 1;
+        }
+        if c == idx.len() {
+            break;
         }
     }
-    let e = best.unwrap_or_default();
-    let ls: Vec<&str> = sorted.iter().map(|s| s.as_str()).collect();
-    let es: Vec<String> = e.iter().map(|(a, b, l)| format!("{a}>{b}:{l}")).collect();
-    format!("{};{}", ls.join(","), es.join(","))
+    let mut sorted: Vec<&str> = labels.iter().map(String::as_str).collect();
+    sorted.sort();
+    let es: Vec<String> = best
+        .unwrap_or_default()
+        .iter()
+        .map(|(a, b, l)| format!("{a}>{b}:{l}"))
+        .collect();
+    format!("{};{}", sorted.join(","), es.join(","))
 }
 
 fn hash16(s: &str) -> String {
@@ -555,7 +578,7 @@ fn grami_check(
         let t = ctx.tools();
         let lg = std::fs::read_to_string(c.out.dir().join(format!("lg/{}.lg", f.name()))).unwrap_or_default();
         let key = hash16(&format!(
-            "{}\n{}:{}\nmaxLabelAppearance={}\n{}",
+            "{}\n{}:{}\nmaxNodes={}\n{}",
             t.grami.commit, t.docker.image, t.docker.tag, c.cfg.max_vertices, lg
         ));
         let path = ctx
@@ -701,7 +724,17 @@ fn one_pattern(
     let mut total = 0u64;
     let mut want: BTreeSet<(String, Vec<u32>)> = BTreeSet::new();
     let mut non_convex = 0u64;
+    let mut need: HashMap<&str, usize> = HashMap::new();
+    for l in &p.labels {
+        *need.entry(l.as_str()).or_default() += 1;
+    }
     for (ui, u) in units.iter().enumerate() {
+        if need
+            .iter()
+            .any(|(l, c)| u.keys.iter().filter(|k| k.as_str() == *l).count() < *c)
+        {
+            continue;
+        }
         let emb = embeddings(p, u);
         total += emb.len() as u64;
         let mut seen: BTreeSet<Vec<u32>> = BTreeSet::new();

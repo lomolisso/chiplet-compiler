@@ -265,11 +265,13 @@ impl ToolRunner for FakeGrami {
                     cmd.contains("limitedtime=false") && cmd.contains("$GRAMI_DIRECTED_CP"),
                     "{cmd}"
                 );
-                let at = cmd.find("freq=").unwrap() + 5;
-                let tau: u64 = cmd[at..].split(' ').next().unwrap().parse().unwrap();
+                let num = |k: &str| -> u64 {
+                    let at = cmd.find(k).unwrap() + k.len();
+                    cmd[at..].split(' ').next().unwrap().parse().unwrap()
+                };
                 let g = brute::parse_lg(&std::fs::read_to_string(dir.join("graph.lg")).unwrap());
-                // Up to 5 vertices: the pass keeps 4, so it must drop GraMi's larger patterns.
-                std::fs::write(dir.join("Output.txt"), brute::output(&g, tau, 5)).unwrap();
+                let out = brute::output(&g, num("freq="), num("maxNodes=") as usize);
+                std::fs::write(dir.join("Output.txt"), out).unwrap();
                 outcome(inv, log, "", "")
             }
             t => panic!("unexpected tool {t}"),
@@ -412,9 +414,9 @@ fn mines_and_verifies_synthetic_datapaths() {
     assert!(labels.nodes.contains(&"compare@sint[LT,SIGNED]".to_string()));
     assert!(labels.nodes.contains(&"compare@sint[EQ,SIGNED]".to_string()));
     assert!(!labels.nodes.iter().any(|l| l.starts_with("const")));
-    // GraMi's 5-vertex patterns are dropped; every kept one is within 4 and frequent.
+    // GraMi is bounded to 4 vertices (`maxNodes`); every kept pattern is within it and frequent.
     let grami: Value = serde_json::from_str(&std::fs::read_to_string(s.out("grami/map.json")).unwrap()).unwrap();
-    assert!(grami["dropped"].as_u64().unwrap() > 0, "{grami}");
+    assert_eq!(grami["dropped"].as_u64(), Some(0), "{grami}");
     for f in ["map", "reduce", "stage"] {
         for (_, p) in s.patterns(f) {
             assert!(p.labels.len() <= 4 && p.mni >= p.tau, "{}", p.id);

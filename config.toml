@@ -37,7 +37,7 @@ watchdog_interval_s = 0.5        # RSS sampling period of the process-group watc
 
 [tools.docker]                   # DockerRunner
 image = "chiplet-compiler/toolchain"
-tag = "0.3.0"                    # the release in which the image inputs ([tools.docker.build], the pins below,
+tag = "0.4.0"                    # the release in which the image inputs ([tools.docker.build], the pins below,
                                  # docker/) last changed; bump it with them
 memory_gb = 8                    # default per-call cap (--memory and --memory-swap)
 cpus = 4.0                       # default per-call --cpus

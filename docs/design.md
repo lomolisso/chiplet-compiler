@@ -341,13 +341,15 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
 
 - **Purpose.** Frequent datapath patterns per skeleton class.
 - **Method.**
-  - Datapaths of one class family → one GraMi `.lg` graph (disjoint union).
-  - Run the **directed** GraMi build at support τ.
+  - Datapaths of one family (datapath classes by skeleton class: map, reduce, contraction; the stages of
+    template classes) → one GraMi `.lg` graph (disjoint union); constants are pattern inputs, not vertices.
+  - Run the **directed** GraMi build at support τ, with the pattern size bounded (`maxNodes`, our patch), τ
+    halved from a start value until the top-k selection is stable.
   - Re-match each pattern with `vf2` (non-induced, same semantics as GraMi) and keep only convex occurrences.
   - Count non-overlapping occurrences with a **maximum independent set** on the overlap graph. The algorithm is config-selectable: exact ILP, branch-and-bound, or greedy.
-  - Score s(p) = Σ_z workload_z · MIS(p, z).
+  - Score s(p) = Σ_z workload_z · MIS(p, z); a stage's workload is the elements it processes.
 - **Verification.**
-  - Re-matching reproduces GraMi's set (every pattern has MNI ≥ τ).
+  - Re-matching reproduces GraMi's set (every pattern has MNI ≥ τ), recomputed by an independent matcher.
   - Every kept occurrence is convex.
   - The MIS is independent: a cheap check on the stored solution.
 
@@ -605,4 +607,4 @@ build/         (ignored) build/.<pass>/ artifacts
 | Every primitive synthesized in its own DC/Genus session | Several designs per session | A session that synthesized one design gives the next another netlist (a 32-bit divider after a 16-bit one: 15 614 against 9 340 µm²): results depended on batch order |
 | DesignWare parts kept as blocks (`compile_ultra_ungroup_dw false`) | Flattened netlists | Formality then proves a DesignWare divider against its model in seconds; flattened it stayed unverified for hours |
 | LEC bounded at 2 minutes per design; a check that runs out of time with no failing point passes with clean sanity checks and is reported | A hand-kept allow-list; unbounded LEC | Everything else proves in at most 47 s; some timing-driven 32-bit dividers do not finish at all (general-purpose engines need hours to never at this width); the sanity checks catch what LEC does not (they found accumulators whose register DC had removed) |
-
+| GraMi patched with a node bound (`maxNodes`) | Drop large patterns after GraMi | GraMi enumerates every frequent pattern of any size: on the map family it ran over 16 minutes at τ = 10 for patterns the pass drops; the bound prunes them in the search, exactly for patterns within it |

@@ -104,7 +104,7 @@ impl Pass for Mine {
                 "{:016x}",
                 (cc_ir::absgraph::hash_bytes(
                     format!(
-                        "{}\n{}:{}\nmaxLabelAppearance={}\n{}",
+                        "{}\n{}:{}\nmaxNodes={}\n{}",
                         t.grami.commit, t.docker.image, t.docker.tag, cfg.max_vertices, fg.lg
                     )
                     .as_bytes()
