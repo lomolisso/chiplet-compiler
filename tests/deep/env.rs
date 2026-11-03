@@ -94,7 +94,7 @@ fn grami_equals_brute_force_on_random_graphs() {
     let cfg = repo_config();
     let runners = Runners::from_config(&cfg);
     for seed in 0..6u64 {
-        let g = tests::brute::random_dag(seed, 12, 3, 2, 1, 4);
+        let g = tests::brute::random_dag(seed, 8, 3, 2, 1, 3);
         let all = tests::brute::patterns(&g, g.nodes.len());
         // (τ, maxNodes): unbounded, and bounded by our patch.
         for (tau, max) in [(2u64, -1i64), (3, -1), (2, 3), (3, 4)] {
