@@ -79,6 +79,10 @@
      - `cliques/<family>/<step>.json` (`CliqueCert`): the compatibility graph of a step with at most
        `certify_max_nodes` nodes: weights, conflicting pairs, arc-to-end implications, no-goods, the
        chosen set, its weight.
+     - `requant.json` (`RequantFile`, `fixed` only): per class with rescaling chains, the chains (vertex
+       ids in the datapath as `datapaths` wrote it, the integer's types, the scale), `fixed` or `kept` with
+       the reason; per integer type its tolerance lemma and whether it is proven.
+     - `proofs/lemmas/rescale_<type>.smt2` and `.result`: the tolerance lemma (step 11).
      - `coverage.json` (`CoverageFile`): per class its route, its units and their units of F, its array,
        its stages without vertices; `summary.json` (`Summary`); `views/merge.md`.
 
@@ -167,6 +171,38 @@
    10. **Coverage.** Every datapath class has a configuration of its unit per tuple; every template
        class has an array for every tuple and a configuration per tuple of every non-empty stage. The pass
        fails on a failed proof or an uncovered class.
+   11. **Fixed requantization** (`requant_variant = "fixed"`, `requant.rs`; applied to the datapaths
+       before the units are built). A **rescaling chain** is `round_nearest_even(multiply(convert(x), s))`
+       where, at every tuple, `x` is a signed integer of at most 32 bits and everything else is f32, the
+       convert and the multiply have no other reader and the three vertices share a stage outside any
+       combiner (mobilenetv4's int8 epilogues: `acc → convert → × s → round → + zp → clip → convert i8`).
+       It becomes one vertex `rescale(x, s)` (`cc_smt::ops::rescale`, design §6.3): the scale's
+       significand `M` (24 bits) and shift `k = 150 − max(e, 1)` are read off its bits, so `|s| = M·2^-k`
+       exactly; the exact product `P = ±x·M` (at most 56 bits) is shifted right with rounding half up,
+       `(P + 2^(k−1)) >> k`, or left by at most 7 places (saturating beyond), saturated to i32 and
+       converted to f32. The hardware is a 32×24 integer multiplier, a shifter and an adder in place of
+       an f32 multiplier, an f32 round and an int-to-f32 convert, and the scale input stays f32 (no
+       offline step). The chain's readers (the zero point, the clip) are unchanged.
+       - **Tolerance lemma**, one per integer type (`proofs/lemmas/rescale_<type>.smt2`). Part 1: the
+         scale decode is exact (`±M·2^-k = s` for every finite s). Part 2: for every product P of the
+         type, every shift k and every f32 `p` that IEEE 754 allows for the fp32 chain's product, with
+         `Q = rescale` and `R = round_nearest_even(p)`: `|Q| < 2^22` implies `|Q − R| ≤ 1`; otherwise R has
+         Q's sign and `|R| ≥ 2^21`, so a clip narrower than that saturates both alike. "Allowed" is the
+         standard bound of the two fp32 roundings (convert and multiply, each correct to half an ulp, IEEE
+         754-2019 §4.3; Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed., Thm. 2.2):
+         `|p − x·s| ≤ (|p| + |x·s|)·2^-24 + 2^-150`, or an overflow to infinity of the same sign past
+         2^127. P is a free variable (with the facts the decode gives: `|P| < 2^(n+23)`, and `P = 0` or
+         `|P| ≥ 2^23` for a normal scale), so the query has no multiplier: stated against the f32 multiply
+         itself, the solver must relate two multipliers, which bit-blasting cannot do in practice (the
+         direct form ran past 10 minutes at 8 bits; Kaufmann, Biere, Kauers, FMCAD 2019). The
+         lemma holds for any rounding within the bound, so for the fp32 chain as deployed.
+       - The bound is not an absolute one on the class's outputs: the f32 operations after the round
+         (adding a non-integer zero point) can turn a difference of 1 into 2 at an int8 output. The claim is
+         the design's: the requantized value is within 1 of fp32's, and saturates alike.
+       - A class takes the rewrite when every lemma it needs is proven (`requant_timeout_s`); otherwise it
+         keeps fp32, with the lemma and its answer recorded. Its configurations are then proven against
+         the rewritten datapath as usual. Mined occurrences are carried through the renumbering; one that
+         holds a rewritten vertex is dropped.
 
    **Worked example** (the unit test `mac_and_add_mul_share_the_operators_with_muxes`). A: `out = a·b + c`
    (`m₁ = multiply(a, b)`, `s₁ = add(m₁, c)`); B: `out = (a + b)·c` (`s₂ = add(a, b)`,
@@ -183,7 +219,9 @@
 
 5. **Config keys** (`[passes.merge]`):
    - `requant_variant` (`"recipe"`): requantization hardware (design §6.3). Every recipe rescales in fp32
-     today, so `recipe` and `fp32` give the datapaths as they are; `fixed` is not implemented yet.
+     today, so `recipe` and `fp32` give the datapaths as they are; `fixed` rewrites the rescaling chains
+     (step 11).
+   - `requant_timeout_s` (1800): the limit of one `rescale` tolerance lemma.
    - `target_units` (0): stop a family at this many units; 0 stops when no merge saves area.
    - `max_logic_depth` (0): the critical-path bound in ps; 0 derives it per family (step 7).
    - `kit` (`"asap7"`): the library kit that prices merges.
@@ -223,9 +261,15 @@
    - `trace`: per family, the units and area after the last step are the stored units'; the initial
      count is the family's.
    - `coverage`: recomputed from the datapaths and the stored configurations and arrays.
+   - `requant` (`fixed` only): the rescaling chains found again in every datapath as `datapaths` wrote it,
+     each recorded; a class is `fixed` exactly when its lemmas are proven; a fixed class's datapath in the
+     units is the original with the converts and multiplies removed and the rounds as `rescale` (the
+     renumbering re-derived independently), a kept class's is unchanged; every lemma regenerated byte for
+     byte, its result the configured solver's `unsat` when recorded as proven, and the other solver agrees.
    - Negative tests (`tests/smoke/merge.rs`): a wrong select, a rebound node, a dropped configuration, an
      edited area, a missing multiplexer, a cycle, an edited clique objective, an edited trace and array
-     pieces each fail their check.
+     pieces each fail their check; an edited requantization decision, lemma or lemma result fails
+     `requant`, and a lemma out of time keeps its class on fp32.
 
 7. **Resource behaviour.** Memory is small (the units are a few thousand blocks in total). Time is the
    agglomeration: pair bounds are O(n²) per family at the start and O(n) per step; each exact gain is a
@@ -248,4 +292,7 @@
    - Prices of pending soft-float operators are estimates (`estimated`), and array element prices use the
      multiply at the accumulator type (what the semantics computes), not a narrower multiplier.
    - Composed array steps are proven by Z3 alone, as encoding lemmas are.
-   - `requant_variant = "fixed"` (an integer multiplier and rounding shift, design §6.3) is not implemented.
+   - `fixed` matches the chain `convert → multiply → round` only; a scale applied by a divide, or a chain
+     whose convert or product has other readers, stays fp32. The zero point and the clip after the round
+     stay f32 (the models pass the zero point as an f32 input). The tolerance lemma rests on the IEEE 754
+     rounding bound for the fp32 side, not on the solver's f32 multiply (step 11).

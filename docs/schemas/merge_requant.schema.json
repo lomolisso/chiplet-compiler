@@ -1,0 +1,238 @@
+{
+  "$defs": {
+    "RequantClass": {
+      "properties": {
+        "class": {
+          "type": "string"
+        },
+        "reason": {
+          "description": "Why a class kept fp32 (the lemma that was not proven and its answer).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sites": {
+          "items": {
+            "$ref": "#/$defs/RequantSite"
+          },
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/RequantStatus"
+        }
+      },
+      "required": [
+        "class",
+        "sites",
+        "status"
+      ],
+      "type": "object"
+    },
+    "RequantLemma": {
+      "description": "A tolerance lemma (`proofs/lemmas/rescale_<type>.smt2`).",
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "proven": {
+          "type": "boolean"
+        },
+        "type": {
+          "description": "The integer type it covers.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "file",
+        "proven"
+      ],
+      "type": "object"
+    },
+    "RequantSite": {
+      "description": "One rescaling chain of a class (`requant.json`): its convert, multiply and round vertices (ids in\nthe class's datapath as `datapaths` wrote it), the integer it rescales and the scale.",
+      "properties": {
+        "convert": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "multiply": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "round": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "scale": {
+          "$ref": "#/$defs/Src"
+        },
+        "types": {
+          "description": "The integer's type at each width tuple.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "x": {
+          "$ref": "#/$defs/Src"
+        }
+      },
+      "required": [
+        "convert",
+        "multiply",
+        "round",
+        "x",
+        "scale",
+        "types"
+      ],
+      "type": "object"
+    },
+    "RequantStatus": {
+      "oneOf": [
+        {
+          "const": "fixed",
+          "description": "Rewritten: every site is a `rescale` vertex in the units.",
+          "type": "string"
+        },
+        {
+          "const": "kept",
+          "description": "Left as the fp32 chain.",
+          "type": "string"
+        }
+      ]
+    },
+    "Src": {
+      "description": "A value a vertex reads.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Result `res` of vertex `v`.",
+          "properties": {
+            "vertex": {
+              "properties": {
+                "res": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "v": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "v",
+                "res"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "vertex"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "An input (by name).",
+          "properties": {
+            "input": {
+              "properties": {
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "input"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The current value of accumulator `index` (the combiner's left operand).",
+          "properties": {
+            "acc": {
+              "properties": {
+                "index": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "index"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "acc"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The final value of core result `index` (what the epilogue reads).",
+          "properties": {
+            "result": {
+              "properties": {
+                "index": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "index"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "result"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`requant.json` (`fixed` only).",
+  "properties": {
+    "classes": {
+      "items": {
+        "$ref": "#/$defs/RequantClass"
+      },
+      "type": "array"
+    },
+    "lemmas": {
+      "items": {
+        "$ref": "#/$defs/RequantLemma"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "lemmas",
+    "classes"
+  ],
+  "title": "RequantFile",
+  "type": "object"
+}

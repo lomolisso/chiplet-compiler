@@ -461,9 +461,9 @@ Requantization (int32 accumulator → next tensor's storage type) is a kernel cl
 | Variant | Arithmetic | Exactness |
 |---|---|---|
 | `fp32` | fp32 scale multiply, as deployed by the ports (TensorRT / XNNPACK) | Bit-exact vs the ports' semantics under the order contract |
-| `fixed` | int multiplier + rounding shift (gemmlowp / TFLite style; 64-bit intermediate) | Checked within a tolerance vs `fp32`; never claimed bit-exact |
+| `fixed` | int multiplier + rounding shift (gemmlowp / TFLite style): one `rescale` block, exact `x · M` of the integer and the scale's 24-bit significand, `(P + 2^(k−1)) >> k`, saturated, back to f32 | Proven within 1 of `fp32` below 2^22 and saturating alike above; never claimed bit-exact |
 
-The variant per model follows its recipe by default (`passes.merge.requant_variant = "recipe" | "fp32" | "fixed"`).
+The variant per model follows its recipe by default (`passes.merge.requant_variant = "recipe" | "fp32" | "fixed"`); every recipe rescales in fp32, so `fixed` is a configuration choice. `fixed` reads the multiplier and the shift off the f32 scale's bits in hardware (the scale input stays as the models give it), rounds half up, and replaces only `convert → × scale → round`: the zero point and the clip after it are unchanged. Its tolerance lemma (one per integer type, docs/passes/merge.md §4.11) takes the fp32 side as IEEE 754 defines it (each rounding within half an ulp), not as the solver's f32 multiply: relating that multiplier to the integer one is beyond bit-blasting. A class whose lemma is not proven keeps fp32.
 
 ### 6.4 Float formats
 
@@ -617,3 +617,6 @@ build/         (ignored) build/.<pass>/ artifacts
 | A cycle of the rebuilt unit becomes a no-good and the clique is solved again | Only the pairwise order constraint | Longer cycles pass every pairwise check |
 | Array units: dims as parameters, one element type per array, wider integer operands composed (pieces, one pass each) | One array per class; fixed dims | Extents are symbolic; the TPU and Bit Fusion schemes |
 | Composed array steps proven by Z3 with a lemma-length limit | Both solvers with the query limit | A multiplier against its pieces is hard for bit-blasting (Bitwuzla over 100 s on 16×8) |
+| `fixed` requantization is one fused `rescale` primitive (32×24 multiply, rounding shift, saturation, convert) | Generic shift ops and 64-bit integers in the op table and the library | The fused design has minimal widths and lets synthesis optimize across its parts; generic ops put the product in a 64-bit multiplier, and every op would gain 64-bit rows, dividers included, that the equivalence checker cannot prove; no other kernel uses shifts |
+| The `rescale` multiplier and shift come from the f32 scale's bits, in hardware | Integer multiplier and shift as inputs, computed offline | No offline step outside the graph; decoding is wiring and a small subtract |
+| The `fixed` tolerance lemma is per integer type, on the rescaled value, with the fp32 product bounded by IEEE 754's rounding error and the product a free variable | A lemma per class on its outputs, against the solver's f32 multiply | The f32 operations after the round can turn a difference of 1 into 2 at an int8 output (a non-integer zero point), so the per-class claim is false; and an f32 multiplier against an integer one ran past 10 minutes at 8 bits, while the bounded form is proven in under a minute at 32 bits |

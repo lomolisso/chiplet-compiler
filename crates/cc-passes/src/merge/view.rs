@@ -27,6 +27,13 @@ pub fn view(
         cov.covered,
         cov.total
     );
+    if s.requant_variant == "fixed" {
+        let _ = writeln!(
+            o,
+            "Fixed requantization: {} classes rescale with `rescale` units, {} keep fp32 (a tolerance lemma not proven; `requant.json`).\n",
+            s.requant_fixed, s.requant_kept
+        );
+    }
     let _ = writeln!(o, "## Families\n");
     let _ = writeln!(
         o,

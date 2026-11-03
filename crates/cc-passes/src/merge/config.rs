@@ -5,8 +5,11 @@ use serde::Deserialize;
 #[serde(deny_unknown_fields, default)]
 pub struct MergeConfig {
     /// Requantization hardware (design §6.3): `recipe` follows each model's recipe (every recipe
-    /// declares fp32 rescaling today), `fp32`, or `fixed`.
+    /// declares fp32 rescaling today), `fp32`, or `fixed` (rescaling chains become `rescale` vertices
+    /// where its tolerance lemma is proven).
     pub requant_variant: RequantVariant,
+    /// Limit of one `rescale` tolerance lemma.
+    pub requant_timeout_s: u64,
     /// Stop agglomerating a family at this many units (0: stop when no merge saves area).
     pub target_units: usize,
     /// Critical-path bound of a merged unit in ps (0: per family, the deepest single-class datapath
@@ -91,6 +94,7 @@ impl Default for MergeConfig {
     fn default() -> Self {
         Self {
             requant_variant: RequantVariant::Recipe,
+            requant_timeout_s: 1800,
             target_units: 0,
             max_logic_depth: 0.0,
             kit: "asap7".into(),
@@ -117,8 +121,8 @@ impl Default for CliqueConfig {
 
 impl MergeConfig {
     pub fn check(&self) -> Result<(), String> {
-        if self.requant_variant == RequantVariant::Fixed {
-            return Err("requant_variant = \"fixed\" is not implemented yet (\"recipe\" or \"fp32\")".into());
+        if self.requant_timeout_s == 0 {
+            return Err("requant_timeout_s must be positive".into());
         }
         if !(self.max_logic_depth >= 0.0 && self.max_logic_depth.is_finite()) {
             return Err(format!(

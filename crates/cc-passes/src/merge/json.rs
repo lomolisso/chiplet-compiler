@@ -18,6 +18,7 @@ use std::collections::BTreeMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::datapaths::json::Src;
 use crate::mine::json::Family;
 
 pub const FU_SCHEMA: &str = "cc.merge.fu/1";
@@ -27,6 +28,7 @@ pub const TRACE_SCHEMA: &str = "cc.merge.trace/1";
 pub const CLIQUE_SCHEMA: &str = "cc.merge.clique/1";
 pub const COVERAGE_SCHEMA: &str = "cc.merge.coverage/1";
 pub const SUMMARY_SCHEMA: &str = "cc.merge.summary/1";
+pub const REQUANT_SCHEMA: &str = "cc.merge.requant/1";
 
 /// What a block is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
@@ -362,6 +364,60 @@ pub struct Summary {
     pub estimated_blocks: u64,
     pub classes: u64,
     pub covered: u64,
+    /// `fixed` only: classes whose rescaling chains became `rescale` vertices, and those that kept
+    /// fp32 (a tolerance lemma not proven).
+    pub requant_fixed: u64,
+    pub requant_kept: u64,
+}
+
+/// One rescaling chain of a class (`requant.json`): its convert, multiply and round vertices (ids in
+/// the class's datapath as `datapaths` wrote it), the integer it rescales and the scale.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct RequantSite {
+    pub convert: u32,
+    pub multiply: u32,
+    pub round: u32,
+    pub x: Src,
+    pub scale: Src,
+    /// The integer's type at each width tuple.
+    pub types: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum RequantStatus {
+    /// Rewritten: every site is a `rescale` vertex in the units.
+    Fixed,
+    /// Left as the fp32 chain.
+    Kept,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct RequantClass {
+    pub class: String,
+    pub sites: Vec<RequantSite>,
+    pub status: RequantStatus,
+    /// Why a class kept fp32 (the lemma that was not proven and its answer).
+    pub reason: Option<String>,
+}
+
+/// A tolerance lemma (`proofs/lemmas/rescale_<type>.smt2`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct RequantLemma {
+    /// The integer type it covers.
+    #[serde(rename = "type")]
+    pub ty: String,
+    pub file: String,
+    pub proven: bool,
+}
+
+/// `requant.json` (`fixed` only).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RequantFile {
+    pub schema: String,
+    pub lemmas: Vec<RequantLemma>,
+    pub classes: Vec<RequantClass>,
 }
 
 pub fn schemas() -> Vec<(&'static str, serde_json::Value)> {
@@ -376,5 +432,6 @@ pub fn schemas() -> Vec<(&'static str, serde_json::Value)> {
         ("merge_clique.schema.json", s::<CliqueCert>()),
         ("merge_coverage.schema.json", s::<CoverageFile>()),
         ("merge_summary.schema.json", s::<Summary>()),
+        ("merge_requant.schema.json", s::<RequantFile>()),
     ]
 }

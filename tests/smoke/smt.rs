@@ -284,6 +284,37 @@ fn cases() -> (Queries, Queries) {
             (ops::convert(c, a, TF8).unwrap(), w)
         }),
     ];
+    // `rescale` (the fixed-point requantization primitive) against its integer reference: scales with
+    // a right shift, a tie, a left shift, saturation, zero, a subnormal, infinity, every width.
+    for (i, &(x, s, w)) in [
+        (5i64, 0.5f32, 32u32),
+        (-5, 0.5, 32),
+        (-7, -0.5, 32),
+        (100, 0.75, 32),
+        (i64::from(i32::MAX), 2f32.powi(-40), 32),
+        (i64::from(i32::MIN), 0.001, 32),
+        (1, 2f32.powi(23), 32),
+        (3, 2f32.powi(31), 32),
+        (-3, 2f32.powi(30), 32),
+        (0, f32::INFINITY, 32),
+        (7, f32::from_bits(1), 32),
+        (-128, 0.0123, 8),
+        (12345, 0.5, 16),
+    ]
+    .iter()
+    .enumerate()
+    {
+        unsat.push(differs(&format!("rescale_{i}"), |c| {
+            let ty = Ty::Int { signed: true, w };
+            let a = int(c, ty, i128::from(x));
+            let sv = f32v(c, s);
+            let want = Val::new(
+                TF32,
+                float::lit(c, F32, u128::from(ops::rescale_reference(x, s.to_bits()))).unwrap(),
+            );
+            (ap(c, "rescale", &none, &[a, sv], TF32), want)
+        }));
+    }
     // The whole E4M3FN decoding table against the independent formula.
     unsat.push(bool_query("e4m3fn_decode_table", |c| {
         let mut eqs = Vec::new();
@@ -371,6 +402,52 @@ fn op_semantics_match_the_spec_cases() {
                 "{solver:?} {f}: {:?}",
                 b.verdicts.get(f)
             );
+        }
+    }
+}
+
+/// `merge`'s `rescale` tolerance lemma at i8 holds, and its negative controls (a tolerance of 0; a
+/// decode off by one place) have counterexamples: the hypotheses are satisfiable, the claims not vacuous.
+#[test]
+fn rescale_lemma_holds_and_its_controls_fail() {
+    use cc_passes::merge::requant::{lemma, lemma_control};
+    let env = Env::new();
+    let cfg: toml::Value =
+        toml::from_str(&std::fs::read_to_string(repo_root().join("config.toml")).unwrap()).unwrap();
+    let tag = cfg["tools"]["docker"]["tag"].as_str().unwrap().to_string();
+    let lc = env.config("[models]\nkeys = []\n", &[&format!("tools.docker.tag={tag}")]);
+    let dir = env.root().join("rescale");
+    std::fs::create_dir_all(&dir).unwrap();
+    let i8t = Ty::Int { signed: true, w: 8 };
+    let qs = [
+        ("holds.smt2", lemma(i8t).unwrap().1, true),
+        ("tolerance0.smt2", lemma_control(i8t, 0.0, 0).unwrap().1, false),
+        ("decode.smt2", lemma_control(i8t, 1.0, 1).unwrap().1, false),
+    ];
+    for (f, t, _) in &qs {
+        std::fs::write(dir.join(f), t).unwrap();
+    }
+    let runner = BoundRunner::new(
+        Runners::from_config(&lc).docker,
+        Caps {
+            memory_gb: 4.0,
+            cpus: 1.0,
+            timeout_s: 600.0,
+            pids_limit: 64,
+        },
+        ToolLog::new("rescale-lemma", dir.join("logs")),
+        CancelToken::new(),
+    );
+    let files: Vec<String> = qs.iter().map(|q| q.0.to_string()).collect();
+    for solver in Solver::ALL {
+        let b = cc_smt::run_batch(&runner, &Location::Image, solver, &dir, &files, 300).unwrap();
+        for (f, _, holds) in &qs {
+            let v = b.verdicts.get(*f);
+            if *holds {
+                assert_eq!(v, Some(&Verdict::Unsat), "{solver:?} {f}");
+            } else {
+                assert!(matches!(v, Some(Verdict::Sat { .. })), "{solver:?} {f}: {v:?}");
+            }
         }
     }
 }

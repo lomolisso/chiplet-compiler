@@ -92,7 +92,7 @@ impl Lib {
                 reg_widths.push(w);
                 continue;
             }
-            if k.starts_with("accumulator.") || k.starts_with("split@") {
+            if k.starts_with("accumulator.") || k.starts_with("split@") || k.starts_with("rescale@") {
                 continue;
             }
             if let Some((_, ty)) = k.split_once('@') {
@@ -249,6 +249,9 @@ impl Lib {
                     "select" if rt == "i1" => self.key("mux2@w1", "i1", &mut p),
                     "select" => self.key(&format!("select@{rt}"), rt, &mut p),
                     "is_finite" => self.key(&format!("is_finite@{a0}"), a0, &mut p),
+                    // Keyed by its integer operand; priced as the largest operator of the result
+                    // type when the library predates it.
+                    "rescale" => self.key(&format!("rescale@{a0}"), rt, &mut p),
                     _ if rt == "i1" && !a0.is_empty() && a0 != "i1" => {
                         self.key(&format!("{op}@{a0}"), a0, &mut p)
                     }
