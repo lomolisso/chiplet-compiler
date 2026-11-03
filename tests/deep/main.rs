@@ -12,6 +12,7 @@ mod import;
 mod iteration_space;
 mod kernel_classes;
 mod kernels;
+mod merge;
 mod mine;
 mod normalize;
 
