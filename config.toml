@@ -258,7 +258,10 @@ memory_gb = 8                     # one GraMi container at a time per 8 GB
 timeout_min = 120
 
 [passes.merge]                    # functional units: datapath merging (compatibility graph + max-weight clique), arrays
-requant_variant = "recipe"       # "recipe" | "fp32" ("fixed" is not implemented yet; every recipe rescales in fp32)
+requant_variant = "recipe"       # "recipe" | "fp32" | "fixed": "fixed" turns every rescaling chain (convert to f32,
+                                 # times a scale, round) into one integer `rescale` block where its tolerance lemma
+                                 # holds; every recipe rescales in fp32, so "recipe" is "fp32"
+requant_timeout_s = 1800         # limit of one `rescale` tolerance lemma
 target_units = 0                 # stop a family at this many units; 0 = stop when no merge saves area
 max_logic_depth = 0              # critical-path bound in ps; 0 = per family, the deepest single unit rounded up to
                                  # whole clock periods of `kit` (merging adds no pipeline stage)

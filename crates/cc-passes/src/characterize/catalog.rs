@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use super::config::CharacterizeConfig;
 
 /// Bump when a generator's output changes (enters the cache key through `catalog.json`).
-pub const CATALOG_VERSION: u32 = 2;
+pub const CATALOG_VERSION: u32 = 3;
 
 /// Why a primitive has no RTL yet.
 pub const PENDING_SOFTFLOAT: &str = "softfloat: no apfloat function for this op";
@@ -34,6 +34,9 @@ pub enum Kind {
     Accumulator,
     /// A wrapping w-bit multiply composed of n-bit unsigned piece multipliers and a shift-add tree.
     Split,
+    /// The fixed-point requantization primitive (`cc_smt::ops::rescale`): an integer times an f32 scale
+    /// by an exact integer multiply and a rounding shift, back to f32.
+    Rescale,
 }
 
 /// The RTL of a primitive.
@@ -51,7 +54,8 @@ pub enum Source {
 #[serde(deny_unknown_fields)]
 pub struct Primitive {
     /// Stable key: `<op>[.<variant>]@<type>[><type>]`, e.g. `add@i32`, `compare.LT@ui8`,
-    /// `convert@f32>bf16`, `mux4@w8`, `register@w8`, `accumulator.add@i32`, `split@w32n8`.
+    /// `convert@f32>bf16`, `mux4@w8`, `register@w8`, `accumulator.add@i32`, `split@w32n8`,
+    /// `rescale@i32`.
     pub key: String,
     /// The Verilog module and file stem.
     pub id: String,
@@ -263,6 +267,17 @@ pub fn catalog(cfg: &CharacterizeConfig) -> Result<Vec<Primitive>, String> {
             return Err(format!("split_multipliers: ({w}, {n}) needs 0 < n < w"));
         }
         out.push(split(w, n));
+    }
+    // After every other primitive, so that adding them keeps the earlier job batches.
+    let conv = "convert_i32_f32";
+    if out.iter().any(|p| p.id == conv && p.pending.is_none()) {
+        for &t in &tys {
+            if let Ty::Int { signed: true, w } = t.0
+                && w <= cc_smt::ops::RESCALE_MAX_BITS
+            {
+                out.push(rescale(w, t, conv));
+            }
+        }
     }
     let mut seen = BTreeSet::new();
     for p in &out {
@@ -657,6 +672,78 @@ fn split(w: u32, n: u32) -> Primitive {
         provisional: false,
         pending: None,
         deps: Vec::new(),
+        clocked: false,
+        source: Some(Source::Verilog(v)),
+    }
+}
+
+/// `rescale@i<n>` (`cc_smt::ops::rescale`, docs/passes/characterize.md §4.1): `rescale_core_i<n>` decodes
+/// the f32 scale `b` (significand `M`, shift `k = 150 - max(e, 1)`), forms the exact product `a · M` in
+/// `n + 25` bits, shifts it right with rounding half up (at most `n + 24` places) or left (at most 7
+/// places, saturating beyond) and saturates to i32; `rescale_i<n>` converts that to f32 with the
+/// characterized `convert@i32>f32` design.
+fn rescale(n: u32, t: T, conv: &str) -> Primitive {
+    let id = format!("rescale_i{n}");
+    let w = n + 25;
+    let w2 = n + 33;
+    let v = format!(
+        "module rescale_core_i{n}(input wire [{nh}:0] a, input wire [31:0] b, output wire [31:0] q);
+  wire sgn = b[31];
+  wire [7:0] e = b[30:23];
+  wire ez = (e == 8'd0);
+  wire [23:0] mant = {{~ez, b[22:0]}};
+  wire signed [9:0] k = 10'sd150 - $signed({{2'b00, (ez ? 8'd1 : e)}});
+  wire signed [{wh}:0] xw = {{{{{xe}{{a[{nh}]}}}}, a}};
+  wire signed [{wh}:0] mw = {{{{{me}{{1'b0}}}}, mant}};
+  wire signed [{wh}:0] p0 = xw * mw;
+  wire signed [{wh}:0] p = sgn ? -p0 : p0;
+  wire right = k > 10'sd0;
+  wire signed [9:0] kk = (k > 10'sd{cap}) ? 10'sd{cap} : k;
+  wire signed [{wh}:0] one = {{{{{oe}{{1'b0}}}}, 1'b1}};
+  wire signed [{wh}:0] half = one << (kk - 10'sd1);
+  wire signed [{wh}:0] sum = p + half;
+  wire signed [{wh}:0] qr = sum >>> kk;
+  wire [9:0] l = -k;
+  wire near = l <= 10'd7;
+  wire signed [{w2h}:0] p2 = {{{{8{{p[{wh}]}}}}, p}};
+  wire signed [{w2h}:0] shifted = p2 <<< l[2:0];
+  wire signed [{w2h}:0] bigp = {{{{{be}{{1'b0}}}}, 1'b1, 32'b0}};
+  wire signed [{w2h}:0] big = (p == 0) ? {{{w2}{{1'b0}}}} : (p[{wh}] ? -bigp : bigp);
+  wire signed [{w2h}:0] qr2 = {{{{8{{qr[{wh}]}}}}, qr}};
+  wire signed [{w2h}:0] qq = right ? qr2 : (near ? shifted : big);
+  wire signed [{w2h}:0] maxv = {{{{{se}{{1'b0}}}}, 1'b0, {{31{{1'b1}}}}}};
+  wire signed [{w2h}:0] minv = {{{{{se}{{1'b1}}}}, 1'b1, {{31{{1'b0}}}}}};
+  assign q = (qq > maxv) ? 32'h7fffffff : ((qq < minv) ? 32'h80000000 : qq[31:0]);
+endmodule
+
+module {id}(input wire [{nh}:0] a, input wire [31:0] b, output wire [31:0] out);
+  wire [31:0] q;
+  rescale_core_i{n} u_core(.a(a), .b(b), .q(q));
+  {conv} u_conv(.a(q), .out(out));
+endmodule
+",
+        nh = n - 1,
+        wh = w - 1,
+        w2h = w2 - 1,
+        xe = w - n,
+        me = w - 24,
+        oe = w - 1,
+        cap = n + 24,
+        be = w2 - 33,
+        se = w2 - 32,
+    );
+    Primitive {
+        key: format!("rescale@{}", t.name()),
+        id,
+        kind: Kind::Rescale,
+        op: "rescale".into(),
+        variant: None,
+        family: "sint".into(),
+        types: vec![t.name(), "f32".into()],
+        width: n,
+        provisional: true,
+        pending: None,
+        deps: vec![conv.to_string()],
         clocked: false,
         source: Some(Source::Verilog(v)),
     }

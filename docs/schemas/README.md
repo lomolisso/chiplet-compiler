@@ -57,6 +57,7 @@ JSON Schemas (draft 2020-12, generated with `schemars` from the Rust types) of e
 | `merge_clique.schema.json` | `cc_passes::merge::json::CliqueCert` | `build/.merge/out/merge/cliques/<family>/<step>.json` |
 | `merge_coverage.schema.json` | `cc_passes::merge::json::CoverageFile` | `build/.merge/out/merge/coverage.json` |
 | `merge_summary.schema.json` | `cc_passes::merge::json::Summary` | `build/.merge/out/merge/summary.json` |
+| `merge_requant.schema.json` | `cc_passes::merge::json::RequantFile` | `build/.merge/out/merge/requant.json` |
 | `characterize_catalog.schema.json` | `Vec<cc_passes::characterize::catalog::Primitive>` | `build/.characterize/out/library/catalog.json` |
 | `characterize_coverage.schema.json` | `cc_passes::characterize::json::Coverage` | `build/.characterize/out/library/coverage.json` |
 | `characterize_library.schema.json` | `cc_passes::characterize::json::Library` | `build/.characterize/out/library/library.json` |

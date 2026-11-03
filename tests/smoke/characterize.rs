@@ -542,9 +542,17 @@ fn catalog_is_deterministic_and_complete_over_the_op_table() {
         "accumulator.add@i32",
         "accumulator.add@f32",
         "split@w32n8",
+        "rescale@i32",
+        "rescale@i8",
     ] {
         assert!(keys.contains(k), "{k}");
     }
+    // The rescale primitives come last (earlier job batches stay as they are) and reuse the
+    // characterized i32 -> f32 conversion.
+    let first = a.iter().position(|p| p.op == "rescale").unwrap();
+    assert!(a[first..].iter().all(|p| p.op == "rescale"));
+    let r = a.iter().find(|p| p.key == "rescale@i32").unwrap();
+    assert_eq!(r.deps, vec!["convert_i32_f32".to_string()]);
     let pending: Vec<&str> = a
         .iter()
         .filter(|p| p.pending.is_some())

@@ -7,6 +7,7 @@ pub mod algo;
 pub mod config;
 pub mod json;
 pub mod proofs;
+pub mod requant;
 mod verify;
 mod view;
 
@@ -86,7 +87,12 @@ impl Pass for Merge {
         let cfg: MergeConfig = ctx.options()?;
         let ctx: &PassContext = ctx;
         let fail = PassError::failed;
-        let inputs = load(ctx, &cfg)?;
+        let mut requant_file: Option<RequantFile> = None;
+        let inputs = load(ctx, &cfg, &mut |dps| {
+            let (set, file) = decide_requant(ctx, &cfg, dps)?;
+            requant_file = file;
+            Ok(set)
+        })?;
         let lib = Lib::new(&inputs.library, &cfg.kit).map_err(fail)?;
         let cx = AggCtx {
             units: &inputs.units,
@@ -130,7 +136,7 @@ impl Pass for Merge {
         let mut summary = Summary {
             schema: SUMMARY_SCHEMA.into(),
             kit: cfg.kit.clone(),
-            requant_variant: "fp32".into(),
+            requant_variant: if requant_file.is_some() { "fixed" } else { "fp32" }.into(),
             algorithm: cfg.clique.algorithm.name().into(),
             families: BTreeMap::new(),
             fus: 0,
@@ -144,7 +150,18 @@ impl Pass for Merge {
             estimated_blocks: 0,
             classes: inputs.datapaths.len() as u64,
             covered: 0,
+            requant_fixed: 0,
+            requant_kept: 0,
         };
+        if let Some(r) = &requant_file {
+            for c in &r.classes {
+                match c.status {
+                    RequantStatus::Fixed => summary.requant_fixed += 1,
+                    RequantStatus::Kept => summary.requant_kept += 1,
+                }
+            }
+            ctx.output(MERGE)?.write_json("requant.json", r)?;
+        }
         for (f, ag) in &fams_out {
             let mut order: Vec<usize> = (0..ag.fus.len()).collect();
             let first = |i: usize| {
@@ -369,6 +386,137 @@ impl Pass for Merge {
     }
 }
 
+/// The `fixed` decision (docs/passes/merge.md §4.11): the rescaling chains of every class, one tolerance
+/// lemma per integer type they rescale (solved here, `requant_timeout_s`), and the classes whose every
+/// chain has a proven lemma. `None` for the other variants.
+fn decide_requant(
+    ctx: &PassContext,
+    cfg: &MergeConfig,
+    dps: &[Datapath],
+) -> Result<(BTreeSet<String>, Option<RequantFile>), PassError> {
+    let fail = PassError::failed;
+    if cfg.requant_variant != config::RequantVariant::Fixed {
+        return Ok((BTreeSet::new(), None));
+    }
+    let found: Vec<(String, Vec<RequantSite>)> = dps
+        .par_iter()
+        .map(|dp| {
+            let sites: Vec<RequantSite> = requant::sites(dp)
+                .into_iter()
+                .map(|x| RequantSite {
+                    types: requant::site_types(dp, &x),
+                    convert: x.convert,
+                    multiply: x.multiply,
+                    round: x.round,
+                    x: x.x,
+                    scale: x.scale,
+                })
+                .collect();
+            (dp.id.clone(), sites)
+        })
+        .filter(|(_, s)| !s.is_empty())
+        .collect();
+    let types: BTreeSet<String> = found
+        .iter()
+        .flat_map(|(_, s)| s.iter().flat_map(|x| x.types.iter().cloned()))
+        .collect();
+    let out = ctx.output(MERGE)?;
+    let mut files = Vec::new();
+    let mut lemma_of = BTreeMap::new();
+    for t in &types {
+        let ty = proofs::ty(t).map_err(fail)?;
+        let (f, text) = requant::lemma(ty).map_err(fail)?;
+        write_file(&out.path(&format!("proofs/{f}"))?, &text)?;
+        lemma_of.insert(t.clone(), f.clone());
+        files.push((f, text));
+    }
+    let (solver, runner, location) = crate::normalize::smt(ctx)?;
+    let cache = cc_smt::Cache::new(ctx.dir().path().join("cache"));
+    let answers = crate::datapaths::solve(
+        &runner,
+        &location,
+        solver,
+        &out.path("proofs")?,
+        &files,
+        cfg.requant_timeout_s,
+        ctx.resources().threads.max(1),
+        &cache,
+    )?;
+    let mut lemmas = Vec::new();
+    let mut verdict_of: BTreeMap<String, Verdict> = BTreeMap::new();
+    for (t, f) in &lemma_of {
+        let text = &files
+            .iter()
+            .find(|(g, _)| g == f)
+            .map(|x| x.1.clone())
+            .unwrap_or_default();
+        let (version, verdict) = answers.get(f).cloned().unwrap_or((
+            String::new(),
+            Verdict::Error {
+                message: "no answer".into(),
+            },
+        ));
+        out.write_json(
+            &format!("proofs/{}", f.replace(".smt2", ".result")),
+            &ProofResult {
+                schema: RESULT_SCHEMA.into(),
+                file: f.clone(),
+                query_hash: cc_smt::query_hash(text),
+                solver,
+                version,
+                verdict: verdict.clone(),
+                expect: "unsat".into(),
+                allowed: None,
+            },
+        )?;
+        lemmas.push(RequantLemma {
+            ty: t.clone(),
+            file: f.clone(),
+            proven: verdict.is_unsat(),
+        });
+        verdict_of.insert(t.clone(), verdict);
+    }
+    let mut set = BTreeSet::new();
+    let mut classes = Vec::new();
+    for (class, sites) in found {
+        let open: Vec<String> = sites
+            .iter()
+            .flat_map(|x| x.types.iter())
+            .filter(|t| !verdict_of.get(*t).is_some_and(Verdict::is_unsat))
+            .map(|t| {
+                let v = match verdict_of.get(t) {
+                    Some(Verdict::Sat { .. }) => "sat".to_string(),
+                    Some(v) => format!("{v:?}").to_lowercase(),
+                    None => "no answer".into(),
+                };
+                format!("{}: {v}", lemma_of.get(t).cloned().unwrap_or_default())
+            })
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let status = if open.is_empty() {
+            set.insert(class.clone());
+            RequantStatus::Fixed
+        } else {
+            RequantStatus::Kept
+        };
+        classes.push(RequantClass {
+            class,
+            sites,
+            status,
+            reason: (!open.is_empty()).then(|| open.join("; ")),
+        });
+    }
+    Ok((
+        set,
+        Some(RequantFile {
+            schema: REQUANT_SCHEMA.into(),
+            lemmas,
+            classes,
+        }),
+    ))
+}
+
 /// Per pattern (in selection order), the datapath vertices of each chosen occurrence in one unit.
 type Occurrences = Vec<(String, Vec<Vec<u32>>)>;
 
@@ -382,10 +530,26 @@ pub struct Inputs {
     pub library: Library,
 }
 
-pub fn load(ctx: &PassContext, cfg: &MergeConfig) -> Result<Inputs, PassError> {
+/// Decides which classes take the `fixed` requantization (given the datapaths as `datapaths` wrote them).
+pub type Decide<'a> = dyn FnMut(&[Datapath]) -> Result<BTreeSet<String>, PassError> + 'a;
+
+pub fn load(ctx: &PassContext, cfg: &MergeConfig, decide: &mut Decide) -> Result<Inputs, PassError> {
     let fail = PassError::failed;
     let mi = crate::mine::load(ctx)?;
-    let datapaths = mi.datapaths;
+    let fixed = decide(&mi.datapaths)?;
+    // Per rewritten class: the old -> new vertex ids and the rounds that became `rescale`.
+    let mut moved: HashMap<String, (Vec<Option<u32>>, BTreeSet<u32>)> = HashMap::new();
+    let mut datapaths: Vec<Datapath> = Vec::with_capacity(mi.datapaths.len());
+    for dp in mi.datapaths {
+        if !fixed.contains(&dp.id) {
+            datapaths.push(dp);
+            continue;
+        }
+        let sites = requant::sites(&dp);
+        let (new, map) = requant::rewrite(&dp, &sites).map_err(fail)?;
+        moved.insert(dp.id.clone(), (map, sites.iter().map(|x| x.round).collect()));
+        datapaths.push(new);
+    }
     let isp = ctx.input(ITERATION_SPACE)?;
     let routing: Routing = isp.read_json("routing.json")?;
     let embedding: Embedding = isp.read_json("embedding.json")?;
@@ -421,8 +585,34 @@ pub fn load(ctx: &PassContext, cfg: &MergeConfig) -> Result<Inputs, PassError> {
             }
         }
         for u in &mut units {
-            if let Some(o) = occ.get(&u.id) {
-                contract(u, o);
+            let Some(o) = occ.get(&u.id) else { continue };
+            match moved.get(&u.class) {
+                // Occurrences through the renumbering; one that holds a rewritten round or a removed
+                // vertex no longer matches its pattern.
+                Some((map, rounds)) => {
+                    let o: Occurrences = o
+                        .iter()
+                        .map(|(pid, occs)| {
+                            let kept = occs
+                                .iter()
+                                .filter_map(|vs| {
+                                    vs.iter()
+                                        .map(|v| {
+                                            if rounds.contains(v) {
+                                                None
+                                            } else {
+                                                map.get(*v as usize).copied().flatten()
+                                            }
+                                        })
+                                        .collect::<Option<Vec<u32>>>()
+                                })
+                                .collect();
+                            (pid.clone(), kept)
+                        })
+                        .collect();
+                    contract(u, &o);
+                }
+                None => contract(u, o),
             }
         }
     }

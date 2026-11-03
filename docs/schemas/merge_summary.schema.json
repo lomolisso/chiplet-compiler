@@ -127,6 +127,17 @@
       "minimum": 0,
       "type": "integer"
     },
+    "requant_fixed": {
+      "description": "`fixed` only: classes whose rescaling chains became `rescale` vertices, and those that kept\nfp32 (a tolerance lemma not proven).",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "requant_kept": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
     "requant_variant": {
       "type": "string"
     },
@@ -156,7 +167,9 @@
     "not_optimal",
     "estimated_blocks",
     "classes",
-    "covered"
+    "covered",
+    "requant_fixed",
+    "requant_kept"
   ],
   "title": "Summary",
   "type": "object"

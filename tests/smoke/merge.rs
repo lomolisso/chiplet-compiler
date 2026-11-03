@@ -15,7 +15,7 @@ use cc_passes::datapaths::DATAPATHS;
 use cc_passes::eda::parse::{Lec, Measured};
 use cc_passes::iteration_space::ITERATION_SPACE;
 use cc_passes::kernel_classes::KERNEL_CLASSES;
-use cc_passes::merge::json::{ArrayFile, ArrayMode, ConfigFile, FuFile, Summary};
+use cc_passes::merge::json::{ArrayFile, ArrayMode, ConfigFile, FuFile, RequantFile, RequantStatus, Summary};
 use cc_passes::mine::MINE;
 use cc_pipeline::{Pass, PassContext, PassError, Pipeline, RunOptions, RunStatus};
 use serde_json::{Value, json};
@@ -334,6 +334,40 @@ fn template_b(id: &str) -> Value {
     )
 }
 
+/// `out0 = convert_i8(min(max(round(convert_f32(x) · s) + zp, lo), hi))`: a requantization chain with
+/// an integer `x` of type `ty`.
+fn requant(id: &str, ty: &str) -> Value {
+    let m = json!("map");
+    let v = |id: u32, op: &str, fam: &str, w: &str, args: &[(&str, &str)]| {
+        vertex(id, op, fam, w, args, m.clone(), json!({}))
+    };
+    let c = |id: u32, col: &str| vertex(id, "const", "float", col, &[], m.clone(), json!({"column": col}));
+    datapath(
+        id,
+        "datapath",
+        "map",
+        vec![
+            v(0, "convert", "float", "w1", &[("x", "p0")]),
+            v(1, "multiply", "float", "w1", &[("v0", "*"), ("s", "*")]),
+            v(2, "round_nearest_even", "float", "w1", &[("v1", "p0")]),
+            v(3, "add", "float", "w1", &[("v2", "*"), ("zp", "*")]),
+            c(4, "n4.lo"),
+            v(5, "maximum", "float", "w1", &[("v3", "*"), ("v4", "*")]),
+            c(6, "n6.hi"),
+            v(7, "minimum", "float", "w1", &[("v5", "*"), ("v6", "*")]),
+            v(8, "convert", "sint", "w2", &[("v7", "p0")]),
+        ],
+        vec![
+            input("x", "map", "w0"),
+            input("s", "map", "w1"),
+            input("zp", "map", "w1"),
+        ],
+        vec![output("out0", "output", "v8", "w2")],
+        Value::Null,
+        vec![tuple(&[ty, "f32", "i8"], json!({"n4.lo": "f32", "n6.hi": "f32"}))],
+    )
+}
+
 fn skeleton(id: &str) -> Value {
     let op = |name: &str, dir: &str, axes: Value| {
         json!({"name": name, "direction": dir, "core": true, "node": 0, "res": 0, "axes": axes, "elem": 0,
@@ -463,9 +497,11 @@ fn library() -> Library {
     }
 }
 
-/// Writes every input of `merge`.
+/// Writes every input of `merge`; with `requant`, also a requantization class `zr1`.
 #[derive(Debug)]
-struct Inputs;
+struct Inputs {
+    requant: bool,
+}
 
 impl Pass for Inputs {
     fn name(&self) -> &'static str {
@@ -487,7 +523,7 @@ impl Pass for Inputs {
         Ok(())
     }
     fn run(&self, ctx: &mut PassContext) -> Result<(), PassError> {
-        let dps = [
+        let mut dps = vec![
             mac("z01", "i32"),
             mac_self("z02"),
             mac("z03", "i8"),
@@ -497,6 +533,20 @@ impl Pass for Inputs {
             template_a("z07"),
             template_b("z08"),
         ];
+        let mut routes = vec![
+            routed("z01", "datapath", "map", 10),
+            routed("z02", "datapath", "map", 10),
+            routed("z03", "datapath", "map", 10),
+            routed("z04", "datapath", "map", 10),
+            routed("z05", "datapath", "reduce", 10),
+            routed("z06", "datapath", "reduce", 10),
+            routed("z07", "template", "contraction", 1000),
+            routed("z08", "template", "contraction", 10),
+        ];
+        if self.requant {
+            dps.push(requant("zr1", "i8"));
+            routes.push(routed("zr1", "datapath", "map", 10));
+        }
         let d = ctx.output(DATAPATHS)?;
         let k = ctx.output(KERNEL_CLASSES)?;
         let s = ctx.output(ITERATION_SPACE)?;
@@ -511,12 +561,7 @@ impl Pass for Inputs {
         }
         s.write_json(
             "routing.json",
-            &json!({"schema": "cc.iteration_space.routing/1", "classes": [
-                routed("z01", "datapath", "map", 10), routed("z02", "datapath", "map", 10),
-                routed("z03", "datapath", "map", 10), routed("z04", "datapath", "map", 10),
-                routed("z05", "datapath", "reduce", 10), routed("z06", "datapath", "reduce", 10),
-                routed("z07", "template", "contraction", 1000), routed("z08", "template", "contraction", 10)
-            ]}),
+            &json!({"schema": "cc.iteration_space.routing/1", "classes": routes}),
         )?;
         s.write_json(
             "embedding.json",
@@ -580,15 +625,30 @@ fn sets() -> Vec<String> {
 
 struct Setup {
     env: Env,
+    /// The requantization class and `requant_variant = "fixed"` with these extra settings.
+    requant: Option<Vec<String>>,
 }
 
 impl Setup {
     fn pipeline_with(&self, extra: &[&str]) -> Pipeline {
         let mut s = sets();
         s.extend(extra.iter().map(|x| x.to_string()));
+        if let Some(r) = &self.requant {
+            s.push("passes.merge.requant_variant=fixed".into());
+            s.extend(r.iter().cloned());
+        }
         let s: Vec<&str> = s.iter().map(String::as_str).collect();
         let cfg = self.env.config(CONFIG, &s);
-        Pipeline::new(vec![Box::new(Inputs), Box::new(cc_passes::merge::Merge)], cfg).unwrap()
+        Pipeline::new(
+            vec![
+                Box::new(Inputs {
+                    requant: self.requant.is_some(),
+                }),
+                Box::new(cc_passes::merge::Merge),
+            ],
+            cfg,
+        )
+        .unwrap()
     }
 
     fn pipeline(&self) -> Pipeline {
@@ -650,7 +710,10 @@ impl Setup {
 }
 
 fn fresh() -> Setup {
-    let s = Setup { env: Env::new() };
+    let s = Setup {
+        env: Env::new(),
+        requant: None,
+    };
     let st = s.pipeline().run(&RunOptions::default()).unwrap();
     assert_eq!(st.status_of("merge"), Some(RunStatus::Ok), "{st:?}");
     s
@@ -726,7 +789,10 @@ fn merging_is_reproducible() {
 #[test]
 fn every_clique_strategy_verifies() {
     for alg in ["ostergard", "greedy"] {
-        let s = Setup { env: Env::new() };
+        let s = Setup {
+            env: Env::new(),
+            requant: None,
+        };
         let set = format!("passes.merge.clique.algorithm={alg}");
         let st = s.pipeline_with(&[&set]).run(&RunOptions::default()).unwrap();
         assert_eq!(st.status_of("merge"), Some(RunStatus::Ok), "{alg}: {st:?}");
@@ -850,4 +916,93 @@ fn an_edited_trace_and_array_fail() {
         v["covers"][1]["tuples"][0]["pieces"] = json!([8, 8]);
     });
     s.expect("arrays");
+}
+
+fn requant_setup(extra: &[&str]) -> Setup {
+    let s = Setup {
+        env: Env::new(),
+        requant: Some(extra.iter().map(|x| x.to_string()).collect()),
+    };
+    let st = s.pipeline().run(&RunOptions::default()).unwrap();
+    assert_eq!(st.status_of("merge"), Some(RunStatus::Ok), "{st:?}");
+    s
+}
+
+/// The ops of the blocks of the unit that covers `unit`.
+fn ops_of(s: &Setup, unit: &str) -> Vec<String> {
+    let (id, _) = s.config_of(unit);
+    s.fus()[&id].blocks.iter().map(|b| b.op.clone()).collect()
+}
+
+/// `fixed`: the chain becomes one `rescale` block, its lemma and configurations are proven, and verify
+/// catches an edited decision, an edited lemma and an edited lemma result.
+#[test]
+fn fixed_requantization_rewrites_and_verifies() {
+    let s = requant_setup(&[]);
+    assert!(s.failing().is_empty(), "{:?}", s.failing());
+    let sum: Summary = serde_json::from_value(s.value("summary.json")).unwrap();
+    assert_eq!(sum.requant_variant, "fixed");
+    assert_eq!((sum.classes, sum.covered), (9, 9));
+    assert_eq!((sum.requant_fixed, sum.requant_kept), (1, 0));
+    let rq: RequantFile = serde_json::from_value(s.value("requant.json")).unwrap();
+    assert_eq!(rq.lemmas.len(), 1);
+    assert!(rq.lemmas[0].proven && rq.lemmas[0].ty == "i8", "{rq:?}");
+    assert_eq!(rq.classes[0].class, "zr1");
+    assert_eq!(rq.classes[0].status, RequantStatus::Fixed);
+    assert_eq!(
+        (
+            rq.classes[0].sites[0].convert,
+            rq.classes[0].sites[0].multiply,
+            rq.classes[0].sites[0].round
+        ),
+        (0, 1, 2)
+    );
+    let ops = ops_of(&s, "zr1");
+    assert!(ops.iter().any(|o| o == "rescale"), "{ops:?}");
+    assert!(!ops.iter().any(|o| o == "round_nearest_even"), "{ops:?}");
+
+    let restore = |rel: &str| {
+        let p = s.out(rel);
+        let text = std::fs::read_to_string(&p).unwrap();
+        move || std::fs::write(&p, &text).unwrap()
+    };
+    let back = restore("requant.json");
+    s.edit("requant.json", |v| v["classes"][0]["status"] = json!("kept"));
+    s.expect("requant");
+    back();
+    let back = restore("proofs/lemmas/rescale_i8.smt2");
+    let p = s.out("proofs/lemmas/rescale_i8.smt2");
+    let t = std::fs::read_to_string(&p).unwrap();
+    std::fs::write(&p, t.replace("(check-sat)", "(assert true)\n(check-sat)")).unwrap();
+    s.expect("requant");
+    back();
+    let back = restore("proofs/lemmas/rescale_i8.result");
+    s.edit("proofs/lemmas/rescale_i8.result", |v| {
+        v["verdict"] = json!({"sat": {"model": ""}})
+    });
+    s.expect("requant");
+    back();
+}
+
+/// A lemma that is not proven (here: out of time) leaves its classes on fp32; everything verifies.
+#[test]
+fn an_unproven_lemma_keeps_fp32() {
+    let s = requant_setup(&["passes.merge.requant_timeout_s=1"]);
+    let rq: RequantFile = serde_json::from_value(s.value("requant.json")).unwrap();
+    assert!(!rq.lemmas[0].proven, "{rq:?}");
+    assert_eq!(rq.classes[0].status, RequantStatus::Kept);
+    assert!(
+        rq.classes[0]
+            .reason
+            .as_deref()
+            .unwrap_or("")
+            .contains("rescale_i8"),
+        "{rq:?}"
+    );
+    let ops = ops_of(&s, "zr1");
+    assert!(ops.iter().any(|o| o == "round_nearest_even"), "{ops:?}");
+    assert!(!ops.iter().any(|o| o == "rescale"), "{ops:?}");
+    let sum: Summary = serde_json::from_value(s.value("summary.json")).unwrap();
+    assert_eq!((sum.requant_fixed, sum.requant_kept, sum.covered), (0, 1, 9));
+    assert!(s.failing().is_empty(), "{:?}", s.failing());
 }

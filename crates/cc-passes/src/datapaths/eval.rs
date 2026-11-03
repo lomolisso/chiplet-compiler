@@ -14,6 +14,11 @@ type R<X> = Result<X, String>;
 
 /// The datapath's values by name: its outputs, and `next<i>`, `init<i>` of its accumulator.
 pub fn values(c: &mut Ctx, dp: &Datapath, t: &Tuple) -> R<BTreeMap<String, Val>> {
+    values_and_vertices(c, dp, t).map(|(out, _)| out)
+}
+
+/// [`values`], and the value of every vertex (by id).
+pub fn values_and_vertices(c: &mut Ctx, dp: &Datapath, t: &Tuple) -> R<(BTreeMap<String, Val>, Vec<Val>)> {
     let mut vs: Vec<Val> = Vec::with_capacity(dp.vertices.len());
     let res_width = |i: u32| -> R<String> {
         if let Some(a) = &dp.accumulator {
@@ -93,5 +98,41 @@ pub fn values(c: &mut Ctx, dp: &Datapath, t: &Tuple) -> R<BTreeMap<String, Val>>
             out.insert(format!("init{i}"), src(c, &vs, &e.init)?);
         }
     }
-    Ok(out)
+    Ok((out, vs))
+}
+
+/// The value a source reads, given the vertex values (an input, accumulator or core result is its free
+/// variable).
+pub fn source(c: &mut Ctx, dp: &Datapath, t: &Tuple, vs: &[Val], s: &Src) -> R<Val> {
+    match s {
+        Src::Vertex { v, .. } => vs
+            .get(*v as usize)
+            .copied()
+            .ok_or_else(|| format!("vertex {v} is not defined")),
+        Src::Input { name } => {
+            let i = dp
+                .inputs
+                .iter()
+                .find(|x| &x.name == name)
+                .ok_or_else(|| format!("input {name} is not declared"))?;
+            ops::input(c, name, ty_of_width(t, &i.width)?).map_err(|e| e.0)
+        }
+        Src::Acc { index } => {
+            let a = dp.accumulator.as_ref().ok_or("an accumulator read without one")?;
+            let e = a.entries.get(*index as usize).ok_or("accumulator index")?;
+            ops::input(c, &format!("acc{index}"), ty_of_width(t, &e.width)?).map_err(|e| e.0)
+        }
+        Src::Result { index } => {
+            let w = match &dp.accumulator {
+                Some(a) => a.entries.get(*index as usize).map(|e| e.width.clone()),
+                None => dp
+                    .inputs
+                    .iter()
+                    .find(|x| x.name == format!("core_result{index}"))
+                    .map(|x| x.width.clone()),
+            }
+            .ok_or_else(|| format!("result {index}: no width"))?;
+            ops::input(c, &format!("res{index}"), ty_of_width(t, &w)?).map_err(|e| e.0)
+        }
+    }
 }
