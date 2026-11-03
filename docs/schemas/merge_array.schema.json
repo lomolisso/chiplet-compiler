@@ -1,0 +1,194 @@
+{
+  "$defs": {
+    "ArrayCover": {
+      "description": "A template class served by an array.",
+      "properties": {
+        "candidate": {
+          "description": "The class's selected space-time mapping (`templates/<z>.json`).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "class": {
+          "type": "string"
+        },
+        "embedded": {
+          "description": "The class embeds into the host (an `embedding.json` pair), unless it is the host.",
+          "type": "boolean"
+        },
+        "tuples": {
+          "items": {
+            "$ref": "#/$defs/ArrayTuple"
+          },
+          "type": "array"
+        },
+        "workload": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "class",
+        "embedded",
+        "candidate",
+        "tuples",
+        "workload"
+      ],
+      "type": "object"
+    },
+    "ArrayMode": {
+      "description": "How an array serves one width tuple of a class.",
+      "oneOf": [
+        {
+          "enum": [
+            "native"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "widen",
+          "description": "Narrower integer operands, extended.",
+          "type": "string"
+        },
+        {
+          "const": "compose",
+          "description": "A wider integer operand split into pieces the processing element multiplies one per pass.",
+          "type": "string"
+        }
+      ]
+    },
+    "ArrayTuple": {
+      "description": "One width tuple of a covered class on an array.",
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/ArrayMode"
+        },
+        "passes": {
+          "description": "Passes per multiply-accumulate (1 unless composed): the throughput penalty.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "pieces": {
+          "description": "Bits of each piece of the composed operand, low piece first (empty unless composed).",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "split": {
+          "description": "The composed operand (`lhs` or `rhs`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tuple": {
+          "type": "string"
+        },
+        "types": {
+          "description": "Core operand and result types of the class at this tuple.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "tuple",
+        "types",
+        "mode",
+        "passes",
+        "pieces"
+      ],
+      "type": "object"
+    },
+    "Price": {
+      "description": "The price of a block or a multiplexer in the library.",
+      "properties": {
+        "area_um2": {
+          "format": "double",
+          "type": "number"
+        },
+        "delay_ps": {
+          "format": "double",
+          "type": "number"
+        },
+        "estimated": {
+          "description": "Some key has no measured row (a pending primitive, or a size outside the library).",
+          "type": "boolean"
+        },
+        "keys": {
+          "description": "Library keys (several for a complex operator), empty for wiring.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "keys",
+        "area_um2",
+        "delay_ps",
+        "estimated"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`arrays/<A>.json`.",
+  "properties": {
+    "covers": {
+      "items": {
+        "$ref": "#/$defs/ArrayCover"
+      },
+      "type": "array"
+    },
+    "dataflow": {
+      "type": "string"
+    },
+    "dims": {
+      "description": "Array dims as functions of the host's group extents (parameters of the unit).",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "host": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "pe": {
+      "description": "Processing element: lhs, rhs and accumulator types.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "pe_price": {
+      "$ref": "#/$defs/Price",
+      "description": "One processing element: two converts, a multiply, an add and the accumulator register."
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "dataflow",
+    "host",
+    "dims",
+    "pe",
+    "pe_price",
+    "covers"
+  ],
+  "title": "ArrayFile",
+  "type": "object"
+}

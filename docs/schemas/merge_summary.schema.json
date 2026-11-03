@@ -1,0 +1,156 @@
+{
+  "$defs": {
+    "FamilySummary": {
+      "properties": {
+        "area_um2": {
+          "format": "double",
+          "type": "number"
+        },
+        "bound_ps": {
+          "format": "double",
+          "type": "number"
+        },
+        "evaluated": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "fus": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "initial_area_um2": {
+          "format": "double",
+          "type": "number"
+        },
+        "macro_groups": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "steps": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stopped_by": {
+          "type": "string"
+        },
+        "units": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "units",
+        "fus",
+        "initial_area_um2",
+        "area_um2",
+        "steps",
+        "evaluated",
+        "bound_ps",
+        "stopped_by",
+        "macro_groups"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`summary.json`.",
+  "properties": {
+    "algorithm": {
+      "type": "string"
+    },
+    "array_proofs": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "arrays": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "classes": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "cliques": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Steps by the algorithm that answered, and those not proven optimal.",
+      "type": "object"
+    },
+    "configs": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "covered": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "estimated_blocks": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "families": {
+      "additionalProperties": {
+        "$ref": "#/$defs/FamilySummary"
+      },
+      "type": "object"
+    },
+    "fus": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "kit": {
+      "type": "string"
+    },
+    "not_optimal": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "proofs": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "requant_variant": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "kit",
+    "requant_variant",
+    "algorithm",
+    "families",
+    "fus",
+    "arrays",
+    "configs",
+    "proofs",
+    "array_proofs",
+    "cliques",
+    "not_optimal",
+    "estimated_blocks",
+    "classes",
+    "covered"
+  ],
+  "title": "Summary",
+  "type": "object"
+}

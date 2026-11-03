@@ -1,0 +1,317 @@
+{
+  "$defs": {
+    "Block": {
+      "properties": {
+        "attrs": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Semantic attributes (`comparison_direction`, `compare_type`); a literal constant's `value`.",
+          "type": "object"
+        },
+        "group": {
+          "description": "The mined-pattern occurrence this block belongs to (`groups`), and its vertex in the pattern.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "id": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/BlockKind"
+        },
+        "member": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "op": {
+          "description": "The op (without its prefix) for an operator; `const`, `input`, `acc`, `output` otherwise.",
+          "type": "string"
+        },
+        "price": {
+          "$ref": "#/$defs/Price"
+        },
+        "sources": {
+          "description": "Per operand port, its sources (sorted); two or more make a multiplexer.",
+          "items": {
+            "items": {
+              "$ref": "#/$defs/Source"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "types": {
+          "description": "The widest type served at every position: operand types then the result type (an operator), the\nvalue type otherwise.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "op",
+        "attrs",
+        "types",
+        "sources",
+        "price"
+      ],
+      "type": "object"
+    },
+    "BlockKind": {
+      "description": "What a block is.",
+      "oneOf": [
+        {
+          "const": "op",
+          "description": "An element-wise operator.",
+          "type": "string"
+        },
+        {
+          "const": "const",
+          "description": "A constant register (its value is set per configuration) or a literal zero.",
+          "type": "string"
+        },
+        {
+          "const": "input",
+          "description": "An input port (a kernel input, or a template's core result).",
+          "type": "string"
+        },
+        {
+          "const": "acc",
+          "description": "An accumulator register: ports `next` (0) and `init` (1); result 0 is its current value, result 1\nits final value (what follows the reduction reads).",
+          "type": "string"
+        },
+        {
+          "const": "output",
+          "description": "An output port.",
+          "type": "string"
+        }
+      ]
+    },
+    "Covered": {
+      "description": "A unit (a datapath class, or one stage of a template class) and its configurations.",
+      "properties": {
+        "class": {
+          "type": "string"
+        },
+        "tuples": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "unit": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "unit",
+        "class",
+        "tuples"
+      ],
+      "type": "object"
+    },
+    "Family": {
+      "description": "A mining family: datapath classes by skeleton class, and the per-element stages of template classes.",
+      "enum": [
+        "map",
+        "reduce",
+        "contraction",
+        "stage"
+      ],
+      "type": "string"
+    },
+    "Group": {
+      "description": "Blocks that implement one mined pattern (merged only with blocks of the same pattern).",
+      "properties": {
+        "id": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "pattern": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "pattern"
+      ],
+      "type": "object"
+    },
+    "Mux": {
+      "description": "A multiplexer in front of one operand port.",
+      "properties": {
+        "block": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "inputs": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "port": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "price": {
+          "$ref": "#/$defs/Price"
+        },
+        "width": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "block",
+        "port",
+        "inputs",
+        "width",
+        "price"
+      ],
+      "type": "object"
+    },
+    "Price": {
+      "description": "The price of a block or a multiplexer in the library.",
+      "properties": {
+        "area_um2": {
+          "format": "double",
+          "type": "number"
+        },
+        "delay_ps": {
+          "format": "double",
+          "type": "number"
+        },
+        "estimated": {
+          "description": "Some key has no measured row (a pending primitive, or a size outside the library).",
+          "type": "boolean"
+        },
+        "keys": {
+          "description": "Library keys (several for a complex operator), empty for wiring.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "keys",
+        "area_um2",
+        "delay_ps",
+        "estimated"
+      ],
+      "type": "object"
+    },
+    "Source": {
+      "description": "One operand source: result `res` of block `block`.",
+      "properties": {
+        "block": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "res": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "block",
+        "res"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`fus/<F>.json`.",
+  "properties": {
+    "area_um2": {
+      "description": "Blocks plus multiplexers, µm².",
+      "format": "double",
+      "type": "number"
+    },
+    "blocks": {
+      "items": {
+        "$ref": "#/$defs/Block"
+      },
+      "type": "array"
+    },
+    "bound_ps": {
+      "format": "double",
+      "type": "number"
+    },
+    "covers": {
+      "items": {
+        "$ref": "#/$defs/Covered"
+      },
+      "type": "array"
+    },
+    "depth_ps": {
+      "description": "Critical path (operators and multiplexers at the `fast` target), ps.",
+      "format": "double",
+      "type": "number"
+    },
+    "estimated": {
+      "type": "boolean"
+    },
+    "family": {
+      "$ref": "#/$defs/Family"
+    },
+    "groups": {
+      "items": {
+        "$ref": "#/$defs/Group"
+      },
+      "type": "array"
+    },
+    "host": {
+      "description": "The class whose skeleton every covered class embeds into (⊑).",
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "muxes": {
+      "items": {
+        "$ref": "#/$defs/Mux"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "family",
+    "host",
+    "blocks",
+    "groups",
+    "muxes",
+    "covers",
+    "area_um2",
+    "depth_ps",
+    "bound_ps",
+    "estimated"
+  ],
+  "title": "FuFile",
+  "type": "object"
+}

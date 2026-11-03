@@ -96,25 +96,31 @@ fn registry_dag_and_order() {
             "kernel_classes",
             "iteration_space",
             "datapaths",
-            "mine"
+            "mine",
+            "merge"
         ]
     );
     assert_eq!(
         g.to_dot(),
-        "digraph passes {\n  rankdir=LR;\n  node [shape=box];\n  \"characterize\";\n  \"components\";\n  \"datapaths\";\n  \"export\";\n  \"hello_a\";\n  \"hello_b\";\n  \"hello_c\";\n  \"import\";\n  \"iteration_space\";\n  \"kernel_classes\";\n  \"kernels\";\n  \"mine\";\n  \"normalize\";\n  \
+        "digraph passes {\n  rankdir=LR;\n  node [shape=box];\n  \"characterize\";\n  \"components\";\n  \"datapaths\";\n  \"export\";\n  \"hello_a\";\n  \"hello_b\";\n  \"hello_c\";\n  \"import\";\n  \"iteration_space\";\n  \"kernel_classes\";\n  \"kernels\";\n  \"merge\";\n  \"mine\";\n  \"normalize\";\n  \
+         \"characterize\" -> \"merge\" [label=\"library\"];\n  \
          \"components\" -> \"kernel_classes\" [label=\"components\"];\n  \
          \"components\" -> \"normalize\" [label=\"components\"];\n  \
+         \"datapaths\" -> \"merge\" [label=\"datapaths\"];\n  \
          \"datapaths\" -> \"mine\" [label=\"datapaths\"];\n  \"export\" -> \"import\" [label=\"export\"];\n  \
          \"export\" -> \"kernel_classes\" [label=\"export\"];\n  \
          \"hello_a\" -> \"hello_b\" [label=\"hello.a\"];\n  \"import\" -> \"components\" [label=\"import\"];\n  \
          \"iteration_space\" -> \"datapaths\" [label=\"iteration_space\"];\n  \
+         \"iteration_space\" -> \"merge\" [label=\"iteration_space\"];\n  \
          \"iteration_space\" -> \"mine\" [label=\"iteration_space\"];\n  \
          \"kernel_classes\" -> \"datapaths\" [label=\"kernel_classes\"];\n  \
          \"kernel_classes\" -> \"iteration_space\" [label=\"kernel_classes\"];\n  \
+         \"kernel_classes\" -> \"merge\" [label=\"kernel_classes\"];\n  \
          \"kernel_classes\" -> \"mine\" [label=\"kernel_classes\"];\n  \
          \"kernels\" -> \"datapaths\" [label=\"kernels\"];\n  \
          \"kernels\" -> \"iteration_space\" [label=\"kernels\"];\n  \
          \"kernels\" -> \"kernel_classes\" [label=\"kernels\"];\n  \
+         \"mine\" -> \"merge\" [label=\"mine\"];\n  \
          \"normalize\" -> \"kernel_classes\" [label=\"normalize\"];\n  \
          \"normalize\" -> \"kernels\" [label=\"normalize\"];\n}\n"
     );

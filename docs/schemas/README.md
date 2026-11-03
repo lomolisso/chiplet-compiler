@@ -50,6 +50,13 @@ JSON Schemas (draft 2020-12, generated with `schemars` from the Rust types) of e
 | `mine_sweep.schema.json` | `cc_passes::mine::json::Sweep` | `build/.mine/out/mine/sweep/<family>.json` |
 | `mine_overlap.schema.json` | `cc_passes::mine::json::Overlap` | `build/.mine/out/mine/overlap.json` |
 | `mine_summary.schema.json` | `cc_passes::mine::json::Summary` | `build/.mine/out/mine/summary.json` |
+| `merge_fu.schema.json` | `cc_passes::merge::json::FuFile` | `build/.merge/out/merge/fus/<F>.json` |
+| `merge_config.schema.json` | `cc_passes::merge::json::ConfigFile` | `build/.merge/out/merge/configs/<F>/<unit>/<t>.json` |
+| `merge_array.schema.json` | `cc_passes::merge::json::ArrayFile` | `build/.merge/out/merge/arrays/<A>.json` |
+| `merge_trace.schema.json` | `cc_passes::merge::json::Trace` | `build/.merge/out/merge/trace/<family>.json` |
+| `merge_clique.schema.json` | `cc_passes::merge::json::CliqueCert` | `build/.merge/out/merge/cliques/<family>/<step>.json` |
+| `merge_coverage.schema.json` | `cc_passes::merge::json::CoverageFile` | `build/.merge/out/merge/coverage.json` |
+| `merge_summary.schema.json` | `cc_passes::merge::json::Summary` | `build/.merge/out/merge/summary.json` |
 | `characterize_catalog.schema.json` | `Vec<cc_passes::characterize::catalog::Primitive>` | `build/.characterize/out/library/catalog.json` |
 | `characterize_coverage.schema.json` | `cc_passes::characterize::json::Coverage` | `build/.characterize/out/library/coverage.json` |
 | `characterize_library.schema.json` | `cc_passes::characterize::json::Library` | `build/.characterize/out/library/library.json` |
