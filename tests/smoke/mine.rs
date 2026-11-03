@@ -80,19 +80,47 @@ fn chain(id: &str, taps: u32) -> Value {
     let mut v = Vec::new();
     for j in 0..taps {
         let (x, y) = (format!("x{j}"), format!("y{j}"));
-        v.push(vertex(j, "multiply", "sint", &[(&x, "*"), (&y, "*")], m.clone(), json!({})));
+        v.push(vertex(
+            j,
+            "multiply",
+            "sint",
+            &[(&x, "*"), (&y, "*")],
+            m.clone(),
+            json!({}),
+        ));
     }
     let c = taps;
-    v.push(vertex(c, "const", "sint", &[], m.clone(), json!({"column": "n0.value"})));
+    v.push(vertex(
+        c,
+        "const",
+        "sint",
+        &[],
+        m.clone(),
+        json!({"column": "n0.value"}),
+    ));
     let mut prev = "v0".to_string();
     for j in 1..taps {
         let id = taps + j;
         let p = format!("v{j}");
-        v.push(vertex(id, "add", "sint", &[(&prev, "*"), (&p, "*")], m.clone(), json!({})));
+        v.push(vertex(
+            id,
+            "add",
+            "sint",
+            &[(&prev, "*"), (&p, "*")],
+            m.clone(),
+            json!({}),
+        ));
         prev = format!("v{id}");
     }
     let cs = format!("v{c}");
-    v.push(vertex(2 * taps, "add", "sint", &[(&prev, "*"), (&cs, "*")], m.clone(), json!({})));
+    v.push(vertex(
+        2 * taps,
+        "add",
+        "sint",
+        &[(&prev, "*"), (&cs, "*")],
+        m.clone(),
+        json!({}),
+    ));
     datapath(id, "datapath", "map", v)
 }
 
@@ -106,11 +134,39 @@ fn diamond(id: &str) -> Value {
         "datapath",
         "map",
         vec![
-            vertex(0, "multiply", "sint", &[("x", "*"), ("y", "*")], m.clone(), json!({})),
+            vertex(
+                0,
+                "multiply",
+                "sint",
+                &[("x", "*"), ("y", "*")],
+                m.clone(),
+                json!({}),
+            ),
             vertex(1, "negate", "sint", &[("v0", "p0")], m.clone(), json!({})),
-            vertex(2, "add", "sint", &[("v0", "*"), ("v1", "*")], m.clone(), json!({})),
-            vertex(3, "compare", "sint", &[("v2", "p0"), ("z", "p1")], m.clone(), cmp("LT")),
-            vertex(4, "compare", "sint", &[("v2", "p0"), ("z", "p1")], m.clone(), cmp("EQ")),
+            vertex(
+                2,
+                "add",
+                "sint",
+                &[("v0", "*"), ("v1", "*")],
+                m.clone(),
+                json!({}),
+            ),
+            vertex(
+                3,
+                "compare",
+                "sint",
+                &[("v2", "p0"), ("z", "p1")],
+                m.clone(),
+                cmp("LT"),
+            ),
+            vertex(
+                4,
+                "compare",
+                "sint",
+                &[("v2", "p0"), ("z", "p1")],
+                m.clone(),
+                cmp("EQ"),
+            ),
         ],
     )
 }
@@ -123,9 +179,30 @@ fn mac(id: &str) -> Value {
         "datapath",
         "reduce",
         vec![
-            vertex(0, "multiply", "float", &[("lhs", "*"), ("rhs", "*")], c.clone(), json!({})),
-            vertex(1, "add", "float", &[("acc", "*"), ("v0", "*")], c.clone(), json!({})),
-            vertex(2, "convert", "float", &[("v1", "p0")], json!("epilogue"), json!({})),
+            vertex(
+                0,
+                "multiply",
+                "float",
+                &[("lhs", "*"), ("rhs", "*")],
+                c.clone(),
+                json!({}),
+            ),
+            vertex(
+                1,
+                "add",
+                "float",
+                &[("acc", "*"), ("v0", "*")],
+                c.clone(),
+                json!({}),
+            ),
+            vertex(
+                2,
+                "convert",
+                "float",
+                &[("v1", "p0")],
+                json!("epilogue"),
+                json!({}),
+            ),
         ],
     )
 }
@@ -140,10 +217,31 @@ fn template(id: &str) -> Value {
         "contraction",
         vec![
             vertex(0, "convert", "float", &[("in0", "p0")], p0.clone(), json!({})),
-            vertex(1, "multiply", "float", &[("v0", "*"), ("s", "*")], p0.clone(), json!({})),
+            vertex(
+                1,
+                "multiply",
+                "float",
+                &[("v0", "*"), ("s", "*")],
+                p0.clone(),
+                json!({}),
+            ),
             vertex(2, "convert", "float", &[("result", "p0")], e.clone(), json!({})),
-            vertex(3, "add", "float", &[("v2", "*"), ("bias", "*")], e.clone(), json!({})),
-            vertex(4, "maximum", "float", &[("v3", "*"), ("zero", "*")], e.clone(), json!({})),
+            vertex(
+                3,
+                "add",
+                "float",
+                &[("v2", "*"), ("bias", "*")],
+                e.clone(),
+                json!({}),
+            ),
+            vertex(
+                4,
+                "maximum",
+                "float",
+                &[("v3", "*"), ("zero", "*")],
+                e.clone(),
+                json!({}),
+            ),
         ],
     )
 }
@@ -216,7 +314,10 @@ impl Pass for Synthetic {
         for (i, dp) in dps.iter().enumerate() {
             let id = dp["id"].as_str().unwrap();
             d.write_json(&format!("datapaths/{id}.json"), dp)?;
-            k.write_json(&format!("instances/{id}.json"), &instances(id, 100 * (i as u64 + 1)))?;
+            k.write_json(
+                &format!("instances/{id}.json"),
+                &instances(id, 100 * (i as u64 + 1)),
+            )?;
             if dp["route"] == "template" {
                 s.write_json(&format!("skeletons/{id}.json"), &skeleton(id))?;
             }
@@ -255,7 +356,13 @@ impl ToolRunner for FakeGrami {
     fn name(&self) -> &'static str {
         "fake-grami"
     }
-    fn run(&self, inv: &Invocation, _: &Caps, log: &ToolLog, _: &CancelToken) -> cc_core::Result<ToolOutcome> {
+    fn run(
+        &self,
+        inv: &Invocation,
+        _: &Caps,
+        log: &ToolLog,
+        _: &CancelToken,
+    ) -> cc_core::Result<ToolOutcome> {
         match inv.tool.as_str() {
             "java-version" => outcome(inv, log, "", "openjdk version \"17.0.0\" (fake)\n"),
             "grami" => {
@@ -375,12 +482,18 @@ fn mines_and_verifies_synthetic_datapaths() {
     assert_eq!(t.families["contraction"].units, 0);
     // The stage family: prologue 0 reads lhs (axes 0, 2: 4·6 = 24 elements), the epilogue writes
     // result0 (4·5 = 20), each times the trip count 2.
-    let map: Value = serde_json::from_str(&std::fs::read_to_string(s.out("lg/stage.map.json")).unwrap()).unwrap();
+    let map: Value =
+        serde_json::from_str(&std::fs::read_to_string(s.out("lg/stage.map.json")).unwrap()).unwrap();
     let w: Vec<(String, u64)> = map["units"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|u| (u["id"].as_str().unwrap().to_string(), u["workload"].as_u64().unwrap()))
+        .map(|u| {
+            (
+                u["id"].as_str().unwrap().to_string(),
+                u["workload"].as_u64().unwrap(),
+            )
+        })
         .collect();
     assert_eq!(
         w,
@@ -410,12 +523,14 @@ fn mines_and_verifies_synthetic_datapaths() {
     assert!(g.evidence.counts["reread"] > 0, "{g:?}");
     assert!(s.env.build_dir().join(".mine/views/mine.md").is_file());
     // Labels keep the comparison direction; constants are not vertices.
-    let labels: Labels = serde_json::from_str(&std::fs::read_to_string(s.out("labels.json")).unwrap()).unwrap();
+    let labels: Labels =
+        serde_json::from_str(&std::fs::read_to_string(s.out("labels.json")).unwrap()).unwrap();
     assert!(labels.nodes.contains(&"compare@sint[LT,SIGNED]".to_string()));
     assert!(labels.nodes.contains(&"compare@sint[EQ,SIGNED]".to_string()));
     assert!(!labels.nodes.iter().any(|l| l.starts_with("const")));
     // GraMi is bounded to 4 vertices (`maxNodes`); every kept pattern is within it and frequent.
-    let grami: Value = serde_json::from_str(&std::fs::read_to_string(s.out("grami/map.json")).unwrap()).unwrap();
+    let grami: Value =
+        serde_json::from_str(&std::fs::read_to_string(s.out("grami/map.json")).unwrap()).unwrap();
     assert_eq!(grami["dropped"].as_u64(), Some(0), "{grami}");
     for f in ["map", "reduce", "stage"] {
         for (_, p) in s.patterns(f) {
@@ -485,7 +600,11 @@ fn every_mis_strategy_verifies() {
         let st = p.run(&RunOptions::default()).unwrap();
         assert_eq!(st.status_of("mine"), Some(RunStatus::Ok), "{alg}: {st:?}");
         let r = p.verify_pass("mine").unwrap();
-        let bad: Vec<_> = r.checks.iter().filter(|c| c.status == CheckStatus::Fail).collect();
+        let bad: Vec<_> = r
+            .checks
+            .iter()
+            .filter(|c| c.status == CheckStatus::Fail)
+            .collect();
         assert!(bad.is_empty(), "{alg}: {bad:?}");
     }
 }
@@ -542,7 +661,11 @@ fn rematching_equals_brute_force_on_random_graphs() {
             .unwrap();
             let r = rematch(&c.graph, &units, 1 << 30).unwrap();
             assert_eq!(r.mni, m, "seed {seed}: {code}");
-            assert_eq!(r.embeddings as usize, brute::embeddings(&p, &g).len(), "seed {seed}: {code}");
+            assert_eq!(
+                r.embeddings as usize,
+                brute::embeddings(&p, &g).len(),
+                "seed {seed}: {code}"
+            );
         }
     }
 }
@@ -553,7 +676,15 @@ fn brute_force_counts_the_apex_chain() {
     // mul = 0, add = 1; p0..p3 = 0..3, s1, s2, s3, y = 4..7.
     let g = G {
         nodes: vec![0, 0, 0, 0, 1, 1, 1, 1],
-        edges: vec![(0, 4, 0), (1, 4, 0), (4, 5, 0), (2, 5, 0), (5, 6, 0), (3, 6, 0), (6, 7, 0)],
+        edges: vec![
+            (0, 4, 0),
+            (1, 4, 0),
+            (4, 5, 0),
+            (2, 5, 0),
+            (5, 6, 0),
+            (3, 6, 0),
+            (6, 7, 0),
+        ],
     };
     let p = G {
         nodes: vec![0, 1, 1],
@@ -584,7 +715,12 @@ fn a_dependent_mis_fails() {
         .enumerate()
         .find(|(_, m)| m.occurrences.len() > m.chosen.len())
         .unwrap();
-    let extra = m.occurrences.iter().find(|o| !m.chosen.contains(o)).copied().unwrap();
+    let extra = m
+        .occurrences
+        .iter()
+        .find(|o| !m.chosen.contains(o))
+        .copied()
+        .unwrap();
     s.edit(path, |v| {
         let e = &mut v["mis"][ui];
         e["chosen"].as_array_mut().unwrap().push(json!(extra));
@@ -629,7 +765,9 @@ fn an_edited_score_or_selection_fails() {
 fn an_edited_graph_label_sweep_or_summary_fails() {
     let s = fresh();
     let p = s.out("lg/map.lg");
-    let t = std::fs::read_to_string(&p).unwrap().replacen("\nv 0 ", "\nv 0 9", 1);
+    let t = std::fs::read_to_string(&p)
+        .unwrap()
+        .replacen("\nv 0 ", "\nv 0 9", 1);
     std::fs::write(&p, t).unwrap();
     s.expect("map:lg");
 
@@ -650,6 +788,8 @@ fn an_edited_graph_label_sweep_or_summary_fails() {
     s.expect("map:grami");
 
     let s = fresh();
-    s.edit(s.out("summary.json"), |v| v["families"]["map"]["kept"] = json!(12345));
+    s.edit(s.out("summary.json"), |v| {
+        v["families"]["map"]["kept"] = json!(12345)
+    });
     s.expect("summary");
 }

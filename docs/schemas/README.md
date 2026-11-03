@@ -42,6 +42,14 @@ JSON Schemas (draft 2020-12, generated with `schemars` from the Rust types) of e
 | `datapaths_datapath.schema.json` | `cc_passes::datapaths::json::Datapath` | `build/.datapaths/out/datapaths/datapaths/<z>.json` |
 | `datapaths_proof_result.schema.json` | `cc_passes::datapaths::json::ProofResult` | `build/.datapaths/out/datapaths/{proofs/<z>,lemmas}/<file>.result` |
 | `datapaths_summary.schema.json` | `cc_passes::datapaths::json::Summary` | `build/.datapaths/out/datapaths/summary.json` |
+| `mine_labels.schema.json` | `cc_passes::mine::json::Labels` | `build/.mine/out/mine/labels.json` |
+| `mine_lg_map.schema.json` | `cc_passes::mine::json::LgMap` | `build/.mine/out/mine/lg/<family>.map.json` |
+| `mine_grami.schema.json` | `cc_passes::mine::json::GramiFile` | `build/.mine/out/mine/grami/<family>.json` |
+| `mine_pattern.schema.json` | `cc_passes::mine::json::PatternFile` | `build/.mine/out/mine/patterns/<family>/<p>.json` |
+| `mine_selection.schema.json` | `cc_passes::mine::json::Selection` | `build/.mine/out/mine/selection/<family>.json` |
+| `mine_sweep.schema.json` | `cc_passes::mine::json::Sweep` | `build/.mine/out/mine/sweep/<family>.json` |
+| `mine_overlap.schema.json` | `cc_passes::mine::json::Overlap` | `build/.mine/out/mine/overlap.json` |
+| `mine_summary.schema.json` | `cc_passes::mine::json::Summary` | `build/.mine/out/mine/summary.json` |
 | `characterize_catalog.schema.json` | `Vec<cc_passes::characterize::catalog::Primitive>` | `build/.characterize/out/library/catalog.json` |
 | `characterize_coverage.schema.json` | `cc_passes::characterize::json::Coverage` | `build/.characterize/out/library/coverage.json` |
 | `characterize_library.schema.json` | `cc_passes::characterize::json::Library` | `build/.characterize/out/library/library.json` |

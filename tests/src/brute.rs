@@ -63,8 +63,11 @@ pub fn code(p: &G) -> String {
             for (k, &v) in perm.iter().enumerate() {
                 pos[v] = k as u32;
             }
-            let mut e: Vec<(u32, u32, u32)> =
-                p.edges.iter().map(|&(a, b, l)| (pos[a as usize], pos[b as usize], l)).collect();
+            let mut e: Vec<(u32, u32, u32)> = p
+                .edges
+                .iter()
+                .map(|&(a, b, l)| (pos[a as usize], pos[b as usize], l))
+                .collect();
             e.sort_unstable();
             if best.as_ref().is_none_or(|b| e < *b) {
                 *best = Some(e);
@@ -110,8 +113,16 @@ pub fn embeddings(p: &G, g: &G) -> Vec<Vec<u32>> {
             }
             let ok = p.edges.iter().all(|&(a, b, l)| {
                 let (ma, mb) = (
-                    if a == i { Some(h) } else { map.get(a as usize).copied() },
-                    if b == i { Some(h) } else { map.get(b as usize).copied() },
+                    if a == i {
+                        Some(h)
+                    } else {
+                        map.get(a as usize).copied()
+                    },
+                    if b == i {
+                        Some(h)
+                    } else {
+                        map.get(b as usize).copied()
+                    },
                 );
                 match (ma, mb) {
                     (Some(x), Some(y)) if a <= i && b <= i => ge.get(&(x, y)) == Some(&l),
@@ -210,9 +221,13 @@ pub fn output(g: &G, tau: u64, max_vertices: usize) -> String {
 /// A random DAG (edges only forward) with `n` vertices, labels below `labels`, edge labels below
 /// `edge_labels`, each forward pair an edge with probability `num/den`; deterministic in `seed`.
 pub fn random_dag(seed: u64, n: usize, labels: u32, edge_labels: u32, num: u64, den: u64) -> G {
-    let mut x = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    let mut x = seed
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     let mut next = || {
-        x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        x = x
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         x >> 33
     };
     let nodes = (0..n).map(|_| (next() % labels as u64) as u32).collect();

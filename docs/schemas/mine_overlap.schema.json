@@ -1,0 +1,60 @@
+{
+  "$defs": {
+    "Family": {
+      "description": "A mining family: datapath classes by skeleton class, and the per-element stages of template classes.",
+      "enum": [
+        "map",
+        "reduce",
+        "contraction",
+        "stage"
+      ],
+      "type": "string"
+    },
+    "Shared": {
+      "properties": {
+        "families": {
+          "items": {
+            "$ref": "#/$defs/Family"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "selected_in": {
+          "description": "Selected in these families.",
+          "items": {
+            "$ref": "#/$defs/Family"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "families",
+        "selected_in"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`overlap.json`: kept patterns (same canonical code) found in several families.",
+  "properties": {
+    "patterns": {
+      "items": {
+        "$ref": "#/$defs/Shared"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "patterns"
+  ],
+  "title": "Overlap",
+  "type": "object"
+}

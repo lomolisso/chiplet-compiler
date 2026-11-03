@@ -46,7 +46,8 @@ pub fn run(
     }
     std::fs::create_dir_all(&dir).map_err(|e| PassError::failed(format!("{}: {e}", dir.display())))?;
     let _ = std::fs::remove_file(&output);
-    std::fs::write(dir.join("graph.lg"), lg).map_err(|e| PassError::failed(format!("{}: {e}", dir.display())))?;
+    std::fs::write(dir.join("graph.lg"), lg)
+        .map_err(|e| PassError::failed(format!("{}: {e}", dir.display())))?;
     let r = ctx.docker();
     let mem = (heap_gb + 2) as f64;
     if r.caps().memory_gb < mem {

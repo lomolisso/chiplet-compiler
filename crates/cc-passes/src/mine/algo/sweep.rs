@@ -18,8 +18,8 @@ use super::mis;
 use super::rematch::{UnitCtx, rematch};
 use crate::mine::config::MineConfig;
 use crate::mine::json::{
-    Family, GRAMI_SCHEMA, GramiFile, Labels, PATTERN_SCHEMA, PatternEdge, PatternFile, Reported, SELECTION_SCHEMA,
-    SWEEP_SCHEMA, Selected, Selection, Step, Stop, Sweep, UnitMis,
+    Family, GRAMI_SCHEMA, GramiFile, Labels, PATTERN_SCHEMA, PatternEdge, PatternFile, Reported,
+    SELECTION_SCHEMA, SWEEP_SCHEMA, Selected, Selection, Step, Stop, Sweep, UnitMis,
 };
 
 /// One family's results.
@@ -117,7 +117,8 @@ pub fn evaluate(
     for (u, occ) in by_unit {
         let imgs: Vec<&[u32]> = occ.iter().map(|&k| m.at[k as usize].1.as_slice()).collect();
         let g = mis::overlap(&imgs);
-        let r = mis::solve(cfg.mis.algorithm, &g, cfg.mis.node_budget).map_err(|e| format!("{}: {e}", p.id))?;
+        let r =
+            mis::solve(cfg.mis.algorithm, &g, cfg.mis.node_budget).map_err(|e| format!("{}: {e}", p.id))?;
         let size = r.chosen.len() as u64;
         let w = units[u].unit.workload;
         score = score.saturating_add(w.saturating_mul(size as u128));
@@ -285,7 +286,10 @@ pub fn sweep(
         Some((t, c, d, r, s)) => (Some(t), c, d, r, s),
         None => (None, 0, 0, Vec::new(), Vec::new()),
     };
-    let mut patterns: Vec<PatternFile> = reported.iter().filter_map(|r| evaluated.get(&r.id).cloned()).collect();
+    let mut patterns: Vec<PatternFile> = reported
+        .iter()
+        .filter_map(|r| evaluated.get(&r.id).cloned())
+        .collect();
     for p in &mut patterns {
         p.tau = tau.unwrap_or(0);
     }

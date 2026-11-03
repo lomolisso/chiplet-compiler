@@ -31,11 +31,7 @@ fn num(tok: Option<&str>, line: usize, what: &str) -> Result<u32, String> {
 }
 
 /// Parse vertex and edge lines (`v`/`e`) into `g`; `line0` is the number of the first line.
-fn parse_body<'a>(
-    lines: impl Iterator<Item = &'a str>,
-    line0: usize,
-    g: &mut LgGraph,
-) -> Result<(), String> {
+fn parse_body<'a>(lines: impl Iterator<Item = &'a str>, line0: usize, g: &mut LgGraph) -> Result<(), String> {
     let mut edges_started = false;
     for (k, l) in lines.enumerate() {
         let line = line0 + k;

@@ -113,7 +113,7 @@
    (pattern, unit) is small (patterns ≤ `max_vertices`, units of tens of vertices); the MIS components
    are small.
 
-5. **Config** (`[passes.mine]`): `tau_start = 40`, `tau_min = 2`, `max_vertices = 8`, `top_k = 32`,
+5. **Config** (`[passes.mine]`): `tau_start = 40`, `tau_min = 2`, `max_vertices = 6`, `top_k = 32`,
    `budget_s = 3600` (GraMi wall clock per family), `run_timeout_s = 600`, `heap_gb = 6`,
    `vf2_budget = 100000000` (candidate pairs of one re-match; over it the pass fails), `views = true`;
    `[passes.mine.mis]`: `algorithm = "exact_ilp" | "branch_and_bound" | "greedy_min_degree"`,
@@ -154,7 +154,20 @@
    3) and the whole pass on `testing.deep_models` at `full` with a golden digest and a byte-identical
    forced rerun.
 
-7. **Resources.** (Measurements: see below.)
+7. **Resources.** Model set at `full` (25 models, 830 classes; 2026-11-02, iacoma231, debug build, GraMi
+   on one CPU per run). Units and graphs: map 557 units, 2 954 vertices, 2 851 edges; stage, reduce and
+   contraction a few hundred vertices each. No family's selection was stable before `tau_min`, so every
+   sweep ran to τ = 2.
+
+   | `max_vertices` | pass + verify | GraMi (map) | patterns kept (map) | top-32 picks at the bound | peak RSS | outputs |
+   |---|---|---|---|---|---|---|
+   | 5 | 4.6 min | 225 s | 2 932 (2 674) | map 3, contraction 6 | 0.29 GB | 26 MB |
+   | 6 (default) | 12.9 min | 610 s | 7 077 (6 788) | map 2, contraction 5 | 0.31 GB | 58 MB |
+   | 8 | estimated 2 h or more | 13 + 468 + 628 s to τ = 10; τ = 5 over 16 min | 13 855 at τ = 10 | | | |
+
+   The other families take under 4 s per GraMi run at any bound. Without the node bound (upstream
+   GraMi) the map family did not finish τ = 20 in 16 minutes; with `maxLabelAppearance` alone neither.
+   Most selected patterns have 2 to 4 vertices; the contraction family is the one that uses the 6th.
 
 8. **Limitations.**
    - The sweep stops at the first τ whose selection equals the previous one. A pattern whose MNI is

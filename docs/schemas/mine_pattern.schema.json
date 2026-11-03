@@ -1,0 +1,369 @@
+{
+  "$defs": {
+    "EdgeEnd": {
+      "properties": {
+        "port": {
+          "$ref": "#/$defs/PortLabel"
+        },
+        "res": {
+          "description": "Result index of the source.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "res",
+        "port"
+      ],
+      "type": "object"
+    },
+    "Family": {
+      "description": "A mining family: datapath classes by skeleton class, and the per-element stages of template classes.",
+      "enum": [
+        "map",
+        "reduce",
+        "contraction",
+        "stage"
+      ],
+      "type": "string"
+    },
+    "Feed": {
+      "description": "What feeds an operand of an occurrence from outside it.",
+      "oneOf": [
+        {
+          "const": "const",
+          "description": "A folded constant (a configuration register).",
+          "type": "string"
+        },
+        {
+          "const": "input",
+          "description": "A datapath input.",
+          "type": "string"
+        },
+        {
+          "const": "acc",
+          "description": "An accumulator's current value.",
+          "type": "string"
+        },
+        {
+          "const": "result",
+          "description": "A template core's result.",
+          "type": "string"
+        },
+        {
+          "const": "vertex",
+          "description": "A vertex outside the occurrence.",
+          "type": "string"
+        }
+      ]
+    },
+    "OccInput": {
+      "description": "Operand `arg` of pattern vertex `at` comes from outside the occurrence.",
+      "properties": {
+        "arg": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "at": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "feed": {
+          "$ref": "#/$defs/Feed"
+        }
+      },
+      "required": [
+        "at",
+        "arg",
+        "feed"
+      ],
+      "type": "object"
+    },
+    "Occurrence": {
+      "description": "A convex occurrence: pattern vertex `i` is datapath vertex `map[i]` of `unit`.",
+      "properties": {
+        "inputs": {
+          "items": {
+            "$ref": "#/$defs/OccInput"
+          },
+          "type": "array"
+        },
+        "map": {
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "unit": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "unit",
+        "map",
+        "inputs"
+      ],
+      "type": "object"
+    },
+    "PatternEdge": {
+      "description": "One pattern edge: `src -> dst` with the merged ends.",
+      "properties": {
+        "dst": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ends": {
+          "items": {
+            "$ref": "#/$defs/EdgeEnd"
+          },
+          "type": "array"
+        },
+        "src": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "src",
+        "dst",
+        "ends"
+      ],
+      "type": "object"
+    },
+    "PortLabel": {
+      "description": "The destination side of one dataflow edge.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Operand port of the destination.",
+          "properties": {
+            "port": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "port"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "commutative",
+          "description": "An operand of a commutative op: the ports are an unordered multiset.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Region `region`, argument `index` of the source (the owner) feeds the destination (the argument).",
+          "properties": {
+            "region": {
+              "properties": {
+                "index": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "region": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "region",
+                "index"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "region"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The terminator of region `region` of the destination (the owner) yields to it.",
+          "properties": {
+            "yield": {
+              "properties": {
+                "region": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "region"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "yield"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "UnitMis": {
+      "description": "The maximum independent set of one unit's occurrences (vertex overlap).",
+      "properties": {
+        "algorithm": {
+          "type": "string"
+        },
+        "bound": {
+          "description": "An upper bound on the maximum (`size` when optimal).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "chosen": {
+          "description": "The independent set (indices into `occurrences`).",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "occurrences": {
+          "description": "The unit's occurrences (indices into `occurrences`).",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "optimal": {
+          "description": "`size` is the maximum.",
+          "type": "boolean"
+        },
+        "size": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "workload": {
+          "format": "uint128",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "unit",
+        "workload",
+        "occurrences",
+        "algorithm",
+        "chosen",
+        "size",
+        "optimal",
+        "bound"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`patterns/<family>/<id>.json`.",
+  "properties": {
+    "code": {
+      "description": "The canonical code (vertex labels in canonical order, then the sorted edges).",
+      "type": "string"
+    },
+    "edges": {
+      "items": {
+        "$ref": "#/$defs/PatternEdge"
+      },
+      "type": "array"
+    },
+    "embeddings": {
+      "description": "Embeddings (vertex maps) over the family, automorphic ones included.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "family": {
+      "$ref": "#/$defs/Family"
+    },
+    "id": {
+      "description": "`p` + 16 hex digits of the canonical code's hash.",
+      "type": "string"
+    },
+    "labels": {
+      "description": "Node label per pattern vertex, in canonical order.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "mis": {
+      "items": {
+        "$ref": "#/$defs/UnitMis"
+      },
+      "type": "array"
+    },
+    "mni": {
+      "description": "MNI support over the family (min over pattern vertices of the distinct images).",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "non_convex": {
+      "description": "Distinct images that are not convex in their datapath (not stored).",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "occurrences": {
+      "items": {
+        "$ref": "#/$defs/Occurrence"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "score": {
+      "description": "Σ over units of workload × MIS size.",
+      "format": "uint128",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "tau": {
+      "description": "The τ it was mined at.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "family",
+    "code",
+    "labels",
+    "edges",
+    "tau",
+    "mni",
+    "embeddings",
+    "non_convex",
+    "occurrences",
+    "mis",
+    "score"
+  ],
+  "title": "PatternFile",
+  "type": "object"
+}

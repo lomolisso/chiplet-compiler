@@ -9,11 +9,11 @@ use std::collections::{BTreeSet, HashMap};
 
 use cc_ir::absgraph::{EdgeEnd, EdgeLabel, Graph, PortLabel};
 
-use crate::datapaths::json::{Datapath, Src, Stage, Vertex};
-use crate::iteration_space::json::{Direction, Route, Skeleton, SkelClass};
-use crate::kernel_classes::json::InstancesTable;
 use super::lg::LgGraph;
-use crate::mine::json::{Family, Labels, LABELS_SCHEMA, LgMap, LGMAP_SCHEMA, Unit};
+use crate::datapaths::json::{Datapath, Src, Stage, Vertex};
+use crate::iteration_space::json::{Direction, Route, SkelClass, Skeleton};
+use crate::kernel_classes::json::InstancesTable;
+use crate::mine::json::{Family, LABELS_SCHEMA, LGMAP_SCHEMA, Labels, LgMap, Unit};
 
 /// Attributes that change what an op computes (value columns are parameters, not identity).
 pub const SEMANTIC_ATTRS: &[&str] = &["comparison_direction", "compare_type"];
@@ -102,7 +102,11 @@ fn family_of(class: SkelClass) -> Family {
 
 /// The graph of the vertices `members` of `dp` (in that order).
 fn unit_graph(dp: &Datapath, members: &[&Vertex]) -> Result<Graph<String>, String> {
-    let at: HashMap<u32, u32> = members.iter().enumerate().map(|(i, v)| (v.id, i as u32)).collect();
+    let at: HashMap<u32, u32> = members
+        .iter()
+        .enumerate()
+        .map(|(i, v)| (v.id, i as u32))
+        .collect();
     let mut g = Graph::default();
     for v in members {
         g.add_node(node_key(v));
@@ -204,8 +208,18 @@ pub struct Interner {
 impl Interner {
     pub fn new(l: &Labels) -> Self {
         Self {
-            nodes: l.nodes.iter().enumerate().map(|(i, k)| (k.clone(), i as u32)).collect(),
-            edges: l.edges.iter().enumerate().map(|(i, k)| (k.clone(), i as u32)).collect(),
+            nodes: l
+                .nodes
+                .iter()
+                .enumerate()
+                .map(|(i, k)| (k.clone(), i as u32))
+                .collect(),
+            edges: l
+                .edges
+                .iter()
+                .enumerate()
+                .map(|(i, k)| (k.clone(), i as u32))
+                .collect(),
         }
     }
 }

@@ -126,7 +126,8 @@ fn grami_equals_brute_force_on_random_graphs() {
                 .unwrap()
                 .check()
                 .unwrap();
-            let got = tests::brute::parse_output(&std::fs::read_to_string(d.path().join("Output.txt")).unwrap());
+            let got =
+                tests::brute::parse_output(&std::fs::read_to_string(d.path().join("Output.txt")).unwrap());
             let want: std::collections::BTreeSet<String> = all
                 .iter()
                 .filter(|(_, (p, m))| *m >= tau && (max < 0 || p.nodes.len() as i64 <= max))

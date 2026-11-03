@@ -114,7 +114,9 @@ fn components(g: &Overlap) -> Vec<Comp> {
         .collect();
     for c in &g.cliques {
         let k = comp[c[0] as usize] as usize;
-        comps[k].cliques.push(c.iter().map(|&v| local[v as usize]).collect());
+        comps[k]
+            .cliques
+            .push(c.iter().map(|&v| local[v as usize]).collect());
     }
     comps
 }
@@ -168,7 +170,9 @@ fn ilp(c: &Comp) -> Result<MisOut, String> {
         m = m.with(constraint!(e <= 1));
     }
     let sol = m.solve().map_err(|e| format!("exact_ilp: {e}"))?;
-    let chosen: Vec<u32> = (0..n as u32).filter(|&v| sol.value(x[v as usize]) > 0.5).collect();
+    let chosen: Vec<u32> = (0..n as u32)
+        .filter(|&v| sol.value(x[v as usize]) > 0.5)
+        .collect();
     let size = chosen.len() as u64;
     Ok(MisOut {
         chosen,
@@ -197,7 +201,9 @@ fn degree(nb: &Bits, cands: &Bits) -> u32 {
 
 fn ones(b: &Bits) -> impl Iterator<Item = usize> + '_ {
     b.iter().enumerate().flat_map(|(i, &w)| {
-        (0..64).filter(move |k| w & (1u64 << k) != 0).map(move |k| i * 64 + k)
+        (0..64)
+            .filter(move |k| w & (1u64 << k) != 0)
+            .map(move |k| i * 64 + k)
     })
 }
 
@@ -322,7 +328,12 @@ mod tests {
     #[test]
     fn apex_chain() {
         let (p0, p1, p2, p3, s1, s2, s3, y) = (0, 1, 2, 3, 4, 5, 6, 7);
-        let occ = [vec![p0, s1, s2], vec![p1, s1, s2], vec![p2, s2, s3], vec![p3, s3, y]];
+        let occ = [
+            vec![p0, s1, s2],
+            vec![p1, s1, s2],
+            vec![p2, s2, s3],
+            vec![p3, s3, y],
+        ];
         let refs: Vec<&[u32]> = occ.iter().map(Vec::as_slice).collect();
         let g = overlap(&refs);
         assert_eq!(g.adj, vec![vec![1, 2], vec![0, 2], vec![0, 1, 3], vec![2]]);

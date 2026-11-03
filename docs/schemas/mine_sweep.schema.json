@@ -1,0 +1,111 @@
+{
+  "$defs": {
+    "Family": {
+      "description": "A mining family: datapath classes by skeleton class, and the per-element stages of template classes.",
+      "enum": [
+        "map",
+        "reduce",
+        "contraction",
+        "stage"
+      ],
+      "type": "string"
+    },
+    "Step": {
+      "properties": {
+        "finished": {
+          "description": "GraMi finished at this τ.",
+          "type": "boolean"
+        },
+        "kept": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reported": {
+          "description": "Patterns GraMi reported, and those within `max_vertices`.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "selection": {
+          "description": "Hash of the ordered selection.",
+          "type": "string"
+        },
+        "tau": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tau",
+        "finished",
+        "reported",
+        "kept",
+        "selection"
+      ],
+      "type": "object"
+    },
+    "Stop": {
+      "description": "Why the sweep stopped.",
+      "oneOf": [
+        {
+          "const": "stable",
+          "description": "The selection equals the previous τ's.",
+          "type": "string"
+        },
+        {
+          "const": "tau_min",
+          "description": "τ reached `tau_min`.",
+          "type": "string"
+        },
+        {
+          "const": "budget",
+          "description": "A GraMi run hit the time budget: the last finished τ is kept (depends on the machine).",
+          "type": "string"
+        },
+        {
+          "const": "empty",
+          "description": "The family's graph has no edge: nothing to mine.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`sweep/<family>.json`.",
+  "properties": {
+    "family": {
+      "$ref": "#/$defs/Family"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/Step"
+      },
+      "type": "array"
+    },
+    "stopped_by": {
+      "$ref": "#/$defs/Stop"
+    },
+    "tau": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "schema",
+    "family",
+    "steps",
+    "stopped_by"
+  ],
+  "title": "Sweep",
+  "type": "object"
+}

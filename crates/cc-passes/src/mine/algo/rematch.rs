@@ -42,7 +42,8 @@ impl UnitCtx {
             .enumerate()
             .map(|(i, v)| (*v, i as u32))
             .collect();
-        let by_id: HashMap<u32, &crate::datapaths::json::Vertex> = dp.vertices.iter().map(|v| (v.id, v)).collect();
+        let by_id: HashMap<u32, &crate::datapaths::json::Vertex> =
+            dp.vertices.iter().map(|v| (v.id, v)).collect();
         let mut args = Vec::new();
         for v in &unit.vertices {
             let vx = by_id
@@ -54,7 +55,9 @@ impl UnitCtx {
                     .map(|a| match &a.src {
                         Src::Vertex { v: u, .. } => match local.get(u) {
                             Some(&l) => ArgSrc::Local(l),
-                            None if by_id.get(u).is_some_and(|x| x.op == "const") => ArgSrc::Outside(Feed::Const),
+                            None if by_id.get(u).is_some_and(|x| x.op == "const") => {
+                                ArgSrc::Outside(Feed::Const)
+                            }
                             None => ArgSrc::Outside(Feed::Vertex),
                         },
                         Src::Input { .. } => ArgSrc::Outside(Feed::Input),
@@ -153,20 +156,29 @@ pub fn rematch(p: &Graph<u32>, units: &[UnitCtx], budget: u64) -> Result<Matched
     let mut out = Matched::default();
     let mut occ: Vec<(usize, Vec<u32>, Occurrence)> = Vec::new();
     for (ui, u) in units.iter().enumerate() {
-        if need.iter().any(|(l, c)| u.counts.get(l).copied().unwrap_or(0) < *c) {
+        if need
+            .iter()
+            .any(|(l, c)| u.counts.get(l).copied().unwrap_or(0) < *c)
+        {
             continue;
         }
         // First map per image, in VF2 order.
         let mut first: BTreeMap<Vec<u32>, Vec<u32>> = BTreeMap::new();
-        let n = monomorphisms(p, &u.graph, |i, j| p.nodes[i] == u.graph.nodes[j], budget, |m| {
-            for (i, &j) in m.iter().enumerate() {
-                images[i].insert((ui, j as u32));
-            }
-            let map: Vec<u32> = m.iter().map(|&j| j as u32).collect();
-            let mut img = map.clone();
-            img.sort_unstable();
-            first.entry(img).or_insert(map);
-        })
+        let n = monomorphisms(
+            p,
+            &u.graph,
+            |i, j| p.nodes[i] == u.graph.nodes[j],
+            budget,
+            |m| {
+                for (i, &j) in m.iter().enumerate() {
+                    images[i].insert((ui, j as u32));
+                }
+                let map: Vec<u32> = m.iter().map(|&j| j as u32).collect();
+                let mut img = map.clone();
+                img.sort_unstable();
+                first.entry(img).or_insert(map);
+            },
+        )
         .map_err(|b| format!("{}: VF2 over its budget ({} pairs)", u.unit.id, b.0))?;
         out.embeddings += n;
         for (img, map) in first {

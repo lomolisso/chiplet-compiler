@@ -242,7 +242,7 @@ timeout_min = 600
 [passes.mine]                     # GraMi per family (map, reduce, contraction, template stages)
 tau_start = 40                    # first MNI support threshold; the sweep halves it
 tau_min = 2                       # last threshold
-max_vertices = 8                  # larger GraMi patterns are dropped (GraMi has no size bound)
+max_vertices = 6                  # pattern size bound (GraMi maxNodes); map at 8 takes hours, at 6 about 11 min
 top_k = 32                        # patterns selected per family, by score
 budget_s = 3600                   # GraMi wall clock per family (safety net; hitting it is recorded)
 run_timeout_s = 600               # one GraMi run

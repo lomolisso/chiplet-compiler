@@ -8,7 +8,7 @@ pub struct MineConfig {
     pub tau_start: u64,
     /// Last support threshold; the sweep halves τ from `tau_start` down to it.
     pub tau_min: u64,
-    /// Patterns with more vertices are dropped after GraMi (GraMi has no size bound of its own).
+    /// Largest pattern mined (GraMi's `maxNodes`, our patch); larger patterns would also be dropped.
     pub max_vertices: usize,
     /// Patterns kept per family, by score.
     pub top_k: usize,
@@ -58,7 +58,7 @@ impl Default for MineConfig {
         Self {
             tau_start: 40,
             tau_min: 2,
-            max_vertices: 8,
+            max_vertices: 6,
             top_k: 32,
             budget_s: 3600,
             run_timeout_s: 600,

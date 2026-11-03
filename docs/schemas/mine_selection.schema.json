@@ -1,0 +1,88 @@
+{
+  "$defs": {
+    "Family": {
+      "description": "A mining family: datapath classes by skeleton class, and the per-element stages of template classes.",
+      "enum": [
+        "map",
+        "reduce",
+        "contraction",
+        "stage"
+      ],
+      "type": "string"
+    },
+    "Selected": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "mis": {
+          "description": "Σ of the MIS sizes over units.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mni": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "score": {
+          "format": "uint128",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "vertices": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "vertices",
+        "score",
+        "mni",
+        "mis"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`selection/<family>.json`: the top-k by score (ties: more vertices, then id).",
+  "properties": {
+    "family": {
+      "$ref": "#/$defs/Family"
+    },
+    "patterns": {
+      "items": {
+        "$ref": "#/$defs/Selected"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "tau": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "top_k": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema",
+    "family",
+    "top_k",
+    "patterns"
+  ],
+  "title": "Selection",
+  "type": "object"
+}

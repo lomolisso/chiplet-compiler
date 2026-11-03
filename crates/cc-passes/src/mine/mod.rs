@@ -134,7 +134,9 @@ impl Pass for Mine {
                 });
             }
         });
-        let results = results.into_inner().map_err(|_| PassError::failed("a family worker panicked"))?;
+        let results = results
+            .into_inner()
+            .map_err(|_| PassError::failed("a family worker panicked"))?;
         let mut outs = Vec::new();
         for r in results {
             outs.push(r.ok_or_else(|| PassError::failed("a family was not mined"))??);
@@ -164,7 +166,8 @@ impl Pass for Mine {
         out.write_json("overlap.json", &overlap)?;
         out.write_json("summary.json", &summary)?;
         if cfg.views {
-            ctx.dir().write_view(VIEW, &view::view(&outs, &overlap, &summary))?;
+            ctx.dir()
+                .write_view(VIEW, &view::view(&outs, &overlap, &summary))?;
         }
         Ok(())
     }
@@ -188,7 +191,12 @@ pub fn load(ctx: &PassContext) -> Result<Inputs, PassError> {
     let mut ids: Vec<String> = std::fs::read_dir(&dir)
         .map_err(|e| PassError::failed(format!("{}: {e}", dir.display())))?
         .filter_map(|e| e.ok())
-        .filter_map(|e| e.file_name().to_str().and_then(|n| n.strip_suffix(".json")).map(str::to_string))
+        .filter_map(|e| {
+            e.file_name()
+                .to_str()
+                .and_then(|n| n.strip_suffix(".json"))
+                .map(str::to_string)
+        })
         .collect();
     ids.sort();
     let datapaths: Vec<Datapath> = ids
@@ -199,12 +207,22 @@ pub fn load(ctx: &PassContext) -> Result<Inputs, PassError> {
     let skeletons = datapaths
         .par_iter()
         .filter(|d| d.route == Route::Template)
-        .map(|d| Ok((d.id.clone(), isp.read_json::<Skeleton>(&format!("skeletons/{}.json", d.id))?)))
+        .map(|d| {
+            Ok((
+                d.id.clone(),
+                isp.read_json::<Skeleton>(&format!("skeletons/{}.json", d.id))?,
+            ))
+        })
         .collect::<Result<HashMap<_, _>, CoreError>>()?;
     let kc = ctx.input(KERNEL_CLASSES)?;
     let tables = datapaths
         .par_iter()
-        .map(|d| Ok((d.id.clone(), kc.read_json::<InstancesTable>(&format!("instances/{}.json", d.id))?)))
+        .map(|d| {
+            Ok((
+                d.id.clone(),
+                kc.read_json::<InstancesTable>(&format!("instances/{}.json", d.id))?,
+            ))
+        })
         .collect::<Result<HashMap<_, _>, CoreError>>()?;
     Ok(Inputs {
         datapaths,
@@ -268,7 +286,10 @@ pub fn overlap(outs: &[FamilyOut]) -> Overlap {
             .map(|(id, f)| Shared {
                 id: id.into(),
                 families: f.into_iter().collect(),
-                selected_in: sel.get(id).map(|s| s.iter().copied().collect()).unwrap_or_default(),
+                selected_in: sel
+                    .get(id)
+                    .map(|s| s.iter().copied().collect())
+                    .unwrap_or_default(),
             })
             .collect(),
     }

@@ -37,7 +37,10 @@ pub fn view(outs: &[FamilyOut], overlap: &Overlap, s: &Summary) -> String {
                 "- τ = {}: {}",
                 st.tau,
                 if st.finished {
-                    format!("{} reported, {} kept, selection {}", st.reported, st.kept, st.selection)
+                    format!(
+                        "{} reported, {} kept, selection {}",
+                        st.reported, st.kept, st.selection
+                    )
                 } else {
                     "out of time".into()
                 }
@@ -53,7 +56,9 @@ pub fn view(outs: &[FamilyOut], overlap: &Overlap, s: &Summary) -> String {
         );
         for (k, sel) in o.selection.patterns.iter().enumerate() {
             let p = by.get(sel.id.as_str());
-            let shape = p.map(|p| p.code.split(';').next().unwrap_or("").replace(',', ", ")).unwrap_or_default();
+            let shape = p
+                .map(|p| p.code.split(';').next().unwrap_or("").replace(',', ", "))
+                .unwrap_or_default();
             let _ = writeln!(
                 x,
                 "| {} | `{}` {} | {} | {} | {} | {} | {} |",
@@ -69,10 +74,19 @@ pub fn view(outs: &[FamilyOut], overlap: &Overlap, s: &Summary) -> String {
         }
     }
     if !overlap.patterns.is_empty() {
-        let _ = writeln!(x, "\n## In several families\n\n| pattern | families | selected in |\n|---|---|---|");
+        let _ = writeln!(
+            x,
+            "\n## In several families\n\n| pattern | families | selected in |\n|---|---|---|"
+        );
         for p in &overlap.patterns {
             let names = |v: &[super::json::Family]| v.iter().map(|f| f.name()).collect::<Vec<_>>().join(", ");
-            let _ = writeln!(x, "| `{}` | {} | {} |", p.id, names(&p.families), names(&p.selected_in));
+            let _ = writeln!(
+                x,
+                "| `{}` | {} | {} |",
+                p.id,
+                names(&p.families),
+                names(&p.selected_in)
+            );
         }
     }
     x

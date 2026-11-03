@@ -506,8 +506,14 @@ mod tests {
         q.add_edge(m, a1, STAR);
         q.add_edge(a1, a2, STAR);
         let mut maps = Vec::new();
-        let n = monomorphisms(&q, &h, |i, j| q.nodes[i] == h.nodes[j], 1 << 20, |x| maps.push(x.to_vec()))
-            .unwrap();
+        let n = monomorphisms(
+            &q,
+            &h,
+            |i, j| q.nodes[i] == h.nodes[j],
+            1 << 20,
+            |x| maps.push(x.to_vec()),
+        )
+        .unwrap();
         assert_eq!(n, 4);
         let mut mul_images: Vec<usize> = maps.iter().map(|x| x[0]).collect();
         mul_images.sort_unstable();

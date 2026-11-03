@@ -84,8 +84,16 @@ fn end(res: u32, port: &str) -> Result<EdgeEnd, String> {
 fn vunits(inp: &Inputs) -> Result<Vec<VUnit>, String> {
     let mut out = Vec::new();
     for dp in &inp.datapaths {
-        let table = inp.tables.get(&dp.id).ok_or_else(|| format!("{}: no instances", dp.id))?;
-        let consts: HashSet<u32> = dp.vertices.iter().filter(|v| v.op == "const").map(|v| v.id).collect();
+        let table = inp
+            .tables
+            .get(&dp.id)
+            .ok_or_else(|| format!("{}: no instances", dp.id))?;
+        let consts: HashSet<u32> = dp
+            .vertices
+            .iter()
+            .filter(|v| v.op == "const")
+            .map(|v| v.id)
+            .collect();
         let mut groups: BTreeMap<Option<Stage>, Vec<u32>> = BTreeMap::new();
         for v in dp.vertices.iter().filter(|v| v.op != "const") {
             let g = match dp.route {
@@ -106,7 +114,10 @@ fn vunits(inp: &Inputs) -> Result<Vec<VUnit>, String> {
                     table.rows.iter().map(|r| r.weighted as u128).sum::<u128>(),
                 ),
                 Some(st) => {
-                    let skel = inp.skeletons.get(&dp.id).ok_or_else(|| format!("{}: no skeleton", dp.id))?;
+                    let skel = inp
+                        .skeletons
+                        .get(&dp.id)
+                        .ok_or_else(|| format!("{}: no skeleton", dp.id))?;
                     let (name, operand) = match st {
                         Stage::Prologue { port } => (
                             format!("{}/prologue{port}", dp.id),
@@ -117,7 +128,9 @@ fn vunits(inp: &Inputs) -> Result<Vec<VUnit>, String> {
                         ),
                         Stage::Epilogue => (
                             format!("{}/epilogue", dp.id),
-                            skel.operands.iter().find(|o| o.core && o.direction == Direction::Out),
+                            skel.operands
+                                .iter()
+                                .find(|o| o.core && o.direction == Direction::Out),
                         ),
                         s => return Err(format!("{}: template vertex in {s:?}", dp.id)),
                     };
@@ -126,7 +139,8 @@ fn vunits(inp: &Inputs) -> Result<Vec<VUnit>, String> {
                     for r in &table.rows {
                         let mut e = r.trip_count as u128;
                         for &a in &o.axes {
-                            e = e.saturating_mul(*r.extents.get(a as usize).ok_or("axis not in row")? as u128);
+                            e = e
+                                .saturating_mul(*r.extents.get(a as usize).ok_or("axis not in row")? as u128);
                         }
                         w = w.saturating_add(e);
                     }
@@ -134,7 +148,8 @@ fn vunits(inp: &Inputs) -> Result<Vec<VUnit>, String> {
                 }
             };
             let local: HashMap<u32, u32> = verts.iter().enumerate().map(|(i, v)| (*v, i as u32)).collect();
-            let by: HashMap<u32, &crate::datapaths::json::Vertex> = dp.vertices.iter().map(|v| (v.id, v)).collect();
+            let by: HashMap<u32, &crate::datapaths::json::Vertex> =
+                dp.vertices.iter().map(|v| (v.id, v)).collect();
             let mut keys = Vec::new();
             let mut args = Vec::new();
             let mut edges: BTreeMap<(u32, u32), Vec<EdgeEnd>> = BTreeMap::new();
@@ -218,7 +233,11 @@ fn code_of(labels: &[String], edges: &[(u32, u32, EdgeLabel)]) -> String {
     let mut idx = vec![0usize; all.len()];
     let mut best: Option<Vec<(u32, u32, String)>> = None;
     loop {
-        let order: Vec<usize> = idx.iter().zip(&all).flat_map(|(&k, p)| p[k].iter().copied()).collect();
+        let order: Vec<usize> = idx
+            .iter()
+            .zip(&all)
+            .flat_map(|(&k, p)| p[k].iter().copied())
+            .collect();
         let mut pos = vec![0u32; n];
         for (p, &v) in order.iter().enumerate() {
             pos[v] = p as u32;
@@ -284,8 +303,12 @@ fn embeddings(p: &PatternFile, u: &VUnit) -> Vec<Vec<u32>> {
             }
             let ok = (0..i as u32).all(|j| {
                 let hj = map[j as usize];
-                let f = pe.get(&(j, i as u32)).is_none_or(|l| u.edges.get(&(hj, h)) == Some(*l));
-                let b = pe.get(&(i as u32, j)).is_none_or(|l| u.edges.get(&(h, hj)) == Some(*l));
+                let f = pe
+                    .get(&(j, i as u32))
+                    .is_none_or(|l| u.edges.get(&(hj, h)) == Some(*l));
+                let b = pe
+                    .get(&(i as u32, j))
+                    .is_none_or(|l| u.edges.get(&(h, hj)) == Some(*l));
                 f && b
             });
             if ok {
@@ -394,7 +417,15 @@ pub fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
         let sweep: Option<Sweep> = out.read_json(&format!("sweep/{}.json", f.name())).ok();
         let grami: Option<GramiFile> = out.read_json(&format!("grami/{}.json", f.name())).ok();
         let pats = read_patterns(out, f);
-        rep.push(grami_check(&c, ctx, f, grami.as_ref(), sweep.as_ref(), &pats, map.as_ref()));
+        rep.push(grami_check(
+            &c,
+            ctx,
+            f,
+            grami.as_ref(),
+            sweep.as_ref(),
+            &pats,
+            map.as_ref(),
+        ));
         rep.push(patterns_check(&c, f, sweep.as_ref(), &pats));
         let sel: Option<Selection> = out.read_json(&format!("selection/{}.json", f.name())).ok();
         rep.push(selection_check(&c, f, sel.as_ref(), &pats));
@@ -437,7 +468,10 @@ fn labels_check(c: &Ctx) -> Check {
     check(
         "labels",
         &notes,
-        &[("node_labels", nodes.len() as u64), ("edge_labels", edges.len() as u64)],
+        &[
+            ("node_labels", nodes.len() as u64),
+            ("edge_labels", edges.len() as u64),
+        ],
     )
 }
 
@@ -447,7 +481,10 @@ fn lg_check(c: &Ctx, ctx: &PassContext, f: Family) -> (Check, Option<LgMap>) {
     let map: Option<LgMap> = c.out.read_json(&format!("lg/{}.map.json", f.name())).ok();
     let text = std::fs::read_to_string(c.out.dir().join(format!("lg/{}.lg", f.name())));
     let (Some(m), Ok(text), Some(l)) = (&map, text, &c.labels) else {
-        return (check(name, &["lg file, map or labels missing".to_string()], &[]), map);
+        return (
+            check(name, &["lg file, map or labels missing".to_string()], &[]),
+            map,
+        );
     };
     let nid: HashMap<&str, usize> = l.nodes.iter().enumerate().map(|(i, k)| (k.as_str(), i)).collect();
     let eid: HashMap<&EdgeLabel, usize> = l.edges.iter().enumerate().map(|(i, k)| (k, i)).collect();
@@ -455,7 +492,11 @@ fn lg_check(c: &Ctx, ctx: &PassContext, f: Family) -> (Check, Option<LgMap>) {
     let mut want_v = Vec::new();
     let mut want_e = BTreeSet::new();
     if m.units.len() != mine.len() {
-        notes.push(format!("{} units in the map, {} rebuilt", m.units.len(), mine.len()));
+        notes.push(format!(
+            "{} units in the map, {} rebuilt",
+            m.units.len(),
+            mine.len()
+        ));
     }
     let mut ids: Vec<&str> = mine.iter().map(|u| u.id.as_str()).collect();
     ids.sort_unstable();
@@ -469,10 +510,19 @@ fn lg_check(c: &Ctx, ctx: &PassContext, f: Family) -> (Check, Option<LgMap>) {
             notes.push(format!("{}: class, stage, workload or vertices differ", mu.id));
         }
         if mu.first as usize != want_v.len() {
-            notes.push(format!("{}: first vertex {} (expected {})", mu.id, mu.first, want_v.len()));
+            notes.push(format!(
+                "{}: first vertex {} (expected {})",
+                mu.id,
+                mu.first,
+                want_v.len()
+            ));
         }
         let base = want_v.len() as u32;
-        want_v.extend(u.keys.iter().map(|k| nid.get(k.as_str()).copied().unwrap_or(usize::MAX)));
+        want_v.extend(
+            u.keys
+                .iter()
+                .map(|k| nid.get(k.as_str()).copied().unwrap_or(usize::MAX)),
+        );
         for ((a, b), ends) in &u.edges {
             want_e.insert((base + a, base + b, eid.get(ends).copied().unwrap_or(usize::MAX)));
         }
@@ -493,7 +543,10 @@ fn lg_check(c: &Ctx, ctx: &PassContext, f: Family) -> (Check, Option<LgMap>) {
                 got_v.push(t[2].parse::<usize>().unwrap_or(usize::MAX - 1));
             }
             (Some(&"e"), 4) => {
-                let x: Vec<usize> = t[1..].iter().map(|s| s.parse().unwrap_or(usize::MAX - 1)).collect();
+                let x: Vec<usize> = t[1..]
+                    .iter()
+                    .map(|s| s.parse().unwrap_or(usize::MAX - 1))
+                    .collect();
                 got_e.insert((x[0] as u32, x[1] as u32, x[2]));
             }
             _ => notes.push(format!("bad line {l:?}")),
@@ -503,14 +556,22 @@ fn lg_check(c: &Ctx, ctx: &PassContext, f: Family) -> (Check, Option<LgMap>) {
         notes.push("vertices differ from the units' labels".into());
     }
     if got_e != want_e {
-        notes.push(format!("{} edges, {} expected, or labels differ", got_e.len(), want_e.len()));
+        notes.push(format!(
+            "{} edges, {} expected, or labels differ",
+            got_e.len(),
+            want_e.len()
+        ));
     }
     if m.vertices != want_v.len() as u64 || m.edges != want_e.len() as u64 {
         notes.push("map counts differ".into());
     }
     let _ = ctx;
     (
-        check(name, &notes, &[("vertices", want_v.len() as u64), ("edges", want_e.len() as u64)]),
+        check(
+            name,
+            &notes,
+            &[("vertices", want_v.len() as u64), ("edges", want_e.len() as u64)],
+        ),
         map,
     )
 }
@@ -568,9 +629,17 @@ fn grami_check(
         ));
     }
     let kept: BTreeSet<&str> = g.patterns.iter().map(|r| r.id.as_str()).collect();
-    let files: BTreeSet<String> = pats.iter().filter_map(|p| p.as_ref().ok()).map(|p| p.id.clone()).collect();
+    let files: BTreeSet<String> = pats
+        .iter()
+        .filter_map(|p| p.as_ref().ok())
+        .map(|p| p.id.clone())
+        .collect();
     if kept != files.iter().map(String::as_str).collect() {
-        notes.push(format!("{} kept patterns, {} pattern files", kept.len(), files.len()));
+        notes.push(format!(
+            "{} kept patterns, {} pattern files",
+            kept.len(),
+            files.len()
+        ));
     }
     // GraMi's own list, re-read from the cache when it is there.
     let mut reread = 0u64;
@@ -591,7 +660,8 @@ fn grami_check(
             match grami_ids(&text, l, c.cfg.max_vertices) {
                 Ok((ids, dropped)) => {
                     reread = ids.len() as u64 + dropped;
-                    if ids.iter().map(String::as_str).collect::<BTreeSet<_>>() != kept || dropped != g.dropped {
+                    if ids.iter().map(String::as_str).collect::<BTreeSet<_>>() != kept || dropped != g.dropped
+                    {
                         notes.push("GraMi's Output.txt lists other patterns".into());
                     }
                 }
@@ -652,7 +722,10 @@ fn grami_ids(text: &str, l: &Labels, max: usize) -> Result<(Vec<String>, u64), S
     }
     flush(&mut cur);
     if ids.len() + dropped as usize != n {
-        return Err(format!("{} patterns, {n} announced", ids.len() + dropped as usize));
+        return Err(format!(
+            "{} patterns, {n} announced",
+            ids.len() + dropped as usize
+        ));
     }
     Ok((ids, dropped))
 }
@@ -777,7 +850,9 @@ fn one_pattern(
             continue;
         };
         let distinct: HashSet<u32> = m.iter().copied().collect();
-        let labels_ok = m.len() == n && distinct.len() == n && m.iter().zip(&p.labels).all(|(h, l)| &u.keys[*h as usize] == l);
+        let labels_ok = m.len() == n
+            && distinct.len() == n
+            && m.iter().zip(&p.labels).all(|(h, l)| &u.keys[*h as usize] == l);
         let edges_ok = edges
             .iter()
             .all(|(a, b, l)| labels_ok && u.edges.get(&(m[*a as usize], m[*b as usize])) == Some(l));
@@ -797,11 +872,17 @@ fn one_pattern(
                         let inner = m
                             .iter()
                             .position(|&x| u.verts[x as usize] == *v)
-                            .is_some_and(|j| edges.iter().any(|(a, b, _)| *a as usize == j && *b as usize == i));
+                            .is_some_and(|j| {
+                                edges.iter().any(|(a, b, _)| *a as usize == j && *b as usize == i)
+                            });
                         if inner {
                             continue;
                         }
-                        if u.consts.contains(v) { Feed::Const } else { Feed::Vertex }
+                        if u.consts.contains(v) {
+                            Feed::Const
+                        } else {
+                            Feed::Vertex
+                        }
                     }
                     Src::Input { .. } => Feed::Input,
                     Src::Acc { .. } => Feed::Acc,
@@ -812,7 +893,10 @@ fn one_pattern(
         }
         let stored: Vec<(u32, u32, Feed)> = o.inputs.iter().map(|x| (x.at, x.arg, x.feed)).collect();
         if stored != feeds {
-            notes.push(format!("{id}: operand feeds of an occurrence in {} differ", o.unit));
+            notes.push(format!(
+                "{id}: operand feeds of an occurrence in {} differ",
+                o.unit
+            ));
         }
     }
     if got != want || got.len() != p.occurrences.len() {
@@ -855,7 +939,10 @@ fn one_pattern(
             }
         }
         if !indep || m.size != m.chosen.len() as u64 || m.bound < m.size || (m.optimal && m.bound != m.size) {
-            notes.push(format!("{id}: {}: not independent, or size/bound inconsistent", m.unit));
+            notes.push(format!(
+                "{id}: {}: not independent, or size/bound inconsistent",
+                m.unit
+            ));
         }
         // α by an exact search.
         let occs: Vec<HashSet<u32>> = mine
@@ -884,7 +971,9 @@ fn one_pattern(
     }
     let with_occ: BTreeSet<String> = p.occurrences.iter().map(|o| o.unit.clone()).collect();
     if with_occ != units_seen || covered != p.occurrences.len() {
-        notes.push(format!("{id}: MIS entries do not cover the units with occurrences"));
+        notes.push(format!(
+            "{id}: MIS entries do not cover the units with occurrences"
+        ));
     }
     if score != p.score {
         notes.push(format!("{id}: score {} recomputes to {score}", p.score));
@@ -911,7 +1000,12 @@ fn top(pats: &[&PatternFile], k: usize) -> Vec<(String, u32, u128, u64, u64)> {
     v
 }
 
-fn selection_check(c: &Ctx, f: Family, sel: Option<&Selection>, pats: &[Result<PatternFile, String>]) -> Check {
+fn selection_check(
+    c: &Ctx,
+    f: Family,
+    sel: Option<&Selection>,
+    pats: &[Result<PatternFile, String>],
+) -> Check {
     let name = format!("{}:selection", f.name());
     let Some(sel) = sel else {
         return check(name, &["selection file missing".to_string()], &[]);
@@ -962,7 +1056,10 @@ fn sweep_check(c: &Ctx, f: Family, s: Option<&Sweep>, sel: Option<&Selection>, m
     let ok = match s.stopped_by {
         Stop::Empty => map.edges == 0 && s.steps.is_empty(),
         Stop::Budget => s.steps.last().is_some_and(|x| !x.finished),
-        Stop::TauMin => s.steps.last().is_some_and(|x| x.finished && x.tau == c.cfg.tau_min),
+        Stop::TauMin => s
+            .steps
+            .last()
+            .is_some_and(|x| x.finished && x.tau == c.cfg.tau_min),
         Stop::Stable => {
             let n = finished.len();
             n >= 2
@@ -1044,7 +1141,9 @@ fn summary_check(
             .is_some_and(|w| x.tau == w.tau && x.stopped_by == w.stopped_by)
             && x.kept == mine.len() as u64
             && x.occurrences == mine.iter().map(|p| p.occurrences.len() as u64).sum::<u64>()
-            && sels.get(&f).is_some_and(|q| x.selected == q.patterns.len() as u64);
+            && sels
+                .get(&f)
+                .is_some_and(|q| x.selected == q.patterns.len() as u64);
         if !ok {
             notes.push(format!("{}: counts differ", f.name()));
         }

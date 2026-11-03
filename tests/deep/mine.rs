@@ -80,7 +80,11 @@ fn mine_deep_models_at_full() {
         })
         .unwrap();
     assert_eq!(again.status_of("mine"), Some(RunStatus::Ok), "{again:?}");
-    assert_eq!(out.record().unwrap().hash, before, "outputs differ between two runs");
+    assert_eq!(
+        out.record().unwrap().hash,
+        before,
+        "outputs differ between two runs"
+    );
 
     std::fs::remove_dir_all(&build).unwrap();
 }
