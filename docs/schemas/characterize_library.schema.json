@@ -1,0 +1,374 @@
+{
+  "$defs": {
+    "Kind": {
+      "oneOf": [
+        {
+          "const": "op",
+          "description": "One element-wise op at one type (or type pair, for `convert`).",
+          "type": "string"
+        },
+        {
+          "const": "mux",
+          "description": "An N-input multiplexer with a binary select.",
+          "type": "string"
+        },
+        {
+          "const": "register",
+          "description": "A register (D flip-flops, no reset).",
+          "type": "string"
+        },
+        {
+          "const": "accumulator",
+          "description": "A commutative combiner with its result register in the feedback loop.",
+          "type": "string"
+        },
+        {
+          "const": "split",
+          "description": "A wrapping w-bit multiply composed of n-bit unsigned piece multipliers and a shift-add tree.",
+          "type": "string"
+        }
+      ]
+    },
+    "KitInfo": {
+      "additionalProperties": false,
+      "description": "A kit as the rows were measured on it.",
+      "properties": {
+        "corner": {
+          "type": "string"
+        },
+        "db": {
+          "type": "string"
+        },
+        "db_hash": {
+          "type": "string"
+        },
+        "driving_cell": {
+          "type": "string"
+        },
+        "lib_name": {
+          "type": "string"
+        },
+        "liberty": {
+          "type": "string"
+        },
+        "liberty_hash": {
+          "description": "blake3 of the Liberty file.",
+          "type": "string"
+        },
+        "load": {
+          "description": "Output load, in the library's capacitance unit.",
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "time_unit_ps": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "corner",
+        "lib_name",
+        "liberty",
+        "liberty_hash",
+        "db",
+        "db_hash",
+        "time_unit_ps",
+        "driving_cell",
+        "load"
+      ],
+      "type": "object"
+    },
+    "Lec": {
+      "additionalProperties": false,
+      "description": "An equivalence check's outcome.",
+      "properties": {
+        "aborted": {
+          "description": "Aborted or inconclusive points (never a pass).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "equivalent": {
+          "description": "Every compare point proven equivalent and none failing, aborted or unmatched.",
+          "type": "boolean"
+        },
+        "failing": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "passing": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "unmatched": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "verdict": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "equivalent",
+        "passing",
+        "failing",
+        "aborted",
+        "unmatched",
+        "verdict"
+      ],
+      "type": "object"
+    },
+    "Measured": {
+      "additionalProperties": false,
+      "description": "Area, delay and leakage of one design as the synthesis reports state them.",
+      "properties": {
+        "area_um2": {
+          "description": "Total cell area, µm².",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "children": {
+          "additionalProperties": {
+            "format": "double",
+            "type": "number"
+          },
+          "description": "Area per direct child instance (hierarchy kept: split pieces, DesignWare parts), µm².",
+          "type": "object"
+        },
+        "delay_ps": {
+          "description": "Longest path: arrival at the endpoint, ps.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "leakage_nw": {
+          "description": "Cell leakage, nW.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "seq_area_um2": {
+          "description": "Sequential (non-combinational) cell area, µm².",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "slack_ps": {
+          "description": "Worst slack against the period, ps.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "children"
+      ],
+      "type": "object"
+    },
+    "Row": {
+      "additionalProperties": false,
+      "description": "One measured primitive.",
+      "properties": {
+        "corner": {
+          "type": "string"
+        },
+        "designware": {
+          "description": "Design Compiler mapped arithmetic to DesignWare parts.",
+          "type": "boolean"
+        },
+        "estimator": {
+          "description": "`dc`, `genus` or `yosys`.",
+          "type": "string"
+        },
+        "family": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "inconclusive": {
+          "description": "The equivalence check ran out of time (`lec_timeout_min`) with no failing point; every sanity\ncheck passed.",
+          "type": "boolean"
+        },
+        "key": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/Kind"
+        },
+        "kit": {
+          "type": "string"
+        },
+        "lec": {
+          "$ref": "#/$defs/Lec"
+        },
+        "lec_tool": {
+          "description": "`formality`, `conformal` or `yosys-equiv`, and its outcome.",
+          "type": "string"
+        },
+        "measured": {
+          "$ref": "#/$defs/Measured",
+          "description": "Area µm² (1x Liberty scale), delay and slack ps, leakage nW."
+        },
+        "netlist": {
+          "description": "Relative to `out/library/`.",
+          "type": "string"
+        },
+        "netlist_hash": {
+          "type": "string"
+        },
+        "op": {
+          "type": "string"
+        },
+        "period_ps": {
+          "format": "double",
+          "type": "number"
+        },
+        "provisional": {
+          "type": "boolean"
+        },
+        "reports": {
+          "description": "Report files (relative to `out/library/`) the values were read from.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "target": {
+          "type": "string"
+        },
+        "types": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "variant": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "width": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "key",
+        "id",
+        "kind",
+        "op",
+        "family",
+        "types",
+        "width",
+        "kit",
+        "corner",
+        "target",
+        "period_ps",
+        "measured",
+        "estimator",
+        "lec_tool",
+        "lec",
+        "inconclusive",
+        "designware",
+        "provisional",
+        "netlist",
+        "netlist_hash",
+        "reports"
+      ],
+      "type": "object"
+    },
+    "TargetInfo": {
+      "additionalProperties": false,
+      "description": "One timing point of one kit.",
+      "properties": {
+        "kit": {
+          "type": "string"
+        },
+        "period_ps": {
+          "format": "double",
+          "type": "number"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kit",
+        "target",
+        "period_ps"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`library.json`.",
+  "properties": {
+    "kits": {
+      "items": {
+        "$ref": "#/$defs/KitInfo"
+      },
+      "type": "array"
+    },
+    "lec_tool": {
+      "type": "string"
+    },
+    "rows": {
+      "items": {
+        "$ref": "#/$defs/Row"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "targets": {
+      "items": {
+        "$ref": "#/$defs/TargetInfo"
+      },
+      "type": "array"
+    },
+    "tool": {
+      "type": "string"
+    },
+    "tool_versions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Versions of the tools that produced the rows (from `chipc doctor`'s manifest and the image).",
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema",
+    "tool",
+    "lec_tool",
+    "tool_versions",
+    "kits",
+    "targets",
+    "rows"
+  ],
+  "title": "Library",
+  "type": "object"
+}

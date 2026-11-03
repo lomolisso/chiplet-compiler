@@ -1,0 +1,166 @@
+{
+  "$defs": {
+    "Kind": {
+      "oneOf": [
+        {
+          "const": "op",
+          "description": "One element-wise op at one type (or type pair, for `convert`).",
+          "type": "string"
+        },
+        {
+          "const": "mux",
+          "description": "An N-input multiplexer with a binary select.",
+          "type": "string"
+        },
+        {
+          "const": "register",
+          "description": "A register (D flip-flops, no reset).",
+          "type": "string"
+        },
+        {
+          "const": "accumulator",
+          "description": "A commutative combiner with its result register in the feedback loop.",
+          "type": "string"
+        },
+        {
+          "const": "split",
+          "description": "A wrapping w-bit multiply composed of n-bit unsigned piece multipliers and a shift-add tree.",
+          "type": "string"
+        }
+      ]
+    },
+    "Primitive": {
+      "additionalProperties": false,
+      "description": "One primitive.",
+      "properties": {
+        "clocked": {
+          "description": "The design has a `clk` port.",
+          "type": "boolean"
+        },
+        "deps": {
+          "description": "Ids of primitives whose RTL this one instantiates (their `rtl/<id>.v` is read with it).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "family": {
+          "description": "`bool`, `sint`, `uint`, `float`, or `bits` for structural primitives.",
+          "type": "string"
+        },
+        "id": {
+          "description": "The Verilog module and file stem.",
+          "type": "string"
+        },
+        "key": {
+          "description": "Stable key: `<op>[.<variant>]@<type>[><type>]`, e.g. `add@i32`, `compare.LT@ui8`,\n`convert@f32>bf16`, `mux4@w8`, `register@w8`, `accumulator.add@i32`, `split@w32n8`.",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/Kind"
+        },
+        "op": {
+          "type": "string"
+        },
+        "pending": {
+          "description": "Why there is no RTL yet (no rows are measured).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "provisional": {
+          "description": "The RTL is a stand-in until the soft-float library replaces it (XLS `apfloat`, which flushes\nsubnormals and has IEEE special values for every format).",
+          "type": "boolean"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Source"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "types": {
+          "description": "Operand type names (`i32`, `ui8`, `i1`, `f32`, …; `w<n>` for bit vectors); for `convert` the source\nthen the target.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "variant": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "width": {
+          "description": "The width that trends are taken over: result bits (the source width for `convert`; the input\ncount `n` of a mux is part of its op name).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "key",
+        "id",
+        "kind",
+        "op",
+        "family",
+        "types",
+        "width",
+        "provisional",
+        "deps",
+        "clocked"
+      ],
+      "type": "object"
+    },
+    "Source": {
+      "description": "The RTL of a primitive.",
+      "oneOf": [
+        {
+          "description": "A DSLX module; `ir_converter_main` → `opt_main` → `codegen_main` make `rtl/<id>.v`.",
+          "properties": {
+            "lang": {
+              "const": "dslx",
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "lang",
+            "text"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Verilog written as is to `rtl/<id>.v`.",
+          "properties": {
+            "lang": {
+              "const": "verilog",
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "lang",
+            "text"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "items": {
+    "$ref": "#/$defs/Primitive"
+  },
+  "title": "Array_of_Primitive",
+  "type": "array"
+}

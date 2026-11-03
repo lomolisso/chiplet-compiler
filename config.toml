@@ -211,14 +211,33 @@ threads = 16
 memory_gb = 8
 timeout_min = 120
 
-[passes.characterize]
-tool = "dc"                      # "dc" | "genus"
+[passes.characterize]            # needs `chipc doctor` (build/.env: the .db files, the merged ASAP7 Liberty)
+tool = "dc"                      # "dc" (+ Formality) | "genus" (+ Conformal) | "yosys" (+ its equiv flow, no license)
 pdks = ["nangate45", "asap7"]
 clock_ps = { nangate45 = 2000, asap7 = 1000 }
+targets = ["clock", "fast"]      # clock: the area row at the clock target; fast: a tight constraint
+fast_fraction = 0.05             # the fast period as a fraction of the clock target
+ops = []                         # element-wise ops of the catalog; [] = every op of the op table
+int_widths = [2, 4, 8, 16, 32]   # signed and unsigned integer widths (bool is the 1-bit type)
+float_formats = ["f32", "f16", "bf16", "f8e4m3fn"]   # RTL from XLS apfloat, provisional until softfloat
+mux_inputs = [2, 3, 4, 5, 6, 7, 8]
+mux_widths = [1, 2, 4, 8, 16, 32]
+register_widths = [1, 2, 4, 8, 16, 32]
+split_multipliers = [[8, 4], [16, 8], [32, 8], [32, 16]]   # (w, n): a w-bit multiply from n-bit pieces
+driving_cell = { nangate45 = "BUF_X1", asap7 = "BUFx2_ASAP7_75t_R" }   # drives every input
+load_fanout = 4                  # every output drives this many driving-cell inputs
+lec_timeout_min = 2              # equivalence check limit per design (Formality verification_timeout_limit, Yosys);
+                                 # a check that runs out of time with no failing point passes when every sanity
+                                 # check does, and the row is marked inconclusive
+lec_strategies = []              # Formality alternate strategies (s2, s3, …) tried while a design is not proven;
+                                 # none proved a wide divider (s2, s3, s1 on divide@ui32), so none by default
+batch = 24                       # designs per tool session (a job directory, reused by a rerun)
+cores = 2                        # cores per DC / Genus session
+views = true                     # write views/library.md
 [passes.characterize.resources]
-threads = 2                      # bounded by tools.eda.max_licenses
+threads = 2                      # parallel tool sessions (each also holds one of tools.eda.max_licenses)
 memory_gb = 8
-timeout_min = 240
+timeout_min = 600
 
 [passes.mine]
 tau_start = 40
