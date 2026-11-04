@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`summary.json`.",
+  "properties": {
+    "approximate": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "exhaustive": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "image": {
+      "type": "string"
+    },
+    "library_hash": {
+      "description": "blake3 of `python/cc_softfloat` (`.py`, `.h`): `allo_emit` keys its cache on it.",
+      "type": "string"
+    },
+    "primitives": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "proven": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "solver": {
+      "type": "string"
+    },
+    "tested": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "vectors": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema",
+    "primitives",
+    "proven",
+    "exhaustive",
+    "tested",
+    "approximate",
+    "vectors",
+    "library_hash",
+    "image",
+    "solver"
+  ],
+  "title": "Summary",
+  "type": "object"
+}

@@ -1,0 +1,121 @@
+{
+  "$defs": {
+    "Example": {
+      "description": "One mismatch example from the build (bit patterns).",
+      "properties": {
+        "args": {
+          "items": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "got": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "want": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "args",
+        "want",
+        "got"
+      ],
+      "type": "object"
+    },
+    "RefCheck": {
+      "description": "Reference comparison of the Allo `llvm` results.",
+      "properties": {
+        "examples": {
+          "items": {
+            "$ref": "#/$defs/Example"
+          },
+          "type": "array"
+        },
+        "mismatches": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "mismatches",
+        "examples"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`ops/<id>/result.json`, written by `python -m cc_softfloat build`.",
+  "properties": {
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "exhaustive": {
+      "default": false,
+      "type": "boolean"
+    },
+    "id": {
+      "type": "string"
+    },
+    "ir_nodes": {
+      "default": 0,
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "ir_vs_llvm": {
+      "default": 0,
+      "description": "Vectors whose XLS IR result differs from the `llvm` result.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "key": {
+      "type": "string"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "reference": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RefCheck"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "seconds": {
+      "additionalProperties": {
+        "format": "double",
+        "type": "number"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "vectors": {
+      "default": 0,
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "key",
+    "id",
+    "ok"
+  ],
+  "title": "BuildResult",
+  "type": "object"
+}
