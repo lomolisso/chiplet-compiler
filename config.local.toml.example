@@ -19,6 +19,9 @@ build_dir = "/scratch/rid2/chiplet-compiler/build"  # pass artifacts on the buil
 synopsys_root = "/software/Synopsys-2024_x86_64"
 cadence_root = "/software/cadence-2024-08"
 
-[resources]
-memory_budget_gb = 32            # shared machine: keep well below free memory (check `free -g`)
+# config.toml admits passes within 128 GB and 32 threads ([resources]). On a host with less headroom (check
+# `free -g` and the load), lower them here, for example:
+# [resources]
+# memory_budget_gb = 64
+# threads_total = 16
 
