@@ -487,8 +487,8 @@ Dense GEMMs are, in practice, computed on systolic arrays or tensor cores. chipl
 - **Memory declared and enforced.**
   - Every pass declares `memory_gb` and `threads`.
   - The pipeline manager admits passes within `resources.memory_budget_gb`.
-  - Docker calls get hard caps; EDA calls get a watchdog.
-  - Defaults are conservative: 8 GB per Docker call, 32 GB total.
+  - Docker calls get hard caps; EDA calls get a watchdog. A pass's containers share its declared `memory_gb` and `threads` (several at once split them), each at most the per-container ceiling `[tools.docker]` (16 GB, 8 CPUs).
+  - Defaults are sized from measured peaks with headroom: a whole run stays within 128 GB and 32 threads (`[resources]`), a guardrail on a shared server rather than a minimum; a host with less headroom lowers them in `config.local.toml`.
 - **Bounded builds.** Builds of third-party tools (LLVM for Allo, Bazel for xlscc) use capped `-j` and memory flags in the Dockerfile.
 - **Tests:**
   - **Smoke** tests touch all 25 models at the `reduced` config; abstract lowering is cheap.
@@ -536,6 +536,7 @@ build/         (ignored) build/.<pass>/ artifacts
 | Parallel pass execution with memory admission | Sequential only | Independent branches exist; about 100 lines; shared machine |
 | Requantization has two verified variants | Integer only | The ports rescale in fp32 as deployed; fixed point is the integer-only form (TFLite). It is not smaller by itself: at ASAP7 (DC) `rescale@i32` is 636 µm² against 331 µm² for the fp32 chain, whose multiply works on 24-bit significands after the convert, while `rescale` forms the exact 32×24 product |
 | Oversize passes run alone; `threads_total` is admitted too | Reject passes over the budget | A pass may legitimately need more than the default budget; running it alone keeps the sum bounded |
+| A pass's containers share its declaration, each capped at a per-container ceiling; budgets sized from measured peaks (128 GB, 32 threads per run) | Every container at a fixed 8 GB / 4 CPU cap; 32 GB, 16 threads per run | The fixed cap was split among parallel solver jobs (0.5 GB each: a Z3 proof needing 1 GB was killed), ran GraMi one family at a time, and serialized the parallel branches; the measured peaks fit the new numbers with headroom |
 | `stop_on_failure` = stop admission + cooperative cancel; runners kill children | Let running passes finish | A long branch should not keep the shared machine busy after a failure; the same token enforces `timeout_min` |
 | JSON by default, postcard supported from v1 (always with a JSON summary) | JSON only | Later graph artifacts need it; keeping it in `cc-core` from the start avoids a store change |
 | One directory per artifact kind (`out/<kind>/`) | Passes list their files | Every written file is accounted for and hashed; nothing to forget |
