@@ -79,7 +79,7 @@ impl DockerRunner {
             "--memory-swappiness".into(),
             "0".into(),
             "--cpus".into(),
-            format!("{}", caps.cpus),
+            cpus_arg(caps.cpus),
             "--pids-limit".into(),
             format!("{}", caps.pids_limit),
             "--ulimit".into(),
@@ -214,6 +214,12 @@ impl ToolRunner for DockerRunner {
     }
 }
 
+/// `--cpus` takes a decimal with few digits ("value is too precise" otherwise), so a share such as 16/6 is
+/// rounded down to hundredths: shares never add up to more than their total.
+fn cpus_arg(cpus: f64) -> String {
+    format!("{}", ((cpus * 100.0).floor() / 100.0).max(0.01))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -275,5 +281,12 @@ mod tests {
         };
         let c = r.ceiling(&small);
         assert_eq!((c.memory_gb, c.cpus), (2.0, 1.0));
+    }
+
+    #[test]
+    fn cpu_shares_are_rounded_down_to_what_docker_accepts() {
+        assert_eq!(cpus_arg(16.0 / 6.0), "2.66");
+        assert_eq!(cpus_arg(8.0), "8");
+        assert_eq!(cpus_arg(0.001), "0.01");
     }
 }
