@@ -42,7 +42,7 @@ impl Default for SoftfloatConfig {
             random_vectors: 100_000,
             batch: 8,
             proof_timeout_s: 600,
-            recheck_timeout_s: 1800,
+            recheck_timeout_s: 7200,
             recheck_sample: 2000,
             docker_python: "python".into(),
             views: true,

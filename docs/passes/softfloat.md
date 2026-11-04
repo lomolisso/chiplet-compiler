@@ -115,9 +115,10 @@
 5. **Config keys** (`[passes.softfloat]`): `float_formats` (as `characterize`'s), `int_widths` (the
    integer types conversions reach), `ops` (empty: every float op), `exhaustive_bits` (16),
    `random_vectors` (100000), `batch` (8 primitives per container), `proof_timeout_s` (600, Bitwuzla per
-   proof), `recheck_timeout_s` (1800, Z3 per proof in `verify`), `recheck_sample` (2000 vectors per
-   primitive whose reference `verify` recomputes), `docker_python`, `views`. Resources:
-   `[passes.softfloat.resources]` (threads 16, memory 64 GB, 120 min: up to 16 containers at 4 GB).
+   proof), `recheck_timeout_s` (7200, Z3 per proof in `verify`; `divide@f16` takes 48 min),
+   `recheck_sample` (2000 vectors per primitive whose reference `verify` recomputes), `docker_python`,
+   `views`. Resources:
+   `[passes.softfloat.resources]` (threads 16, memory 64 GB, 180 min: up to 16 containers at 4 GB).
    Subnormals are IEEE everywhere: the datapath semantics have no flush mode.
 
 6. **Verification** (`verify.rs`, `verify.json`; reads only `out/softfloat/` and the configuration):
@@ -134,13 +135,17 @@
    - `verdicts`: each `proof.result` matches its query's hash and the evidence (`proven` iff `unsat`).
    - `recheck`: every proven query is `unsat` in the other solver (Z3) within `recheck_timeout_s`.
    - `summary`: the counts and the library hash agree with `coverage.json` and `python/cc_softfloat`.
-   Negative tests (smoke): an edited `fu.opt.ir` or proof result, a changed reference value, a float type
+   Negative tests (deep): an edited `fu.opt.ir` or proof result, a changed reference value, a float type
    in a module, a missing primitive each fail `verify`.
 
 7. **Resource behaviour.** Each container gets one CPU and `memory_gb / threads`; `threads` containers
    run at a time. The vectors are at most 2^16 per primitive by default (about 1 MB compressed). Time is
    the proofs: most finish in seconds, the f32 adder in about two minutes and the f32 multiply query in
    seconds (Bitwuzla) to about twelve minutes (Z3 in `verify`); a query past the limit costs the limit.
+   The `divide@f16` query takes Bitwuzla about 8 minutes and Z3 48 minutes, which sets
+   `recheck_timeout_s`. The hardest Z3 query (`remainder@f8e4m3fn`) peaks at 1.1 GB. Answers are cached
+   in `build/.softfloat/cache/` by query hash, so a rerun repeats only the queries that changed or
+   timed out.
 
 8. **Known limitations.**
    - The approximate ops (exp, log, log1p, tanh, rsqrt, sin, cos, power) are not built yet: they are
