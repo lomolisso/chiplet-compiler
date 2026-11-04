@@ -32,7 +32,12 @@
      function", ACM TOMS 16(4), 1990 (argument reduction by a table); Muller, *Elementary Functions:
      Algorithms and Implementation*, 3rd ed., 2016 (range reduction, faithful rounding, the ulp); the
      special values of ISO C11 Annex F (`exp(-inf) = +0`, `log(0) = -inf`, `log1p(-1) = -inf`,
-     `tanh(+-inf) = +-1`, `rsqrt` as `1/sqrt`).
+     `tanh(+-inf) = +-1`, `sin(+-inf)` and `cos(+-inf)` NaN, `pow` as F.10.4.4, `rsqrt` as `1/sqrt`).
+   - Sine and cosine: Payne and Hanek, "Radian reduction for trigonometric functions", ACM SIGNUM
+     Newsletter 18(1), 1983, and Ng, "Argument reduction for huge arguments: good to the last bit", Sun
+     Microsystems, 1992 (reduction by a window of the bits of 2/pi); Muller, *Elementary Functions*, ch. 11
+     (the worst cases of the reduction, found with Kahan's method; f32: `16367173 * 2^72`). pi from
+     Machin's formula `pi = 16 atan(1/5) - 4 atan(1/239)` in integer arithmetic.
 
 3. **Inputs and outputs.**
    - Inputs (not artifacts): the library `python/cc_softfloat` and the toolchain image (Allo, XLS); their
@@ -49,7 +54,7 @@
      on the IR and on `llvm` matched the reference; `tested`: edge cases and random inputs matched),
      accuracy (`exact`, `correctly_rounded`: within 1/2 ulp, `faithful`: within 1 ulp), for an approximate
      op its design's error bound and its largest measured error in ulps, vector count, IR size and proof
-     verdict; and the keys of the approximate ops not built yet (`sine`, `cosine`, `power`).
+     verdict; and the keys of any approximate op of the catalog the library does not build (none today).
    - `out/softfloat/summary.json` (schema `softfloat_summary`): counts, vectors, the library hash (the
      key `allo_emit` caches on), the image and the solver; `views/softfloat.md`.
 
@@ -57,8 +62,8 @@
    1. *Primitives.* The catalog's float op primitives (every element-wise op that `cc_smt::ops` defines
       on a float type, conversions to and from every integer width and bool). Ops whose result the spec
       leaves to an approximate function (uninterpreted in the datapath proofs) have an accuracy of this
-      library's choice (§4.6); `exponential`, `log`, `log_plus_one`, `tanh` and `rsqrt` are built, and
-      `sine`, `cosine` and `power` are listed apart until they are.
+      library's choice (§4.6): `exponential`, `log`, `log_plus_one`, `tanh`, `rsqrt`, `sine`, `cosine` and
+      `power`, every one the catalog has.
    2. *Generation.* `cc_softfloat.ops` writes one flat Allo function per primitive from shared blocks
       (`cc_softfloat.emit`): decode (sign, significand with its hidden bit, exponent, NaN/infinity/zero
       flags; subnormals get exponent 1), log-depth normalization (one conditional shift per power of
@@ -125,7 +130,7 @@
       format, IEEE subnormals, the special values of C11 Annex F, and in E4M3FN NaN wherever the value
       is infinite or overflows (it has no infinities). The ulp of a value is the spacing of the format in
       its binade (the subnormal spacing below the normal range; Goldberg's definition).
-      - 8-bit formats: a table of the correctly rounded result of each of the 256 inputs, computed from
+      - 8-bit formats, unary ops: a table of the correctly rounded result of each of the 256 inputs, computed from
         NumPy's float64 value rounded once (§4.6 checks that no entry lies within 2^-30 ulp of a rounding
         boundary, so the float64 value's own error cannot change it).
       - `rsqrt`, correctly rounded in every format: with `x = m * 2^(2e)`, `m` in [1, 4) and integer
@@ -158,6 +163,30 @@
         `N = 1 - exp(-2|x|)` from the exp core with `p + ceil(p/2) + 8` fraction bits (enough for the
         cancellation at the smallest `|x|`) and `tanh = N / (2 - N)` by restoring division with
         `p + 6` quotient bits and a sticky bit.
+      - `sine`, `cosine`: one circuit per op (shared generator). `|x| < 1/2`: `r = |x|` exactly, quadrant
+        0. Otherwise Payne-Hanek: with `|x| = M * 2^E` (`M` the `p`-bit significand), a table indexed by
+        the exponent gives the bits `b_i` of `2/pi = sum b_i 2^-i` for `E - 1 <= i <= E + F` (lower bits
+        add multiples of 4 to `x * 2/pi`, which leave the quadrant and the reduced value unchanged), so
+        the exact product `M * window` holds `x * 2/pi mod 4` with `F` fraction bits; rounding it to the
+        nearest integer `q` leaves `f` in `[-1/2, 1/2]`, normalized and multiplied by `pi/2`: `r = f pi/2`,
+        `|r| <= pi/4`. The fraction keeps `F = 2p + K + G + 6` bits, where every float of the format with
+        `|x| >= 1/2` has `||x * 2/pi|| > 2^-K` (`approx.TRIG_WORST`, from enumerating every input with
+        `consts.trig_worst_case`: K = 30 for f32, 17 for f16, 14 for bf16), so `r` has its relative
+        accuracy even at the worst case. Then `sin r = r S(r^2)` and `cos r = C(r^2)` (Taylor in Horner
+        form on `z = r^2`, one multiplier chain with the coefficients of the function the quadrant picks:
+        `k = q` for sine, `q + 1` for cosine, odd `k` uses `C`, `k >= 2` negates), rounded once. Sine is
+        odd, cosine even; `sin(+-0) = +-0`, `cos(+-0) = 1`, infinities and NaN give NaN. Degree 6 for f32,
+        4 for bf16 and f16.
+      - `power`: `x^y = exp(y ln|x|)`. `ln|x|` comes from the log core with `ib + 3` more fraction bits
+        (`|y ln|x|| < 2^ib` below overflow and underflow, so a relative error `rho` of the log moves the
+        result by at most `2^ib rho`; the near-1 path keeps the relative accuracy for `x` close to 1), the
+        product `z = y ln|x|` is exact, then fixed point into the exp core, rounded once; `|z| >= 2^ib`
+        overflows or underflows by its sign. The result is negative when `x < 0` and `y` is an odd
+        integer, read from `y`'s bits (its exponent against its fraction bits). Special values as C11
+        F.10.4.4: `pow(x, +-0) = 1` and `pow(+1, y) = 1` even for NaN, `pow(-1, +-inf) = 1`, zeros and
+        infinities of `x` by the sign of `y` and whether it is an odd integer, `pow(x, +-inf)` by `|x|`
+        against 1, a negative finite `x` with a non-integer `y` NaN. FP8 is computed too (a table would
+        need 2^16 entries); log and exp tables of 2^8 and 2^6 entries in f32.
       Error bounds (`approx.design`): each design adds, as a relative error, the argument reduction,
       every table and coefficient rounding, the Taylor remainder (`r^(d+1) / (d+1)! * e^r` for exp,
       `r^d / (d+1) / (1 - r)` for `Q`), and every truncated product; an ulp is at least `2^-p` of the
@@ -172,7 +201,10 @@
       underflow, the tiny and saturated paths, the table intervals near 1), and half of the random inputs
       drawn where the op does real work (exponential: `2^-(p+2) <= |x| <= ln(max) + 1`; log and rsqrt: the
       whole range and near 1; log_plus_one: near 0, up to 2^40 and near -1; tanh: up to the saturation
-      point).
+      point; sine and cosine: near multiples of pi/2 and over the whole range, plus the worst case of the
+      reduction). `power` gets every pair of a list of special operands, `x` near 1 with large `|y|`,
+      negative `x` with integer `y`, pairs whose result is near the overflow and underflow thresholds,
+      and pairs over both ranges.
 
    Worked example (`add@f8e4m3fn`, 1.0 + 0.0625, OFP8 E4M3): `1.0 = 0.0111.000`, `0.0625 = 0.0011.000`;
    the exponent difference is 4, so the smaller significand `1.000` shifted right by 4 with three guard
@@ -192,7 +224,7 @@
 
 6. **Verification** (`verify.rs`, `verify.json`; reads only `out/softfloat/` and the configuration):
    - `primitives`: the catalog's float primitives, regenerated, are exactly the entries of
-     `coverage.json`, with the approximate ops not built yet listed apart.
+     `coverage.json` (an approximate op the library did not build would be listed apart).
    - `files`: every primitive has its eight files, and an exactly specified op its two proof files.
    - `builds`: each `result.json` has no reference mismatch and an IR equal to `llvm` on every vector.
    - `integer_only`: no `kernel.mlir` names a float type.
@@ -217,22 +249,25 @@
    The `divide@f16` query takes Bitwuzla about 8 minutes and Z3 48 minutes, which sets
    `recheck_timeout_s`. The hardest Z3 query (`remainder@f8e4m3fn`) peaks at 1.1 GB. Answers are cached
    in `build/.softfloat/cache/` by query hash, so a rerun repeats only the queries that changed or
-   timed out. The full pass (206 primitives, 12.9 M vectors, proofs from the cache) took 10.7 minutes
+   timed out. The full pass (218 primitives, 13.7 M vectors, proofs from the cache) took 10.6 minutes
    on 2026-11-04 (iacoma227). The approximate ops build in 1 to 3 seconds each; their IR has 2 to 4
-   nodes for a table, 220 to 500 for the computed ones, and 625 for `rsqrt` at f32.
-   Every input of the f32 approximate ops was checked once with `python -m cc_softfloat sweep` (16
-   one-CPU containers per op, 33 to 91 seconds each for its sixteenth of the 2^32 inputs; Allo `llvm`
-   against the reference, nothing stored): no input outside its limit, and the largest errors, in
-   ulps, exponential 0.5098, log 0.5056, log_plus_one 0.5083, tanh 0.5023, rsqrt 0.5000 (correctly
-   rounded).
+   nodes for a table, 220 to 550 for the computed ones (sine and cosine 231 to 313, power 449 to 548),
+   and 625 for `rsqrt` at f32.
+   Every input with 32 bits in all (the f32 unary ops, `power` at bf16 and f16) was checked once with
+   `python -m cc_softfloat sweep` (16 one-CPU containers per op, 33 to 91 seconds each for its sixteenth
+   of the 2^32 inputs or operand pairs; Allo `llvm` against the reference, nothing stored): no input
+   outside its limit, and the largest errors, in ulps, exponential 0.5098, log 0.5056, log_plus_one
+   0.5083, tanh 0.5023, rsqrt 0.5000 (correctly rounded), sine 0.5025, cosine 0.5025, power 0.5028 at
+   bf16 and 0.5028 at f16.
 
 8. **Known limitations.**
-   - `sine`, `cosine` and `power` are not built yet: they are listed in `coverage.json` and their
-     `characterize` rows stay pending.
    - The approximate ops' check is against NumPy's float64 functions with an allowance for their error,
      not a correctly rounded reference; the claim is "within the limit plus `2^-48` of the value".
-   - f32 approximate ops are checked on edge and random vectors in the pass; every input was checked
-     once (§7), not on every run.
+   - f32 approximate ops and 16-bit `power` are checked on edge and random vectors in the pass; every
+     input was checked once (§7), not on every run. `power@f32` (2^64 pairs) is never checked
+     exhaustively.
+   - Sine and cosine evaluate one Taylor polynomial on `[-pi/4, pi/4]` without a table (degree 6 in f32);
+     a table of `sin` and `cos` at breakpoints would shorten it at the cost of more multipliers.
    - `tanh` in f32 runs the exp core with 44 fraction bits for the cancellation of `1 - exp(-2|x|)` at
      small `|x|`; a separate series path there would make it smaller.
    - The polynomials are Taylor, with closed-form remainders; minimax polynomials (Remez) would need a
