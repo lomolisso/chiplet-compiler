@@ -202,7 +202,7 @@
   "description": "`coverage.json`.",
   "properties": {
     "approximate": {
-      "description": "Catalog keys of approximate ops not built yet (sine, cosine, power).",
+      "description": "Catalog keys of approximate ops the library does not build (none of the catalog's today).",
       "items": {
         "type": "string"
       },
