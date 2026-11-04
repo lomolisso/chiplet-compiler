@@ -27,11 +27,17 @@ const FILES: &[&str] = &[
     "proof.result",
 ];
 
-/// Does `text` name a float type (`f16`, `f32`, `f64`, `bf16` as a whole word)? Allo's XLS backend rejects
-/// such a module; the library must be integer-only.
+/// Does `text` name a float type (`f16`, `f32`, `f64`, `bf16` as a whole word, or as the element type of
+/// a shape such as `4x8xbf16` or `?xf32`)? Allo's XLS backend rejects such a module; the library must be
+/// integer-only.
 pub fn has_float_type(text: &str) -> bool {
     text.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-        .any(|w| matches!(w, "f16" | "f32" | "f64" | "bf16"))
+        .any(|w| {
+            let mut parts: Vec<&str> = w.split('x').collect();
+            let elem = parts.pop().unwrap_or_default();
+            matches!(elem, "f16" | "f32" | "f64" | "bf16")
+                && parts.iter().all(|d| d.chars().all(|c| c.is_ascii_digit()))
+        })
 }
 
 fn sample<T>(v: &[T], n: usize) -> String
@@ -310,6 +316,8 @@ mod tests {
     fn finds_float_types_as_whole_words() {
         assert!(has_float_type("%0 = arith.sitofp %a : i32 to f32"));
         assert!(has_float_type("memref<4xbf16>"));
+        assert!(has_float_type("tensor<?x8xf16>"));
+        assert!(!has_float_type("%max = arith.maxui %a, %b : i32"));
         assert!(!has_float_type("%f32x = arith.addi %f16_a, %b : i32"));
     }
 }
