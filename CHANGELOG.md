@@ -30,6 +30,8 @@ All notable changes to this project are listed here. The format follows
 
 ### Fixed
 
+- `config.local.toml.example` no longer lowers the run memory budget to 32 GB, which held back the raised pass resources.
+- Containers get `--cpus` rounded down to hundredths: a fractional share such as 16 CPUs over 6 solver jobs was rejected by Docker.
 - JSON floats are parsed exactly (`serde_json` `float_roundtrip`); `import` read some float attributes one ulp off.
 - `components` inlines a custom call's reducer computation as its region, so `dynamic_reduce_window` kernels carry their combiner and classes tell reducers apart.
 - `scripts/on-build-host` sources the host's `/etc/profile`, so `eda-run` finds Lmod's modules: the licensed tools did not start through the wrapper.
