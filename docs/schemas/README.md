@@ -62,6 +62,9 @@ JSON Schemas (draft 2020-12, generated with `schemars` from the Rust types) of e
 | `characterize_coverage.schema.json` | `cc_passes::characterize::json::Coverage` | `build/.characterize/out/library/coverage.json` |
 | `characterize_library.schema.json` | `cc_passes::characterize::json::Library` | `build/.characterize/out/library/library.json` |
 | `characterize_summary.schema.json` | `cc_passes::characterize::json::Summary` | `build/.characterize/out/library/summary.json` |
+| `softfloat_coverage.schema.json` | `cc_passes::softfloat::json::CoverageFile` | `build/.softfloat/out/softfloat/coverage.json` |
+| `softfloat_summary.schema.json` | `cc_passes::softfloat::json::Summary` | `build/.softfloat/out/softfloat/summary.json` |
+| `softfloat_result.schema.json` | `cc_passes::softfloat::json::BuildResult` | `build/.softfloat/out/softfloat/ops/<id>/result.json` (written by `python -m cc_softfloat build`) |
 | `run_summary.schema.json` | `cc_pipeline::RunSummary` | `build/.pipeline/run-<ts>.json` |
 
 The smoke test `schemas::committed_schemas_are_current` regenerates them and fails on drift. After

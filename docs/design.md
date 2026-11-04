@@ -370,16 +370,15 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
 
 ### 4.12 `softfloat` (parallel branch)
 
-- **Purpose.** An Allo library of float formats implemented with integer bit operations:
+- **Purpose.** An Allo library of float formats implemented with integer bit operations (`python/cc_softfloat`):
   - the formats the recipes use: FP8 E4M3FN, bf16, fp16, fp32 (E5M2 is optional; no port uses it today);
-  - add, mul, FMA-or-not per contract, compare, convert, round-to-nearest-even;
-  - FTZ / DAZ as configured.
+  - every float op of the primitive catalog: the exactly specified ones (arithmetic, divide, sqrt, remainder, compare, min/max, rounding to integral, `reduce_precision`, conversions) bit-exact with IEEE subnormals and round to nearest even; the ops the spec leaves to an approximate function (exp, log, tanh, rsqrt, sin, cos, power, ...) within 1 ulp;
+  - no FMA (the order contract never fuses).
 
-  It makes every FU integer to Allo, so the Allo `llvm` simulator and the Allo XLS backend accept it.
+  It makes every FU integer to Allo, so the Allo `llvm` simulator and the Allo XLS backend accept it, and its Verilog (Allo's XLS C++, xlscc, `opt_main`, `codegen_main`) is what `characterize` prices.
 - **Verification.**
-  - Exhaustive tests for 8-bit formats (every operand pair).
-  - Randomized and edge-case tests for wider formats against a bit-exact reference (`ml_dtypes`/NumPy with explicit rounding).
-  - SMT QF_FP equivalence of the integer circuit vs the FP theory for small formats.
+  - Every input combination for operands of at most 16 bits in total (FP8 binary ops, 16-bit unary ops), otherwise edge cases and seeded random operands, against a bit-exact reference (NumPy/`ml_dtypes` through float64), on Allo's `llvm` target and on the optimized XLS IR.
+  - The optimized XLS IR translated to SMT and proven equal to the op's semantics in `cc_smt::ops` (the semantics of the datapath proofs) where the solver finishes; multiplies with the significand product abstracted (docs/passes/softfloat.md §4).
 
 ### 4.13 `allo_emit`
 
@@ -532,6 +531,9 @@ build/         (ignored) build/.<pass>/ artifacts
 | Template eligibility by space-time mapping proof | Name-based mapping of GEMM/conv | No hard-coded mappings |
 | Configuration by construction + ∀-only SMT | ∃∀ synthesis per (FU, kernel) | The clique already gives the mapping |
 | Soft-float in plain Allo | Fork Allo / DSLX for floats | One RTL route; FP8 bit-exact; no fork to maintain |
+| Soft-float ops are generated flat Allo functions; Allo's front-end gaps are kept by the generator (shifts and masks for bits, inlining before the XLS backend, literals below 2^31, XOR for NOT, a spare bit on compared variables) | Patch Allo | The pinned Allo stays unmodified; every gap is checked by simulating `llvm` against the XLS IR on every vector |
+| Subnormals IEEE in every format, no flush mode | FTZ/DAZ as configured | The datapath semantics and every proof assume gradual underflow; FP8 needs its subnormals |
+| A soft-float primitive is proven by translating its optimized XLS IR to SMT against `cc_smt::ops`; multiplies with the significand product as an uninterpreted function and IEEE's exact-then-round definition as the spec | Tests only; direct multiplier equivalence | Ties the RTL source to the semantics the datapath proofs use; direct multiply queries did not finish in 25 minutes even at f16, the abstracted f32 one takes seconds |
 | Host driver + capped Docker + `eda-run` | Single container | glibc 2.28 host, cgroups v1, host-only licensed EDA |
 | Parallel pass execution with memory admission | Sequential only | Independent branches exist; about 100 lines; shared machine |
 | Requantization has two verified variants | Integer only | The ports rescale in fp32 as deployed; fixed point is the integer-only form (TFLite). It is not smaller by itself: at ASAP7 (DC) `rescale@i32` is 636 µm² against 331 µm² for the fp32 chain, whose multiply works on 24-bit significands after the convert, while `rescale` forms the exact 32×24 product |

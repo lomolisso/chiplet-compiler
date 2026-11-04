@@ -159,6 +159,68 @@ fn types(cfg: &CharacterizeConfig) -> Result<Vec<T>, String> {
 /// The comparison directions with their own circuits (`GT`/`GE` are `LT`/`LE` with exchanged operands).
 pub const DIRECTIONS: [&str; 4] = ["EQ", "NE", "LT", "LE"];
 
+/// `reduce_precision`'s (exponent bits, mantissa bits) in the catalog (binary16's).
+pub const REDUCE_PRECISION: (u32, u32) = (5, 10);
+
+/// A scalar type by its name: `i1` (bool), `i<w>`, `ui<w>`, or a float format.
+pub fn type_named(name: &str) -> Option<Ty> {
+    if name == "i1" {
+        return Some(Ty::Bool);
+    }
+    if let Some(f) = format(name) {
+        return Some(Ty::Float(f));
+    }
+    let (signed, w) = match name.strip_prefix("ui") {
+        Some(w) => (false, w),
+        None => (true, name.strip_prefix('i')?),
+    };
+    Some(Ty::Int {
+        signed,
+        w: w.parse().ok()?,
+    })
+}
+
+/// The operand types, result type and attributes of an op primitive, as the catalog chose them.
+pub fn signature(p: &Primitive) -> Result<(Vec<Ty>, Ty, Attrs), String> {
+    if p.kind != Kind::Op {
+        return Err(format!("{}: not an op primitive", p.key));
+    }
+    let ty = |n: &String| type_named(n).ok_or_else(|| format!("{}: unknown type {n}", p.key));
+    let spec = TABLE
+        .iter()
+        .find(|s| s.elementwise && s.name.trim_start_matches("stablehlo.") == p.op)
+        .ok_or_else(|| format!("{}: {} is not an element-wise op", p.key, p.op))?;
+    let t = ty(p.types.first().ok_or_else(|| format!("{}: no types", p.key))?)?;
+    let mut attrs = Attrs::default();
+    let (args, ret) = match p.op.as_str() {
+        "convert" => (
+            vec![t],
+            ty(p.types.get(1).ok_or_else(|| format!("{}: no target", p.key))?)?,
+        ),
+        "compare" => {
+            attrs.direction = p.variant.clone();
+            (vec![t, t], Ty::Bool)
+        }
+        "select" => (vec![Ty::Bool, t, t], t),
+        "is_finite" => (vec![t], Ty::Bool),
+        op => {
+            let Arity::Exactly(k) = spec.operands else {
+                return Err(format!("{}: variadic op", p.key));
+            };
+            if op == "reduce_precision" {
+                attrs.precision = Some(REDUCE_PRECISION);
+            }
+            let ret = if matches!(spec.elem, ElemRule::Bool) {
+                Ty::Bool
+            } else {
+                t
+            };
+            (vec![t; k as usize], ret)
+        }
+    };
+    Ok((args, ret, attrs))
+}
+
 /// Does `cc_smt::ops` give `op` a meaning on these operand types and result type?
 fn defined(op: &str, attrs: &Attrs, args: &[T], ret: T) -> bool {
     let mut c = Ctx::new();
@@ -227,7 +289,7 @@ pub fn catalog(cfg: &CharacterizeConfig) -> Result<Vec<Primitive>, String> {
                 continue;
             }
             let attrs = Attrs {
-                precision: (op == "reduce_precision").then_some((5, 10)),
+                precision: (op == "reduce_precision").then_some(REDUCE_PRECISION),
                 ..Attrs::default()
             };
             if defined(op, &attrs, &args, ret) {

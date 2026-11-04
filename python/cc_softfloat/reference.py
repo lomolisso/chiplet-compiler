@@ -47,6 +47,23 @@ def to_int(t: Int, bits: np.ndarray) -> np.ndarray:
     return v
 
 
+def round_int(v: np.ndarray, p: int) -> np.ndarray:
+    """Integers rounded to `p` significant bits, ties to even (exact integer arithmetic). ml_dtypes converts
+    float64 to bfloat16 and float8 through float32, which would round a wide integer twice."""
+    out = []
+    for x in v.tolist():
+        a = abs(x)
+        shift = a.bit_length() - p
+        if shift > 0:
+            q, rem = a >> shift, a & ((1 << shift) - 1)
+            half = 1 << (shift - 1)
+            if rem > half or (rem == half and q & 1):
+                q += 1
+            a = q << shift
+        out.append(-a if x < 0 else a)
+    return np.array(out, dtype=np.float64)
+
+
 def is_nan(t: Float | Int, bits: np.ndarray) -> np.ndarray:
     if isinstance(t, Int):
         return np.zeros(bits.shape, dtype=bool)
@@ -86,7 +103,7 @@ def evaluate(p: Prim, args: list[np.ndarray]) -> np.ndarray:
         if op == "convert":
             src = p.params[0]
             if isinstance(src, Int) and isinstance(ret, Float):
-                return from_f64(ret, to_int(src, args[0]).astype(np.float64))
+                return from_f64(ret, round_int(to_int(src, args[0]), ret.m + 1))
             if isinstance(src, Float) and isinstance(ret, Int):
                 x = to_f64(src, args[0])
                 if ret.w == 1 and not ret.signed:

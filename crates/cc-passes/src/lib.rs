@@ -19,6 +19,7 @@ pub mod merge;
 pub mod mine;
 pub mod normalize;
 pub mod registry;
+pub mod softfloat;
 
 pub use registry::registry;
 
@@ -35,5 +36,6 @@ pub fn pass_schemas() -> Vec<(&'static str, serde_json::Value)> {
     v.extend(mine::json::schemas());
     v.extend(merge::json::schemas());
     v.extend(characterize::json::schemas());
+    v.extend(softfloat::json::schemas());
     v
 }
