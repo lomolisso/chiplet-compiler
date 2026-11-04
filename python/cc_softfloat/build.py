@@ -24,7 +24,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import catalog, reference, vectors
+from . import approx, catalog, reference, vectors
 from .formats import Float
 
 CHUNK = 4096
@@ -45,31 +45,43 @@ def _np_dtype(bits: int) -> type:
     return np.uint8 if bits <= 8 else np.uint16 if bits <= 16 else np.uint32
 
 
-def _simulate(p: catalog.Prim, out: Path, name: str, args: list[np.ndarray]) -> np.ndarray:
+def _simulator(p: catalog.Prim, out: Path, name: str, chunk: int = CHUNK):
+    """The Allo `llvm` build of `kernel.py` over `chunk` vectors per call, as a function of operand arrays."""
     import allo  # noqa: F401  (imported for its side effect of registering the dialects)
 
-    params = ", ".join(f"A{i}: UInt({t.bits})[{CHUNK}]" for i, t in enumerate(p.params))
+    params = ", ".join(f"A{i}: UInt({t.bits})[{chunk}]" for i, t in enumerate(p.params))
     call = ", ".join(f"A{i}[i]" for i in range(len(p.params)))
     sim = (
         (out / "kernel.py").read_text()
-        + f"\n\ndef sim({params}) -> UInt({p.ret.bits})[{CHUNK}]:\n"
-        + f"    R: UInt({p.ret.bits})[{CHUNK}] = 0\n"
-        + f"    for i in range({CHUNK}):\n"
+        + f"\n\ndef sim({params}) -> UInt({p.ret.bits})[{chunk}]:\n"
+        + f"    R: UInt({p.ret.bits})[{chunk}] = 0\n"
+        + f"    for i in range({chunk}):\n"
         + f"        R[i] = {name}({call})\n"
         + "    return R\n"
     )
     (out / "sim.py").write_text(sim)
     mod = _load(out / "sim.py", f"cc_sf_sim_{name}")
     exe = allo.customize(mod.sim).build()
-    n = len(args[0])
-    pad = (-n) % CHUNK
-    cols = [np.concatenate([a, np.zeros(pad, dtype=np.uint64)]).astype(_np_dtype(t.bits)) for a, t in zip(args, p.params)]
-    res = np.empty(n + pad, dtype=np.uint64)
-    for i in range(0, n + pad, CHUNK):
-        r = exe(*[np.ascontiguousarray(c[i : i + CHUNK]) for c in cols])
-        res[i : i + CHUNK] = np.asarray(r).astype(np.int64).astype(np.uint64) & np.uint64((1 << p.ret.bits) - 1)
     (out / "sim.py").unlink()
-    return res[:n]
+
+    def run(args: list[np.ndarray]) -> np.ndarray:
+        n = len(args[0])
+        pad = (-n) % chunk
+        cols = [
+            np.concatenate([a, np.zeros(pad, dtype=np.uint64)]).astype(_np_dtype(t.bits))
+            for a, t in zip(args, p.params)
+        ]
+        res = np.empty(n + pad, dtype=np.uint64)
+        for i in range(0, n + pad, chunk):
+            r = exe(*[np.ascontiguousarray(c[i : i + chunk]) for c in cols])
+            res[i : i + chunk] = np.asarray(r).astype(np.int64).astype(np.uint64) & np.uint64((1 << p.ret.bits) - 1)
+        return res[:n]
+
+    return run
+
+
+def _simulate(p: catalog.Prim, out: Path, name: str, args: list[np.ndarray]) -> np.ndarray:
+    return _simulator(p, out, name)(args)
 
 
 def _emit_xls(out: Path, name: str) -> str:
@@ -137,15 +149,33 @@ def _eval_ir(out: Path, name: str, p: catalog.Prim, args: list[np.ndarray]) -> n
     return np.array(vals, dtype=np.uint64)
 
 
+def _limit(p: catalog.Prim) -> float:
+    assert isinstance(p.ret, Float)
+    return reference.LIMITS[approx.design(p.op, p.ret).accuracy]
+
+
+def _agree(p: catalog.Prim, got: np.ndarray, want: np.ndarray) -> tuple[np.ndarray, np.ndarray | None]:
+    """Per vector: does `got` match the reference (bit for bit, or within the accuracy limit for an
+    approximate op), and the error in ulps (approximate ops only)."""
+    if p.approximate:
+        return reference.approx_check(p, _limit(p), got, want)
+    return reference.same(p.ret, got, want), None
+
+
 def _summary(p: catalog.Prim, args: list[np.ndarray], got: np.ndarray, want: np.ndarray) -> dict:
-    ok = reference.same(p.ret, got, want)
+    ok, err = _agree(p, got, want)
     bad = np.nonzero(~ok)[0]
-    return {
+    # an approximate op's reference is a float64 value: its bit pattern stands in for `want`
+    wbits = want.view(np.uint64) if want.dtype == np.float64 else want
+    out = {
         "mismatches": int(len(bad)),
         "examples": [
-            {"args": [int(a[i]) for a in args], "want": int(want[i]), "got": int(got[i])} for i in bad[:8]
+            {"args": [int(a[i]) for a in args], "want": int(wbits[i]), "got": int(got[i])} for i in bad[:8]
         ],
     }
+    if err is not None:
+        out["max_ulp"] = float(np.nanmax(err)) if np.isfinite(err).any() else 0.0
+    return out
 
 
 def build(key: str, name: str, out: Path, exhaustive_bits: int, random_n: int, precision: tuple[int, int]) -> dict:
@@ -165,16 +195,25 @@ def build(key: str, name: str, out: Path, exhaustive_bits: int, random_n: int, p
     ir = _eval_ir(out, name, p, args)
     t4 = time.time()
     np.savez_compressed(out / "vectors.npz", *args, want=want, llvm=llvm, ir=ir)
+    ref = _summary(p, args, llvm, want)
     res = {
         "key": key,
         "id": name,
         "vectors": int(len(want)),
         "exhaustive": exhaustive,
-        "reference": _summary(p, args, llvm, want),
+        "reference": ref,
         "ir_vs_llvm": int(np.count_nonzero(ir != llvm)),
         "ir_nodes": sum(1 for l in (out / "fu.opt.ir").read_text().splitlines() if " = " in l),
         "seconds": {"reference": round(t1 - t0, 2), "llvm": round(t2 - t1, 2), "xls": round(t3 - t2, 2), "ir_eval": round(t4 - t3, 2)},
     }
+    if p.approximate:
+        assert isinstance(p.ret, Float)
+        dz = approx.design(p.op, p.ret)
+        res["accuracy"] = dz.accuracy
+        res["bound_ulp"] = dz.bound_ulp
+        res["max_ulp"] = ref.pop("max_ulp")
+    else:
+        res["accuracy"] = "exact"
     res["ok"] = res["reference"]["mismatches"] == 0 and res["ir_vs_llvm"] == 0
     (out / "result.json").write_text(json.dumps(res, indent=1) + "\n")
     return res
@@ -189,11 +228,59 @@ def recheck(key: str, out: Path, precision: tuple[int, int], sample: int) -> dic
     idx = np.unique(np.linspace(0, n - 1, min(sample, n)).astype(np.int64))
     sub = [a[idx] for a in args]
     want = reference.evaluate(p, sub)
+    if p.approximate:
+        # the stored float64 reference may differ from a recomputation by NumPy's own error
+        stored = z["want"][idx]
+        with np.errstate(all="ignore"):
+            near = (stored == want) | (np.isnan(stored) & np.isnan(want))
+            near |= np.abs(stored - want) <= np.abs(want) * 2.0**-48
+        want_differs = int(np.count_nonzero(~near))
+    else:
+        want_differs = int(np.count_nonzero(~reference.same(p.ret, z["want"][idx], want)))
     return {
         "key": key,
         "checked": int(len(idx)),
-        "want_differs": int(np.count_nonzero(~reference.same(p.ret, z["want"][idx], want))),
-        "llvm_differs": int(np.count_nonzero(~reference.same(p.ret, z["llvm"][idx], want))),
-        "ir_differs": int(np.count_nonzero(~reference.same(p.ret, z["ir"][idx], want))),
+        "want_differs": want_differs,
+        "llvm_differs": int(np.count_nonzero(~_agree(p, z["llvm"][idx], want)[0])),
+        "ir_differs": int(np.count_nonzero(~_agree(p, z["ir"][idx], want)[0])),
         "ret_is_float": isinstance(p.ret, Float),
+    }
+
+
+def sweep(key: str, name: str, out: Path, part: int, parts: int, block: int = 1 << 20) -> dict:
+    """Every input pattern of a unary approximate op in share `part` of `parts`, on the Allo `llvm` build,
+    against the reference: the inputs outside the accuracy limit and the largest error in ulps (a one-off
+    check of the 32-bit formats, docs/passes/softfloat.md §7; nothing is stored)."""
+    p = catalog.parse_key(key)
+    if not p.approximate or len(p.params) != 1:
+        raise ValueError(f"{key}: not a unary approximate op")
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "kernel.py").write_text(catalog.source(p, name))
+    sim = _simulator(p, out, name, chunk=1 << 16)
+    total = 1 << p.params[0].bits
+    lo, hi = total * part // parts, total * (part + 1) // parts
+    t0 = time.time()
+    bad, worst, worst_at, examples = 0, 0.0, -1, []
+    for start in range(lo, hi, block):
+        x = np.arange(start, min(start + block, hi), dtype=np.uint64)
+        got = sim([x])
+        want = reference.evaluate(p, [x])
+        ok, err = _agree(p, got, want)
+        bad += int(np.count_nonzero(~ok))
+        for i in np.nonzero(~ok)[0][: max(0, 8 - len(examples))]:
+            examples.append({"args": [int(x[i])], "want": float(want[i]), "got": int(got[i])})
+        if err is not None and np.isfinite(err).any():
+            i = int(np.nanargmax(err))
+            if err[i] > worst:
+                worst, worst_at = float(err[i]), int(x[i])
+    return {
+        "key": key,
+        "part": part,
+        "parts": parts,
+        "inputs": hi - lo,
+        "bad": bad,
+        "max_ulp": worst,
+        "max_ulp_at": worst_at,
+        "examples": examples,
+        "seconds": round(time.time() - t0, 1),
     }

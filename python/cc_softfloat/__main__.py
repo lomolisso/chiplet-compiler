@@ -1,4 +1,5 @@
-"""`python -m cc_softfloat build|recheck|source ...` (run by the `softfloat` pass in the toolchain image)."""
+"""`python -m cc_softfloat build|recheck|source|sweep ...` (run by the `softfloat` pass in the toolchain image;
+`sweep` is a one-off check of every input of a 32-bit approximate op, run by hand)."""
 
 from __future__ import annotations
 
@@ -34,10 +35,22 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("source", help="print the generated Allo source of a primitive")
     s.add_argument("--key", required=True)
     s.add_argument("--id", required=True)
+    w = sub.add_parser("sweep", help="check every input of a unary approximate op (one share of them)")
+    w.add_argument("--key", required=True)
+    w.add_argument("--id", required=True)
+    w.add_argument("--out", required=True)
+    w.add_argument("--part", type=int, default=0)
+    w.add_argument("--parts", type=int, default=1)
     a = ap.parse_args(argv)
     if a.cmd == "source":
         sys.stdout.write(catalog.source(catalog.parse_key(a.key), a.id))
         return 0
+    if a.cmd == "sweep":
+        from .build import sweep
+
+        res = sweep(a.key, a.id, Path(a.out) / f"{a.id}.{a.part}", a.part, a.parts)
+        print("@@" + json.dumps(res, sort_keys=True), flush=True)
+        return 0 if res["bad"] == 0 else 1
     if len(a.key) != len(a.id):
         ap.error("--key and --id must pair up")
     status = 0

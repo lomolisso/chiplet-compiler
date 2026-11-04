@@ -42,6 +42,7 @@ class Src:
         self.lines: list[str] = []
         self.depth = 1
         self.counter = 0
+        self.globals: list[str] = []
         sig = ", ".join(f"{p}: UInt({w})" for p, w in params)
         self.head = [f"def {name}({sig}) -> UInt({ret}):", f'    """{doc}"""']
 
@@ -95,6 +96,38 @@ class Src:
 
     def text(self) -> str:
         return "\n".join(self.head + self.lines) + "\n"
+
+    def module(self) -> str:
+        """The whole module: imports, module-level tables (`rom`), the function."""
+        if not self.globals:
+            return HEADER + self.text()
+        return HEADER.rstrip("\n") + "\nimport numpy as np\n\n" + "\n".join(self.globals) + "\n\n\n" + self.text()
+
+    def rom(self, idx: str, values: list[int], width: int, out: str) -> None:
+        """`{out}: UInt(width)` = `values[idx]`: one module-level `uint32` table per 32-bit slice, read inside the
+        function (Allo builds a constant array; xlscc and XLS keep it as an array literal and an index); `idx` must
+        be below `len(values)`."""
+        assert all(0 <= v < (1 << width) for v in values), width
+        n = len(values)
+        parts = (width + 31) // 32
+        # the index gets a spare top bit: Allo's `llvm` lowering sign-extends an index whose top bit is set
+        ix = self.tmp("ri")
+        self(f"{ix}: UInt({clog2(n - 1) + 1}) = {idx}")
+        idx = ix
+        self(f"{out}: UInt({width}) = 0")
+        for k in reversed(range(parts)):
+            g = f"ROM_{self.name}_{self.counter + 1}"
+            self.counter += 1
+            vals = ", ".join(str((v >> (32 * k)) & 0xFFFFFFFF) for v in values)
+            self.globals.append(f"{g} = np.array([{vals}], dtype=np.uint32)")
+            t = self.tmp("rt")
+            piece = self.tmp("rp")
+            self(f"{t}: UInt(32)[{n}] = {g}")
+            self(f"{piece}: UInt({max(width, 33)}) = {t}[{idx}]")
+            if k == parts - 1:
+                self(f"{out} = {piece}")
+            else:
+                self(f"{out} = ({out} << 32) | {piece}")
 
 
 HEADER = "from allo.ir.types import Int, UInt\n\n\n"
