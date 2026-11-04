@@ -97,12 +97,13 @@ fn registry_dag_and_order() {
             "iteration_space",
             "datapaths",
             "mine",
-            "merge"
+            "merge",
+            "softfloat",
         ]
     );
     assert_eq!(
         g.to_dot(),
-        "digraph passes {\n  rankdir=LR;\n  node [shape=box];\n  \"characterize\";\n  \"components\";\n  \"datapaths\";\n  \"export\";\n  \"hello_a\";\n  \"hello_b\";\n  \"hello_c\";\n  \"import\";\n  \"iteration_space\";\n  \"kernel_classes\";\n  \"kernels\";\n  \"merge\";\n  \"mine\";\n  \"normalize\";\n  \
+        "digraph passes {\n  rankdir=LR;\n  node [shape=box];\n  \"characterize\";\n  \"components\";\n  \"datapaths\";\n  \"export\";\n  \"hello_a\";\n  \"hello_b\";\n  \"hello_c\";\n  \"import\";\n  \"iteration_space\";\n  \"kernel_classes\";\n  \"kernels\";\n  \"merge\";\n  \"mine\";\n  \"normalize\";\n  \"softfloat\";\n  \
          \"characterize\" -> \"merge\" [label=\"library\"];\n  \
          \"components\" -> \"kernel_classes\" [label=\"components\"];\n  \
          \"components\" -> \"normalize\" [label=\"components\"];\n  \

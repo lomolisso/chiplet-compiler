@@ -1,0 +1,188 @@
+{
+  "$defs": {
+    "Entry": {
+      "additionalProperties": false,
+      "description": "One primitive of the library.",
+      "properties": {
+        "evidence": {
+          "$ref": "#/$defs/Evidence"
+        },
+        "exhaustive": {
+          "type": "boolean"
+        },
+        "id": {
+          "description": "Directory, Verilog module and Allo function name.",
+          "type": "string"
+        },
+        "ir_nodes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "key": {
+          "description": "The `characterize` key, e.g. `add@f32`, `convert@i8>f32`.",
+          "type": "string"
+        },
+        "op": {
+          "type": "string"
+        },
+        "proof": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProofRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "types": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "vectors": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "key",
+        "id",
+        "op",
+        "types",
+        "evidence",
+        "vectors",
+        "exhaustive",
+        "ir_nodes"
+      ],
+      "type": "object"
+    },
+    "Evidence": {
+      "description": "How a primitive is known to compute its op.",
+      "oneOf": [
+        {
+          "const": "proven",
+          "description": "Its optimized XLS IR is proven equal to the op's semantics (`cc_smt::ops`) for every input.",
+          "type": "string"
+        },
+        {
+          "const": "exhaustive",
+          "description": "Every input was evaluated on the optimized XLS IR and on Allo's `llvm` target and matched the\nreference (no proof: it ran out of time).",
+          "type": "string"
+        },
+        {
+          "const": "tested",
+          "description": "Edge cases and random inputs matched (no proof: it ran out of time).",
+          "type": "string"
+        }
+      ]
+    },
+    "ProofRef": {
+      "description": "The proof of one primitive.",
+      "properties": {
+        "file": {
+          "description": "`ops/<id>/proof.smt2`.",
+          "type": "string"
+        },
+        "product_abstracted": {
+          "description": "The significand product is an uninterpreted function (the multiply proofs, docs §4).",
+          "type": "boolean"
+        },
+        "verdict": {
+          "$ref": "#/$defs/Verdict"
+        }
+      },
+      "required": [
+        "file",
+        "verdict",
+        "product_abstracted"
+      ],
+      "type": "object"
+    },
+    "Verdict": {
+      "description": "A solver's answer to one `(check-sat)`.",
+      "oneOf": [
+        {
+          "enum": [
+            "unsat",
+            "unknown",
+            "timeout"
+          ],
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "With the model the solver printed (a counterexample of the negated equivalence).",
+          "properties": {
+            "sat": {
+              "properties": {
+                "model": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "model"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "sat"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "error": {
+              "properties": {
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "message"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "error"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`coverage.json`.",
+  "properties": {
+    "approximate": {
+      "description": "Catalog keys of ops whose accuracy is implementation-defined (exp, log, tanh, ...), not built here.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "entries": {
+      "items": {
+        "$ref": "#/$defs/Entry"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "entries",
+    "approximate"
+  ],
+  "title": "CoverageFile",
+  "type": "object"
+}

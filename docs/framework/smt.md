@@ -4,7 +4,8 @@ The passes state proof obligations as SMT-LIB 2 files (Barrett, Fontaine, Tinell
 Version 2.6*) and run an external solver on them out of process, through a capped tool runner
 (docs/framework/core.md). The file is the certificate: any solver can re-check it. `normalize` (rule
 proofs) and `iteration_space` (access and mapping proofs) write their queries with the string helpers;
-`datapaths` uses the typed term builder and the op semantics; `merge` will reuse both.
+`datapaths` uses the typed term builder and the op semantics; `merge` and `softfloat` reuse both, and
+`softfloat` states what a circuit computes from its XLS IR (`xls.rs`).
 
 ## Scripts
 
@@ -129,6 +130,24 @@ arithmetic; the RTL (`characterize`'s `rescale@i<n>`) is checked against it.
 formula, `rescale` against its reference (ties, left shifts, saturation, zero, subnormal and infinite
 scales, three widths), and two negative controls (exchanged `subtract` operands, a bf16 truncation instead
 of a rounding) that must be `sat`.
+
+## XLS IR (`xls.rs`)
+
+`xls::parse` reads the `top fn` of an XLS IR package (the text `opt_main` writes): its parameters, nodes
+(`name: bits[w] = op(operands, attrs)`) and `ret`. `Function::translate` gives the function's value as a
+term of the context, from one bit-vector term per parameter; `bits[1]` stays a 1-bit vector. The node kinds
+and their semantics follow the XLS IR reference (https://google.github.io/xls/ir_semantics/):
+`literal`, `identity`, `bit_slice`, `dynamic_bit_slice` (out-of-range bits are 0), `concat`, `zero_ext`,
+`sign_ext`, `and`/`or`/`xor`/`nand`/`nor` (n-ary), `not`, `neg`, `add`, `sub`, `umul`/`smul` (the low
+result-width bits of the extended operands), `udiv` (by 0: all ones) and `umod` (by 0: 0), `shll`/`shrl`/
+`shra` (an amount of at least the width gives 0, or the sign fill), the comparisons, `or_reduce`,
+`and_reduce`, `xor_reduce`, `reverse`, `sel` (`default` past the cases), `priority_sel` (the lowest set
+selector bit), `one_hot_sel`, `one_hot` (`lsb_prio`), `encode`, `decode`. Any other node kind is an error:
+the translation is never approximate. Bits only: tuples and arrays are not translated.
+
+`Multiply::Uninterpreted` translates each `umul` as an application of `umul_<wa>_<wb>_<wr>` to its
+operands: a claim proven for every such function holds for the product, which keeps multiplier
+equivalence out of a query (`softfloat`'s multiply proofs, docs/passes/softfloat.md §4).
 
 ## Running
 

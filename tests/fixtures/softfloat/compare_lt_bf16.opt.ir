@@ -1,0 +1,41 @@
+package my_package
+
+file_number 1 "ops/compare_lt_bf16/xls/test_block.cpp"
+file_number 2 "../../opt/xls/include/xls/contrib/xlscc/synth_only/xls_int.h"
+
+top fn compare_lt_bf16(v0: bits[16] id=1, v1: bits[16] id=2) -> bits[1] {
+  valueid8__2: bits[8] = bit_slice(v0, start=7, width=8, id=1640, pos=[(1,27,3)])
+  literal.1917: bits[8] = literal(value=255, id=1917, pos=[(1,53,26)])
+  bit_slice.1664: bits[7] = bit_slice(v0, start=0, width=7, id=1664, pos=[(1,32,3)])
+  literal.1909: bits[7] = literal(value=0, id=1909, pos=[(1,41,11)])
+  valueid8__3: bits[8] = bit_slice(v1, start=7, width=8, id=1641, pos=[(1,84,3)])
+  bit_slice.1668: bits[7] = bit_slice(v1, start=0, width=7, id=1668, pos=[(1,89,3)])
+  bit_slice.1528: bits[15] = bit_slice(v0, start=0, width=15, id=1528)
+  literal.1549: bits[15] = literal(value=0, id=1549, pos=[(1,47,26)])
+  bit_slice.1531: bits[15] = bit_slice(v1, start=0, width=15, id=1531)
+  eq.1872: bits[1] = eq(valueid8__2, literal.1917, id=1872, pos=[(1,53,26)])
+  ne.1859: bits[1] = ne(bit_slice.1664, literal.1909, id=1859, pos=[(1,57,28)])
+  eq.1877: bits[1] = eq(valueid8__3, literal.1917, id=1877, pos=[(1,110,26)])
+  ne.1867: bits[1] = ne(bit_slice.1668, literal.1909, id=1867, pos=[(1,114,28)])
+  literal.1998: bits[1] = literal(value=1, id=1998, pos=[(1,133,3)])
+  eq.1521: bits[1] = eq(bit_slice.1528, literal.1549, id=1521, pos=[(1,47,26)])
+  eq.1524: bits[1] = eq(bit_slice.1531, literal.1549, id=1524, pos=[(1,104,26)])
+  and.1986: bits[1] = and(eq.1872, ne.1859, id=1986, pos=[(1,54,3)])
+  and.1987: bits[1] = and(eq.1877, ne.1867, id=1987, pos=[(1,111,3)])
+  bit_slice.1358: bits[1] = bit_slice(v0, start=15, width=1, id=1358, pos=[(1,19,3)])
+  concat.1999: bits[16] = concat(literal.1998, bit_slice.1528, id=1999, pos=[(1,133,3)])
+  not.1580: bits[16] = not(v0, id=1580, pos=[(1,139,5)])
+  bit_slice.1356: bits[1] = bit_slice(v1, start=15, width=1, id=1356, pos=[(1,76,3)])
+  concat.2002: bits[16] = concat(literal.1998, bit_slice.1531, id=2002, pos=[(1,143,3)])
+  not.1581: bits[16] = not(v1, id=1581, pos=[(1,149,5)])
+  eq.1429: bits[1] = eq(v0, v1, id=1429, pos=[(1,155,26)])
+  thisid36: bits[1] = and(eq.1521, eq.1524, id=1989, pos=[(2,883,3), (2,883,3), (1,162,3)])
+  thisid38__1: bits[1] = or(and.1986, and.1987, id=1990, pos=[(2,882,3), (2,882,3), (1,181,3)])
+  sel.1953: bits[16] = sel(bit_slice.1358, cases=[concat.1999, not.1580], id=1953, pos=[(1,138,3)])
+  sel.1956: bits[16] = sel(bit_slice.1356, cases=[concat.2002, not.1581], id=1956, pos=[(1,148,3)])
+  thisid38: bits[1] = or(eq.1429, thisid36, id=1725, pos=[(2,882,3), (2,882,3), (1,163,3)])
+  not.1812: bits[1] = not(thisid38__1, id=1812, pos=[(1,191,3)])
+  op_aid40: bits[1] = ult(sel.1953, sel.1956, id=1949, pos=[(2,340,5), (2,340,5), (2,973,3), (1,171,26)])
+  not.1981: bits[1] = not(thisid38, id=1981, pos=[(1,174,27)])
+  ret and.1988: bits[1] = and(not.1812, op_aid40, not.1981, id=1988, pos=[(1,191,3)])
+}

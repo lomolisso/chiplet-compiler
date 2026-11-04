@@ -286,13 +286,21 @@ memory_gb = 32                   # solver jobs share it: 2 GB each
 timeout_min = 240
 
 [passes.softfloat]
-formats = ["e4m3fn", "bf16", "fp16", "fp32"]   # add "e5m2" if a recipe needs it (none does today)
-subnormals = "ieee"              # "ieee" | "ftz"
-random_vectors = 100000
+float_formats = ["f32", "f16", "bf16", "f8e4m3fn"]   # as characterize's; add "f8e5m2" if a recipe needs it
+int_widths = [2, 4, 8, 16, 32]   # integer types conversions reach (as characterize's)
+ops = []                         # element-wise ops to build; empty: every float op of the catalog
+exhaustive_bits = 16             # every input combination when the operands have at most this many bits
+random_vectors = 100000          # otherwise seeded random operands per primitive, next to the edge cases
+batch = 8                        # primitives per container
+proof_timeout_s = 600            # Bitwuzla per proof; past it a primitive is `exhaustive` or `tested`
+recheck_timeout_s = 7200         # Z3 per proof in verify (re-checks the proven ones; divide@f16 takes 48 min)
+recheck_sample = 2000            # vectors per primitive whose reference verify recomputes
+docker_python = "python"
+views = true
 [passes.softfloat.resources]
 threads = 16                     # containers (builds, solver jobs) in parallel
 memory_gb = 64                   # 4 GB per container (Z3 needs about 1 GB on the hardest query)
-timeout_min = 120
+timeout_min = 180                # builds and Bitwuzla about 10 min, the Z3 re-check up to recheck_timeout_s
 
 [passes.allo_emit]
 [passes.allo_emit.resources]

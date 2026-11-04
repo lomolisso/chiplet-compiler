@@ -18,6 +18,7 @@ All notable changes to this project are listed here. The format follows
 - `mine` pass: frequent datapath patterns per family by GraMi, re-matched with VF2, kept when convex, counted by a maximum independent set per class (exact ILP, branch and bound or greedy) and ranked by covered workload.
 - `merge` pass: configurable functional units by datapath merging (compatibility graph and maximum-weight clique, agglomerated under a depth bound) and parameterized arrays for template classes, every configuration proven equal to its datapath.
 - `merge` fixed requantization (`requant_variant = "fixed"`): rescaling chains become one integer `rescale` block (exact multiply by the scale's significand, rounding shift), proven within 1 of fp32, with its RTL in the `characterize` library.
+- `softfloat` pass and `python/cc_softfloat`: the exactly specified float ops (arithmetic, divide, sqrt, remainder, compare, rounding, conversions) as integer-only Allo functions, simulated against a reference, emitted through XLS to Verilog, and proven equal to the datapath semantics; `cc-smt` translates XLS IR.
 - `iteration_space` pass and the op table's iteration semantics: per class its affine accesses proven against the spec, dependences, the embedding relation, and routing of uniform contractions to systolic templates by a proven space-time mapping.
 
 ### Changed

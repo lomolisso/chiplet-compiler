@@ -131,6 +131,14 @@ Code comment in `customize.py`: "TODO Add XLS DSLX Backend": only the xlscc path
 | sw_emu int32 marshalling | don't use for >32-bit FUs |
 | LLVM build oversubscription | explicit `-j`, link jobs, Docker `--memory` |
 | Upstream churn (main only) | pin commits for Allo and LLVM; record both in `verify.json` |
+| Bit slices (`x[a:b]`, `x[i] = …`) emit Vivado `ap_int<>` code in the `xls` C++, which xlscc rejects (checked at `ac21bae`) | shifts and masks |
+| Calls to helper Allo functions are emitted as `f(x, &out)` against a by-value signature (xlscc error) | run MLIR's `inline,symbol-dce` on `s.module` before `build(target="xls")` |
+| The `xls` C++ includes `xls_builtin.h`, which neither Allo nor XLS ships | an empty header on xlscc's include path |
+| `UInt(64) + 1` becomes `ac_int<66, true>`, which xlscc cannot convert back to `uint64_t` | no 64-bit types; minimal widths |
+| Integer literals are 32-bit signed: a literal >= 2^31 compares wrongly (`0 > 2^31` is true) | build wider constants in a typed variable |
+| `~x` returns `x` | XOR with all ones |
+| `llvm`: `<`/`>=` of two `UInt(n)` variables compares them as signed (the `xls` C++ compares unsigned) | keep the top bit of compared variables clear (one spare bit) |
+| Result width = operand width (`UInt(4) << 16` stays 4 bits); LLVM shifts by >= the width are poison | widen explicitly before shifts and products; guard variable shift amounts |
 
 ## Sources
 

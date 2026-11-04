@@ -35,6 +35,12 @@ test-group = "heavy"
 filter = "binary(deep) and test(characterize)"
 slow-timeout = { period = "600s", terminate-after = 9 }
 
+# softfloat: a reduced set built with Allo and XLS, proven by both solvers, then seven tampered artifacts
+# each re-verified (verify re-checks the proofs in Z3 and recomputes the reference each time).
+[[profile.deep.overrides]]
+filter = "binary(deep) and test(softfloat)"
+slow-timeout = { period = "600s", terminate-after = 6 }
+
 # mine: the analysis chain on the deep models, then mining with real GraMi runs and a forced rerun.
 [[profile.deep.overrides]]
 filter = "binary(deep) and test(mine)"
