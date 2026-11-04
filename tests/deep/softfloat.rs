@@ -1,16 +1,17 @@
-//! Deep check: `softfloat` on a reduced set (add, multiply, divide, compare and conversions in f16 and
-//! f8e4m3fn, integers of 8 bits) into the build area's ephemeral `runs/deep-softfloat/`, with Allo, XLS and
-//! both solvers for real. `verify` passes; then each kind of tampering fails its check. The directory is
-//! removed when the test passes.
+//! Deep check: `softfloat` on a reduced set (add, multiply, divide, compare, conversions and the
+//! approximate ops exponential, log, log_plus_one, tanh and rsqrt in f16 and f8e4m3fn, integers of 8 bits)
+//! into the build area's ephemeral `runs/deep-softfloat/`, with Allo, XLS and both solvers for real.
+//! `verify` passes; then each kind of tampering fails its check. The directory is removed when the test
+//! passes.
 
 use cc_core::{CheckStatus, LoadedConfig};
 use cc_passes::softfloat::SOFTFLOAT;
-use cc_passes::softfloat::json::{CoverageFile, Evidence};
+use cc_passes::softfloat::json::{Accuracy, CoverageFile, Evidence};
 use cc_pipeline::{Pipeline, RunOptions, RunStatus};
 use tests::repo_root;
 
 const REDUCED: &[&str] = &[
-    "passes.softfloat.ops=[\"add\", \"multiply\", \"divide\", \"compare\", \"convert\"]",
+    "passes.softfloat.ops=[\"add\", \"multiply\", \"divide\", \"compare\", \"convert\", \"exponential\", \"log\", \"log_plus_one\", \"tanh\", \"rsqrt\"]",
     "passes.softfloat.float_formats=[\"f16\", \"f8e4m3fn\"]",
     "passes.softfloat.int_widths=[8]",
     "passes.softfloat.random_vectors=5000",
@@ -81,10 +82,11 @@ fn softfloat_reduced_set_builds_proves_and_verifies() {
     let kind = dir.kind(SOFTFLOAT);
     let cov: CoverageFile = kind.read_json("coverage.json").unwrap();
     let entry = |key: &str| cov.entries.iter().find(|e| e.key == key).unwrap();
-    // 2 add, 2 multiply, 2 divide, 8 compare, 14 conversions (bool, i8, ui8 with each format; f16 <-> f8).
+    // 2 add, 2 multiply, 2 divide, 8 compare, 14 conversions (bool, i8, ui8 with each format; f16 <-> f8),
+    // 10 approximate (5 ops in 2 formats).
     assert_eq!(
         cov.entries.len(),
-        28,
+        38,
         "{:?}",
         cov.entries.iter().map(|e| &e.key).collect::<Vec<_>>()
     );
@@ -94,6 +96,15 @@ fn softfloat_reduced_set_builds_proves_and_verifies() {
     assert_eq!(mul.evidence, Evidence::Proven);
     assert!(mul.proof.as_ref().unwrap().product_abstracted);
     assert_eq!(entry("convert@f16>f8e4m3fn").evidence, Evidence::Proven);
+    let exp = entry("exponential@f16");
+    assert_eq!(
+        (exp.evidence, exp.accuracy),
+        (Evidence::Exhaustive, Accuracy::Faithful)
+    );
+    assert!(exp.proof.is_none() && exp.max_ulp.unwrap() <= 1.0);
+    assert_eq!(entry("rsqrt@f16").accuracy, Accuracy::CorrectlyRounded);
+    assert_eq!(entry("log@f8e4m3fn").accuracy, Accuracy::CorrectlyRounded);
+    assert!(cov.approximate.is_empty());
 
     let op = |id: &str, f: &str| kind.dir().join(format!("ops/{id}/{f}"));
     // An edited circuit: its query no longer matches.
@@ -123,6 +134,16 @@ fn softfloat_reduced_set_builds_proves_and_verifies() {
     // A Verilog file of another module.
     tamper(&p, &op("divide_f16", "rtl.v"), "rtl", |f| {
         std::fs::copy(op("add_f16", "rtl.v"), f).unwrap();
+    });
+    // An approximate op's recorded error beyond its limit.
+    tamper(&p, &kind.dir().join("coverage.json"), "accuracy", |f| {
+        let mut v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(f).unwrap()).unwrap();
+        for e in v["entries"].as_array_mut().unwrap() {
+            if e["key"] == "tanh@f16" {
+                e["max_ulp"] = serde_json::json!(1.5);
+            }
+        }
+        std::fs::write(f, v.to_string()).unwrap();
     });
     // A primitive dropped from the coverage table.
     tamper(&p, &kind.dir().join("coverage.json"), "primitives", |f| {

@@ -13,8 +13,8 @@ use cc_smt::Verdict;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-pub const COVERAGE_SCHEMA: &str = "cc.softfloat.coverage/1";
-pub const SUMMARY_SCHEMA: &str = "cc.softfloat.summary/1";
+pub const COVERAGE_SCHEMA: &str = "cc.softfloat.coverage/2";
+pub const SUMMARY_SCHEMA: &str = "cc.softfloat.summary/2";
 
 /// How a primitive is known to compute its op.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
@@ -25,8 +25,31 @@ pub enum Evidence {
     /// Every input was evaluated on the optimized XLS IR and on Allo's `llvm` target and matched the
     /// reference (no proof: it ran out of time).
     Exhaustive,
-    /// Edge cases and random inputs matched (no proof: it ran out of time).
+    /// Edge cases and random inputs matched (no proof: it ran out of time, or an approximate op).
     Tested,
+}
+
+/// What a primitive's result is, relative to the exact value of its op.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Accuracy {
+    /// The op's semantics (`cc_smt::ops`), bit for bit.
+    Exact,
+    /// An approximate op rounded correctly: within 1/2 ulp of the exact value.
+    CorrectlyRounded,
+    /// An approximate op within 1 ulp of the exact value.
+    Faithful,
+}
+
+impl Accuracy {
+    /// The error limit in ulps (`None`: bit-exact).
+    pub fn limit(self) -> Option<f64> {
+        match self {
+            Accuracy::Exact => None,
+            Accuracy::CorrectlyRounded => Some(0.5),
+            Accuracy::Faithful => Some(1.0),
+        }
+    }
 }
 
 /// One mismatch example from the build (bit patterns).
@@ -65,6 +88,14 @@ pub struct BuildResult {
     pub ir_nodes: u64,
     #[serde(default)]
     pub seconds: BTreeMap<String, f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accuracy: Option<Accuracy>,
+    /// Approximate ops: the design's bound of the result's error in ulps (`cc_softfloat.approx`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bound_ulp: Option<f64>,
+    /// Approximate ops: the largest error over the vectors, in ulps of the float64 reference.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_ulp: Option<f64>,
 }
 
 /// The proof of one primitive.
@@ -78,7 +109,7 @@ pub struct ProofRef {
 }
 
 /// One primitive of the library.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Entry {
     /// The `characterize` key, e.g. `add@f32`, `convert@i8>f32`.
@@ -91,16 +122,21 @@ pub struct Entry {
     pub vectors: u64,
     pub exhaustive: bool,
     pub ir_nodes: u64,
+    pub accuracy: Accuracy,
+    /// Approximate ops: the design's error bound and the largest measured error, in ulps.
+    pub bound_ulp: Option<f64>,
+    pub max_ulp: Option<f64>,
+    /// Exactly specified ops: the proof.
     pub proof: Option<ProofRef>,
 }
 
 /// `coverage.json`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CoverageFile {
     pub schema: String,
     pub entries: Vec<Entry>,
-    /// Catalog keys of ops whose accuracy is implementation-defined (exp, log, tanh, ...), not built here.
+    /// Catalog keys of approximate ops not built yet (sine, cosine, power).
     pub approximate: Vec<String>,
 }
 
@@ -113,6 +149,11 @@ pub struct Summary {
     pub proven: u64,
     pub exhaustive: u64,
     pub tested: u64,
+    /// By accuracy.
+    pub exact: u64,
+    pub correctly_rounded: u64,
+    pub faithful: u64,
+    /// Approximate ops not built yet.
     pub approximate: u64,
     pub vectors: u64,
     /// blake3 of `python/cc_softfloat` (`.py`, `.h`): `allo_emit` keys its cache on it.

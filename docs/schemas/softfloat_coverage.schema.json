@@ -1,9 +1,40 @@
 {
   "$defs": {
+    "Accuracy": {
+      "description": "What a primitive's result is, relative to the exact value of its op.",
+      "oneOf": [
+        {
+          "const": "exact",
+          "description": "The op's semantics (`cc_smt::ops`), bit for bit.",
+          "type": "string"
+        },
+        {
+          "const": "correctly_rounded",
+          "description": "An approximate op rounded correctly: within 1/2 ulp of the exact value.",
+          "type": "string"
+        },
+        {
+          "const": "faithful",
+          "description": "An approximate op within 1 ulp of the exact value.",
+          "type": "string"
+        }
+      ]
+    },
     "Entry": {
       "additionalProperties": false,
       "description": "One primitive of the library.",
       "properties": {
+        "accuracy": {
+          "$ref": "#/$defs/Accuracy"
+        },
+        "bound_ulp": {
+          "description": "Approximate ops: the design's error bound and the largest measured error, in ulps.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "evidence": {
           "$ref": "#/$defs/Evidence"
         },
@@ -23,6 +54,13 @@
           "description": "The `characterize` key, e.g. `add@f32`, `convert@i8>f32`.",
           "type": "string"
         },
+        "max_ulp": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "op": {
           "type": "string"
         },
@@ -34,7 +72,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "description": "Exactly specified ops: the proof."
         },
         "types": {
           "items": {
@@ -56,7 +95,8 @@
         "evidence",
         "vectors",
         "exhaustive",
-        "ir_nodes"
+        "ir_nodes",
+        "accuracy"
       ],
       "type": "object"
     },
@@ -75,7 +115,7 @@
         },
         {
           "const": "tested",
-          "description": "Edge cases and random inputs matched (no proof: it ran out of time).",
+          "description": "Edge cases and random inputs matched (no proof: it ran out of time, or an approximate op).",
           "type": "string"
         }
       ]
@@ -162,7 +202,7 @@
   "description": "`coverage.json`.",
   "properties": {
     "approximate": {
-      "description": "Catalog keys of ops whose accuracy is implementation-defined (exp, log, tanh, ...), not built here.",
+      "description": "Catalog keys of approximate ops not built yet (sine, cosine, power).",
       "items": {
         "type": "string"
       },

@@ -33,15 +33,26 @@ fn the_library_covers_every_float_op_of_the_catalog() {
         "remainder@f8e4m3fn",
         "convert@ui32>bf16",
         "compare.LE@f16",
+        "exponential@f32",
+        "log_plus_one@bf16",
+        "rsqrt@f8e4m3fn",
+        "tanh@f16",
     ] {
         assert!(built.iter().any(|p| p.key == key), "{key}");
     }
-    assert!(approx.iter().any(|k| k == "exponential@f32"));
+    // the approximate ops not built yet
+    assert!(approx.iter().any(|k| k == "sine@f32"));
+    assert!(
+        approx
+            .iter()
+            .all(|k| ["sine@", "cosine@", "power@"].iter().any(|o| k.starts_with(o))),
+        "{approx:?}"
+    );
     assert!(approx.iter().all(|k| !built.iter().any(|p| &p.key == k)));
     assert!(
         !built
             .iter()
-            .any(|p| p.op == "tanh" || p.kind != catalog::Kind::Op)
+            .any(|p| p.op == "sine" || p.kind != catalog::Kind::Op)
     );
 }
 

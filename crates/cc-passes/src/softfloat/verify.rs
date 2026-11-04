@@ -9,8 +9,10 @@ use cc_pipeline::{PassContext, PassError};
 use cc_smt::Verdict;
 use rayon::prelude::*;
 
-use super::json::{BuildResult, CoverageFile, Evidence, Summary};
-use super::{OUT_IN_CONTAINER, SOFTFLOAT, SoftfloatConfig, primitives, python, python_runner, query_of};
+use super::json::{Accuracy, BuildResult, CoverageFile, Evidence, Summary};
+use super::{
+    OUT_IN_CONTAINER, SOFTFLOAT, SoftfloatConfig, is_approximate, primitives, python, python_runner, query_of,
+};
 use crate::characterize::catalog::{self, Primitive};
 use crate::datapaths::json::ProofResult;
 
@@ -23,9 +25,14 @@ const FILES: &[&str] = &[
     "rtl.v",
     "vectors.npz",
     "result.json",
-    "proof.smt2",
-    "proof.result",
 ];
+
+/// The proof files of an exactly specified op.
+const PROOF_FILES: &[&str] = &["proof.smt2", "proof.result"];
+
+/// Slack on a measured error in ulps: the reference's own error allowance (2^-48 relative, at most 2^-24
+/// ulp in these formats) and float64 rounding of the ratio.
+const ULP_SLACK: f64 = 1e-6;
 
 /// Does `text` name a float type (`f16`, `f32`, `f64`, `bf16` as a whole word, or as the element type of
 /// a shape such as `4x8xbf16` or `?xf32`)? Allo's XLS backend rejects such a module; the library must be
@@ -76,7 +83,7 @@ pub fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
             .count("approximate", approx.len() as u64)
             .path("out/softfloat/coverage.json")
             .note(if same {
-                "every float op primitive of the catalog is built (approximate ops listed apart)"
+                "every float op primitive of the catalog is built (approximate ops not built yet listed apart)"
             } else {
                 "coverage.json does not list the catalog's float primitives"
             }),
@@ -93,7 +100,12 @@ pub fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
     let mut bad_rtl = Vec::new();
     let mut bad_exhaustive = Vec::new();
     for x in &cov.entries {
-        for f in FILES {
+        let proof_files = if is_approximate(&x.op) {
+            &[][..]
+        } else {
+            PROOF_FILES
+        };
+        for f in FILES.iter().chain(proof_files) {
             if !dir.join(format!("ops/{}/{f}", x.id)).is_file() {
                 missing.push(format!("{}/{f}", x.id));
             }
@@ -217,11 +229,49 @@ pub fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
             .note(sample(&differ, 8)),
     );
 
+    // Approximate ops: within their accuracy limit, and the design's bound within it too.
+    let mut bad_acc = Vec::new();
+    let mut approx_n = 0u64;
+    let mut worst = 0f64;
+    for x in &cov.entries {
+        let r: Option<BuildResult> = out.read_json(&format!("ops/{}/result.json", x.id)).ok();
+        let recorded = r.as_ref().and_then(|r| r.accuracy).unwrap_or(Accuracy::Exact);
+        let ok = if is_approximate(&x.op) {
+            approx_n += 1;
+            let limit = x.accuracy.limit();
+            let within = |v: Option<f64>| match (v, limit) {
+                (Some(v), Some(l)) => v.is_finite() && v <= l + ULP_SLACK,
+                _ => false,
+            };
+            worst = worst.max(x.max_ulp.unwrap_or(f64::INFINITY));
+            x.proof.is_none()
+                && limit.is_some()
+                && within(x.max_ulp)
+                && within(x.bound_ulp)
+                && r.as_ref()
+                    .is_some_and(|r| r.max_ulp == x.max_ulp && r.bound_ulp == x.bound_ulp)
+        } else {
+            x.accuracy == Accuracy::Exact && x.max_ulp.is_none() && x.bound_ulp.is_none()
+        };
+        if !ok || recorded != x.accuracy {
+            bad_acc.push(x.key.clone());
+        }
+    }
+    rep.push(
+        Check::new("accuracy", bad_acc.is_empty())
+            .count("approximate", approx_n)
+            .count("bad", bad_acc.len() as u64)
+            .note(format!(
+                "every approximate op's largest error and its design bound are within its limit (correctly rounded: 1/2 ulp, faithful: 1 ulp); worst measured {worst:.4} ulp; exact ops are exact"
+            ))
+            .note(sample(&bad_acc, 8)),
+    );
+
     // Queries regenerate byte for byte; the recorded verdicts match the evidence.
     let mut bad_query = Vec::new();
     let mut bad_result = Vec::new();
     let mut proven: Vec<(String, String)> = Vec::new();
-    for x in &cov.entries {
+    for x in cov.entries.iter().filter(|x| !is_approximate(&x.op)) {
         let p = by_id[x.id.as_str()];
         let f = format!("ops/{}/proof.smt2", x.id);
         let stored = std::fs::read_to_string(dir.join(&f)).unwrap_or_default();
@@ -251,7 +301,10 @@ pub fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
     }
     rep.push(
         Check::new("queries", bad_query.is_empty())
-            .count("regenerated", cov.entries.len() as u64)
+            .count(
+                "regenerated",
+                cov.entries.iter().filter(|x| !is_approximate(&x.op)).count() as u64,
+            )
             .count("differ", bad_query.len() as u64)
             .note("each proof.smt2 equals the query regenerated from fu.opt.ir")
             .note(sample(&bad_query, 8)),
@@ -294,10 +347,14 @@ pub fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
     );
 
     let count = |ev: Evidence| cov.entries.iter().filter(|x| x.evidence == ev).count() as u64;
+    let by_acc = |a: Accuracy| cov.entries.iter().filter(|x| x.accuracy == a).count() as u64;
     let ok = summary.primitives == cov.entries.len() as u64
         && summary.proven == count(Evidence::Proven)
         && summary.exhaustive == count(Evidence::Exhaustive)
         && summary.tested == count(Evidence::Tested)
+        && summary.exact == by_acc(Accuracy::Exact)
+        && summary.correctly_rounded == by_acc(Accuracy::CorrectlyRounded)
+        && summary.faithful == by_acc(Accuracy::Faithful)
         && summary.approximate == cov.approximate.len() as u64
         && summary.library_hash == super::library_hash(ctx.repo_root())?;
     rep.push(

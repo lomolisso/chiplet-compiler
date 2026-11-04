@@ -4,11 +4,28 @@
   "description": "`summary.json`.",
   "properties": {
     "approximate": {
+      "description": "Approximate ops not built yet.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "correctly_rounded": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "exact": {
+      "description": "By accuracy.",
       "format": "uint64",
       "minimum": 0,
       "type": "integer"
     },
     "exhaustive": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "faithful": {
       "format": "uint64",
       "minimum": 0,
       "type": "integer"
@@ -53,6 +70,9 @@
     "proven",
     "exhaustive",
     "tested",
+    "exact",
+    "correctly_rounded",
+    "faithful",
     "approximate",
     "vectors",
     "library_hash",
