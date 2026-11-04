@@ -130,12 +130,14 @@ impl PassContext {
         )
     }
 
-    /// Containers: the `[tools.docker]` per-call caps, never above the pass's declaration.
+    /// Containers: the pass's declaration (memory, threads as CPUs) is what its calls share (a pass that
+    /// runs several containers at once splits it, e.g. `cc_smt::run_sharded`); each container is further
+    /// capped at the `[tools.docker]` per-call ceiling by the Docker runner.
     pub fn docker(&self) -> BoundRunner {
         let d = &self.config.config.tools.docker;
         let caps = Caps {
-            memory_gb: d.memory_gb.min(self.resources.memory_gb),
-            cpus: d.cpus.min(self.resources.threads as f64),
+            memory_gb: self.resources.memory_gb,
+            cpus: self.resources.threads as f64,
             timeout_s: self.timeout_s(),
             pids_limit: d.pids_limit,
         };

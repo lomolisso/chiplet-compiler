@@ -36,6 +36,15 @@ impl DockerRunner {
         }
     }
 
+    /// `caps` clamped to the per-container ceiling `[tools.docker] memory_gb`, `cpus`.
+    pub fn ceiling(&self, caps: &Caps) -> Caps {
+        Caps {
+            memory_gb: caps.memory_gb.min(self.cfg.memory_gb),
+            cpus: caps.cpus.min(self.cfg.cpus),
+            ..*caps
+        }
+    }
+
     pub fn default_image(&self) -> String {
         format!("{}:{}", self.cfg.image, self.cfg.tag)
     }
@@ -130,6 +139,7 @@ impl ToolRunner for DockerRunner {
 
     fn run(&self, inv: &Invocation, caps: &Caps, log: &ToolLog, cancel: &CancelToken) -> Result<ToolOutcome> {
         cancel.check()?;
+        let caps = &self.ceiling(caps);
         // `--mount` errors on a missing source (unlike `-v`, which creates it as root): create writable ones.
         for m in &inv.mounts {
             if !m.readonly {
@@ -245,5 +255,25 @@ mod tests {
              --mount type=bind,src=/repo,dst=/work/repo,readonly --workdir /work/out \
              chiplet-compiler/toolchain:dev codegen_main --x"
         );
+    }
+
+    #[test]
+    fn each_container_is_capped_at_the_per_call_ceiling() {
+        let r = DockerRunner::from_config(DockerConfig::default());
+        let pass = Caps {
+            memory_gb: 64.0,
+            cpus: 16.0,
+            timeout_s: 60.0,
+            pids_limit: 4096,
+        };
+        let c = r.ceiling(&pass);
+        assert_eq!((c.memory_gb, c.cpus), (16.0, 8.0));
+        let small = Caps {
+            memory_gb: 2.0,
+            cpus: 1.0,
+            ..pass
+        };
+        let c = r.ceiling(&small);
+        assert_eq!((c.memory_gb, c.cpus), (2.0, 1.0));
     }
 }

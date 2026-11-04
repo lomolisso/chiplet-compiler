@@ -105,7 +105,7 @@
 
 5. **Config** (`[passes.components]`): `wl_max_rounds = 64` (upper bound on refinement rounds),
    `vf2_budget = 200000000` (candidate pairs one VF2 search may test; a search over it fails the pass
-   with the graph named), `views = true`. Resources: `threads = 8`, `memory_gb = 4`, `timeout_min = 30`.
+   with the graph named), `views = true`. Resources: `threads = 8`, `memory_gb = 8`, `timeout_min = 30`.
 
 6. **Verification** (`verify.rs`; it reads the modules and the written files; it never calls the
    graph builder, the class computation for instances, WL or VF2). Per phase, `<model>:<phase>:<check>`:

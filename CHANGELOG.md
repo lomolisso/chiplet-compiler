@@ -23,6 +23,7 @@ All notable changes to this project are listed here. The format follows
 
 ### Changed
 
+- A pass's containers share its declared memory and threads (each at most the `[tools.docker]` ceiling, now 16 GB and 8 CPUs) instead of one fixed 8 GB cap; run budget 128 GB and 32 threads, and pass resources raised to their measured needs (export, datapaths, mine, merge, solver passes).
 - `export` records each symbol's integer size at the exported config and a census of the phase lowered on concrete shapes (`census_concrete.json`, integer FLOPs).
 - `chipc doctor` also merges the ASAP7 group libraries into one Liberty file and `.db`.
 - Toolchain image 0.4.0: GraMi's directed build takes a `maxNodes` bound on the pattern size (`third_party/patches/grami/0002`).

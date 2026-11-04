@@ -113,7 +113,7 @@
 5. **Config** (`[passes.datapaths]`): `allow_unknown = []` (`[{ class = "z…", reason = "…" }]`),
    `max_tuples = 64`, `lemma_timeout_s = 600`, `views = true`. `[tools.smt]`: `solver` (`bitwuzla` proves
    the obligations, the other re-checks), `timeout_s` per query, `runner`. The solver and the image tag
-   enter the cache key. Resources: `threads = 16`, `memory_gb = 8`, `timeout_min = 120`.
+   enter the cache key. Resources: `threads = 24`, `memory_gb = 48` (2 GB per solver job), `timeout_min = 120`.
 
 6. **Verification** (`verify.rs`; it never calls the extraction or the tuple builder):
    - `complete`: every class has a datapath; its tuples are the distinct (element types, constant

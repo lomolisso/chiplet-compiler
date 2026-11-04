@@ -118,8 +118,8 @@
    `vf2_budget = 100000000` (candidate pairs of one re-match; over it the pass fails), `views = true`;
    `[passes.mine.mis]`: `algorithm = "exact_ilp" | "branch_and_bound" | "greedy_min_degree"`,
    `node_budget = 1000000`. The image tag and the GraMi commit enter the cache key, and Java's version
-   through `tools()`. Resources: `threads = 8`, `memory_gb = 8` (one GraMi container per `heap_gb + 2`
-   GB runs at a time), `timeout_min = 120`.
+   through `tools()`. Resources: `threads = 8`, `memory_gb = 32` (one GraMi container per `heap_gb + 2`
+   GB runs at a time: four), `timeout_min = 120`.
 
 6. **Verification** (`verify.rs`; it never calls the miner's code: units, the `.lg` reading, canonical
    codes, matching, convexity and the independent-set search are written again there):

@@ -117,7 +117,7 @@
    `random_vectors` (100000), `batch` (8 primitives per container), `proof_timeout_s` (600, Bitwuzla per
    proof), `recheck_timeout_s` (1800, Z3 per proof in `verify`), `recheck_sample` (2000 vectors per
    primitive whose reference `verify` recomputes), `docker_python`, `views`. Resources:
-   `[passes.softfloat.resources]` (threads 8, memory 4 GB, 120 min). Subnormals are IEEE everywhere: the
+   `[passes.softfloat.resources]` (threads 16, memory 64 GB, 120 min: up to 16 containers at 4 GB). Subnormals are IEEE everywhere: the
    datapath semantics have no flush mode.
 
 6. **Verification** (`verify.rs`, `verify.json`; reads only `out/softfloat/` and the configuration):

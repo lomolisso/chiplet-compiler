@@ -14,8 +14,10 @@ stop_on_failure = false          # true: on the first failure, admit nothing new
 [resources]
 # Admission (design §3.3): a ready pass starts when the running passes plus it fit both limits below.
 # A pass declaring more than a limit by itself waits until nothing else runs, then runs alone.
-memory_budget_gb = 32            # sum of declared memory_gb of concurrently running passes
-threads_total = 16               # sum of declared threads of concurrently running passes
+# The two limits are the guardrail of a whole run on a shared server (here half the cores and a quarter of
+# the memory of a 64-core, 500 GB machine); a host with less headroom lowers them in config.local.toml.
+memory_budget_gb = 128           # sum of declared memory_gb of concurrently running passes
+threads_total = 32               # sum of declared threads of concurrently running passes
 
 [paths]
 build_dir = "build"
@@ -39,8 +41,8 @@ watchdog_interval_s = 0.5        # RSS sampling period of the process-group watc
 image = "chiplet-compiler/toolchain"
 tag = "0.4.0"                    # the release in which the image inputs ([tools.docker.build], the pins below,
                                  # docker/) last changed; bump it with them
-memory_gb = 8                    # default per-call cap (--memory and --memory-swap)
-cpus = 4.0                       # default per-call --cpus
+memory_gb = 16                   # ceiling of one container (--memory and --memory-swap); a pass's
+cpus = 8.0                       # containers share its declared memory_gb and threads, each at most this
 pids_limit = 4096
 
 [tools.docker.build]             # inputs of docker/build.sh only (`chipc doctor --build-args`)
@@ -138,8 +140,8 @@ docker_python = "/opt/cc/jax-venv/bin/python"        # the locked JAX stack insi
 host_python = ["uv", "run", "--frozen", "python"]    # host command prefix
 # Input sizes are always symbolic and the invariance re-export always runs: there is no switch.
 [passes.export.resources]
-threads = 4                      # models exported in parallel, one process each
-memory_gb = 32                   # declared for admission; each model process gets memory_gb / threads
+threads = 12                     # models exported in parallel, one process each
+memory_gb = 72                   # each model process gets memory_gb / threads (largest measured: 3.4 GB)
 timeout_min = 60
 
 [passes.import]
@@ -157,7 +159,7 @@ vf2_budget = 200000000           # candidate pairs one VF2 search may test; a se
 views = true                     # write views/components.md (components x models)
 [passes.components.resources]
 threads = 8                      # phases in parallel
-memory_gb = 4                    # measured 2026-11-01: 3.3 GB peak for all models at full (run + verify)
+memory_gb = 8                    # measured 2026-11-01: 3.3 GB peak for all models at full (run + verify)
 timeout_min = 30
 
 [passes.normalize]
@@ -170,7 +172,7 @@ float = "seq"                    # float families must be set: their order is pa
 complex = "seq"
 [passes.normalize.resources]
 threads = 8
-memory_gb = 2
+memory_gb = 8                    # solver jobs share it (one per thread)
 timeout_min = 30
 
 [passes.kernels]
@@ -198,7 +200,7 @@ min_share = 0.5                  # ... and such rows must hold >= this share of 
 max_dims = 7                     # bound on the dims of the space-time mapping search (after grouping: at most 3)
 [passes.iteration_space.resources]
 threads = 8
-memory_gb = 2
+memory_gb = 8                    # solver jobs share it (one per thread)
 timeout_min = 30
 
 [passes.datapaths]
@@ -207,8 +209,8 @@ max_tuples = 64                  # width tuples one class may have (more fails t
 lemma_timeout_s = 600            # per encoding lemma (Z3; bf16 division takes about 100 s)
 views = true                     # write views/datapaths.md
 [passes.datapaths.resources]
-threads = 16
-memory_gb = 8
+threads = 24                     # proofs in parallel (solver jobs)
+memory_gb = 48                   # solver jobs share it: 2 GB each
 timeout_min = 120
 
 [passes.characterize]            # needs `chipc doctor` (build/.env: the .db files, the merged ASAP7 Liberty)
@@ -254,7 +256,7 @@ algorithm = "exact_ilp"          # "exact_ilp" | "branch_and_bound" | "greedy_mi
 node_budget = 1000000             # branch_and_bound search nodes per component
 [passes.mine.resources]
 threads = 8
-memory_gb = 8                     # one GraMi container at a time per 8 GB
+memory_gb = 32                   # GraMi runs in parallel: memory_gb / (heap_gb + 2)
 timeout_min = 120
 
 [passes.merge]                    # functional units: datapath merging (compatibility graph + max-weight clique), arrays
@@ -279,8 +281,8 @@ rank = "greedy"                  # rank candidate pairs by "greedy" cliques (the
 node_budget = 2000               # branch-and-bound nodes per solve (deterministic); then the incumbent, not optimal
 timeout_s = 30                   # wall-clock limit per solve (safety net); on expiry `greedy` answers
 [passes.merge.resources]
-threads = 8
-memory_gb = 8
+threads = 16
+memory_gb = 32                   # solver jobs share it: 2 GB each
 timeout_min = 240
 
 [passes.softfloat]
@@ -296,8 +298,8 @@ recheck_sample = 2000            # vectors per primitive whose reference verify 
 docker_python = "python"
 views = true
 [passes.softfloat.resources]
-threads = 8
-memory_gb = 4
+threads = 16                     # containers (builds, solver jobs) in parallel
+memory_gb = 64                   # 4 GB per container (Z3 needs about 1 GB on the hardest query)
 timeout_min = 120
 
 [passes.allo_emit]
