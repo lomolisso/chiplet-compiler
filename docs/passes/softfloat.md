@@ -4,8 +4,10 @@
    of the primitive catalog (design §4.9) is an Allo function over bit patterns (`UInt(n)`), so Allo's
    `llvm` simulator and its XLS backend, which reject float types, accept every unit (design §4.12, §6.4).
    Each primitive is simulated against a reference, taken through Allo's XLS backend, xlscc, `opt_main`
-   and `codegen_main` to Verilog, evaluated on its optimized XLS IR, and proven equal to the op's
-   semantics in `cc_smt::ops` (the semantics every datapath proof uses) where the solver finishes.
+   and `codegen_main` to Verilog, and evaluated on its optimized XLS IR. An exactly specified op is
+   proven equal to its semantics in `cc_smt::ops` (the semantics every datapath proof uses) where the
+   solver finishes; an approximate op (exponential, log, tanh, ...), whose result the datapath proofs
+   leave open, is within one ulp of the exact value (correctly rounded where that is cheap).
    Position: a parallel branch that depends only on the environment; `allo_emit` calls the library and
    `characterize` prices its Verilog.
 
@@ -25,6 +27,12 @@
      p <= 24 (Figueroa, "When is double rounding innocuous?", SIGNUM Newsletter 30(3), 1995).
    - The SMT-LIB floating-point theory (Brain, Tinelli, Rümmer, Wahl, ARITH 2015) defines `fp.mul` as the
      exact product rounded once; that is the multiply proofs' spec (§4).
+   - Approximate ops: Tang, "Table-driven implementation of the exponential function in IEEE
+     floating-point arithmetic", ACM TOMS 15(2), 1989, and "Table-driven implementation of the logarithm
+     function", ACM TOMS 16(4), 1990 (argument reduction by a table); Muller, *Elementary Functions:
+     Algorithms and Implementation*, 3rd ed., 2016 (range reduction, faithful rounding, the ulp); the
+     special values of ISO C11 Annex F (`exp(-inf) = +0`, `log(0) = -inf`, `log1p(-1) = -inf`,
+     `tanh(+-inf) = +-1`, `rsqrt` as `1/sqrt`).
 
 3. **Inputs and outputs.**
    - Inputs (not artifacts): the library `python/cc_softfloat` and the toolchain image (Allo, XLS); their
@@ -34,20 +42,23 @@
      (Allo's module after inlining), `xls/test_block.cpp` (Allo's XLS C++), `fu.ir` (xlscc), `fu.opt.ir`
      (`opt_main`), `rtl.v` and `rtl.sig.textproto` (`codegen_main --generator=combinational`, module
      `<id>`), `vectors.npz` (operands, reference, `llvm` and IR results), `result.json` (schema
-     `softfloat_result`), `proof.smt2` and `proof.result` (schema `datapaths_result`).
+     `softfloat_result`), and for an exactly specified op `proof.smt2` and `proof.result` (schema
+     `datapaths_result`).
    - `out/softfloat/coverage.json` (schema `softfloat_coverage`): per primitive its key, id, op, types,
      evidence (`proven`: the IR equals the semantics for every input; `exhaustive`: every input evaluated
-     on the IR and on `llvm` matched the reference; `tested`: edge cases and random inputs matched), vector
-     count, IR size and proof verdict; and the keys of the approximate ops (not built here).
+     on the IR and on `llvm` matched the reference; `tested`: edge cases and random inputs matched),
+     accuracy (`exact`, `correctly_rounded`: within 1/2 ulp, `faithful`: within 1 ulp), for an approximate
+     op its design's error bound and its largest measured error in ulps, vector count, IR size and proof
+     verdict; and the keys of the approximate ops not built yet (`sine`, `cosine`, `power`).
    - `out/softfloat/summary.json` (schema `softfloat_summary`): counts, vectors, the library hash (the
      key `allo_emit` caches on), the image and the solver; `views/softfloat.md`.
 
 4. **Algorithm.**
    1. *Primitives.* The catalog's float op primitives (every element-wise op that `cc_smt::ops` defines
       on a float type, conversions to and from every integer width and bool). Ops whose result the spec
-      leaves to an approximate function (`exponential`, `log`, `tanh`, `rsqrt`, `sine`, ...; uninterpreted
-      in the datapath proofs) are listed apart: their accuracy is this library's choice and they are
-      built separately.
+      leaves to an approximate function (uninterpreted in the datapath proofs) have an accuracy of this
+      library's choice (§4.6); `exponential`, `log`, `log_plus_one`, `tanh` and `rsqrt` are built, and
+      `sine`, `cosine` and `power` are listed apart until they are.
    2. *Generation.* `cc_softfloat.ops` writes one flat Allo function per primitive from shared blocks
       (`cc_softfloat.emit`): decode (sign, significand with its hidden bit, exponent, NaN/infinity/zero
       flags; subnormals get exponent 1), log-depth normalization (one conditional shift per power of
@@ -86,15 +97,20 @@
       32-bit signed); `~` written as XOR with all ones (Allo's `~` returns its operand); a spare top bit
       on every variable compared with `<`/`>=` (Allo's `llvm` lowering compares unsigned variables as
       signed); every variable shift amount below the operand width (LLVM makes a larger shift poison).
-      The C++ includes `xls_builtin.h`, which nothing ships: an empty header in
-      `python/cc_softfloat/include`.
+      Allo widens a product to the sum of its operand widths and emits 8-, 16-, 32- and 64-bit variables
+      as native C++ integers, which xlscc cannot assign from a value wider than 64 bits: the approximate
+      ops, whose fixed-point products reach about 100 bits, widen every such variable by one bit. A
+      table is a module-level `uint32` NumPy array per 32-bit slice, read in the function (a constant
+      array in MLIR, an array literal in XLS), indexed by a variable with a spare top bit (Allo's `llvm`
+      lowering sign-extends an index). The C++ includes `xls_builtin.h`, which nothing ships: an empty
+      header in `python/cc_softfloat/include`.
    4. *Build* (`python -m cc_softfloat build`, `batch` primitives per container): vectors (every input
       combination when the operands have at most `exhaustive_bits` bits, otherwise the cross product of
       each type's edge cases plus `random_vectors` seeded random operand sets, half of them for binary
       float ops with nearby exponents); the reference on them; Allo `llvm` on them; Allo's XLS C++,
       xlscc, `opt_main`, `codegen_main`; `eval_ir_main` (LLVM JIT) on every vector. A primitive passes
-      when `llvm` equals the reference on every vector (NaN as a class) and the IR equals `llvm` bit for
-      bit.
+      when `llvm` equals the reference on every vector (NaN as a class; for an approximate op, within its
+      accuracy limit, §4.6) and the IR equals `llvm` bit for bit.
    5. *Proof.* `cc_smt::xls` translates `fu.opt.ir` into SMT terms (docs/framework/smt.md); the query
       asserts that the circuit differs from `cc_smt::ops::apply` for some input. For `multiply` in IEEE
       formats a direct query is a multiplier-equivalence problem bit-blasting does not finish (f16 and
@@ -105,6 +121,58 @@
       spec is `fp.mul` by the SMT-LIB definition (f32: Bitwuzla seconds, Z3 minutes). The solver is
       `tools.smt.solver` (Bitwuzla) with `proof_timeout_s`; `unsat` gives `proven`, a timeout leaves
       `exhaustive` or `tested`, and `sat` fails the pass with the counterexample.
+   6. *Approximate ops* (`cc_softfloat.approx`). Accuracy: within one ulp of the exact value in every
+      format, IEEE subnormals, the special values of C11 Annex F, and in E4M3FN NaN wherever the value
+      is infinite or overflows (it has no infinities). The ulp of a value is the spacing of the format in
+      its binade (the subnormal spacing below the normal range; Goldberg's definition).
+      - 8-bit formats: a table of the correctly rounded result of each of the 256 inputs, computed from
+        NumPy's float64 value rounded once (§4.6 checks that no entry lies within 2^-30 ulp of a rounding
+        boundary, so the float64 value's own error cannot change it).
+      - `rsqrt`, correctly rounded in every format: with `x = m * 2^(2e)`, `m` in [1, 4) and integer
+        significand `M = m * 2^fm`, an exact restoring division gives `D = floor(2^(2N + fm) / M)` and an
+        exact integer square root `S = floor(sqrt(D))`; since `floor(sqrt(floor(y))) = floor(sqrt(y))`,
+        `S = floor(2^N / sqrt(m))`, and the value is inexact exactly when either step leaves a
+        remainder. With `N = p + 1` that is a round bit and a sticky bit: rounding to nearest even is
+        exact. `rsqrt(+-0) = +-inf`, `rsqrt(+inf) = +0`, negative inputs give NaN.
+      - `exponential` (Tang): `|x|` as fixed point with `F = p + 8` fraction bits; `n = floor(x * 2^t /
+        ln 2)` from an estimate corrected by at most two subtractions, `r = x - n ln2 / 2^t` exact in
+        `[0, ln2 / 2^t)` against a rounded-down `ln2 / 2^t` with `I + t + 3` extra bits (`|x| < 2^I`,
+        beyond which the result is `+inf` or `+0`), `k = floor(n / 2^t)`, `j = n mod 2^t`; then
+        `exp(x) = 2^k * T[j] * P(r)` with the table `T[j] = 2^(j / 2^t)` and the Taylor polynomial `P` of
+        degree `d` in Horner form, all fixed point, rounded once at exponent `k` (so overflow and
+        subnormal results come out of the same rounding). f32 `t = 6, d = 4`; bf16 `t = 4, d = 3`; f16
+        `t = 5, d = 3`.
+      - `log` (Tang): `x = m * 2^e`; `i` = the top `t + 1` fraction bits of `m` rounded to `t` bits; a
+        table gives `c_i ~ 1 / (1 + i / 2^t)` with `t + 5` fraction bits (exactly 1 at `i = 0` and 1/2 at
+        `i = 2^t`) and `L_i = -ln c_i`, so `r = m c_i - 1` is exact with `|r| <= 2^-(t+1) * 1.125`, and
+        `log(x) = e ln2 + L_i + r Q(r)`, `Q(r) = log1p(r) / r` by Taylor in Horner form on `|r|` with the
+        sign of each step from the sign of `r`. Near `x = 1` (`e = 0, i = 0` or `e = -1, i = 2^t`) the
+        first two terms are zero and `r Q(r)` is normalized alone, so the relative accuracy holds for
+        every `r`; elsewhere `|log x| >= 2^-(t+2)` and the sum has `p + t + 9` fraction bits. f32
+        `t = 7, d = 4`; bf16 `t = 4, d = 3`; f16 `t = 5, d = 3`.
+      - `log_plus_one`: `|x| < 2^-(t+2)`: `x Q(x)`. Otherwise `u = 1 + x` exact in fixed point below
+        `x = 2^(p+7)` (above it `log(1 + x) - log(x) < 2^-(p+7)`, so `u = x`), cut to `p + t + 10`
+        significant bits, into the log core. `log1p(+-0) = +-0`, `log1p(-1) = -inf`, below `-1` NaN.
+      - `tanh`: odd; `|x| < 2^-ceil(p/2)`: `x` (the error `|x|^3 / 3` is below a third of an ulp);
+        `|x| >= (p + 2) ln2 / 2`: `+-1` (`1 - tanh` is below half an ulp of 1); otherwise
+        `N = 1 - exp(-2|x|)` from the exp core with `p + ceil(p/2) + 8` fraction bits (enough for the
+        cancellation at the smallest `|x|`) and `tanh = N / (2 - N)` by restoring division with
+        `p + 6` quotient bits and a sticky bit.
+      Error bounds (`approx.design`): each design adds, as a relative error, the argument reduction,
+      every table and coefficient rounding, the Taylor remainder (`r^(d+1) / (d+1)! * e^r` for exp,
+      `r^d / (d+1) / (1 - r)` for `Q`), and every truncated product; an ulp is at least `2^-p` of the
+      value, so the bound in ulps is that sum times `2^p`, plus 1/2 for the final rounding. Every design
+      is below 0.6 ulp (`coverage.json` records it per primitive).
+      Reference and check: NumPy's float64 `exp`, `log`, `log1p`, `tanh` and `1 / sqrt`, whose own error
+      is a few float64 ulps; a result is accepted when its distance from that value, in ulps of the
+      value, is at most the limit plus `2^-48` of the value (sixteen float64 ulps, below `2^-24` ulp in
+      every format here). An exactly zero value needs that zero with its sign; an infinite value needs
+      the rounded infinity; beyond the largest finite value, overflow is accepted from `max + ulp/2` on.
+      Vectors: as in §4.4, plus every input within 3 ulps of each boundary of the design (overflow,
+      underflow, the tiny and saturated paths, the table intervals near 1), and half of the random inputs
+      drawn where the op does real work (exponential: `2^-(p+2) <= |x| <= ln(max) + 1`; log and rsqrt: the
+      whole range and near 1; log_plus_one: near 0, up to 2^40 and near -1; tanh: up to the saturation
+      point).
 
    Worked example (`add@f8e4m3fn`, 1.0 + 0.0625, OFP8 E4M3): `1.0 = 0.0111.000`, `0.0625 = 0.0011.000`;
    the exponent difference is 4, so the smaller significand `1.000` shifted right by 4 with three guard
@@ -117,26 +185,30 @@
    `random_vectors` (100000), `batch` (8 primitives per container), `proof_timeout_s` (600, Bitwuzla per
    proof), `recheck_timeout_s` (7200, Z3 per proof in `verify`; `divide@f16` takes 48 min),
    `recheck_sample` (2000 vectors per primitive whose reference `verify` recomputes), `docker_python`,
-   `views`. Resources:
+   `views`. The approximate ops have no keys of their own: their parameters come from `approx.design`
+   and enter the cache key through the library hash. Resources:
    `[passes.softfloat.resources]` (threads 16, memory 64 GB, 180 min: up to 16 containers at 4 GB).
    Subnormals are IEEE everywhere: the datapath semantics have no flush mode.
 
 6. **Verification** (`verify.rs`, `verify.json`; reads only `out/softfloat/` and the configuration):
    - `primitives`: the catalog's float primitives, regenerated, are exactly the entries of
-     `coverage.json`, with the approximate ops listed apart.
-   - `files`: every primitive has its ten files.
+     `coverage.json`, with the approximate ops not built yet listed apart.
+   - `files`: every primitive has its eight files, and an exactly specified op its two proof files.
    - `builds`: each `result.json` has no reference mismatch and an IR equal to `llvm` on every vector.
    - `integer_only`: no `kernel.mlir` names a float type.
    - `rtl`: each `rtl.v` defines the primitive's module.
    - `exhaustive`: an exhaustive entry has one vector per input combination.
    - `reference`: the reference recomputed in the image on `recheck_sample` vectors per primitive
      equals the recorded reference, `llvm` and IR results.
+   - `accuracy`: every approximate op's largest measured error and its design's bound are within its
+     limit (1/2 ulp correctly rounded, 1 ulp faithful) and agree with its `result.json`; exact ops are
+     `exact` with neither.
    - `queries`: each `proof.smt2` equals the query regenerated from `fu.opt.ir`, byte for byte.
    - `verdicts`: each `proof.result` matches its query's hash and the evidence (`proven` iff `unsat`).
    - `recheck`: every proven query is `unsat` in the other solver (Z3) within `recheck_timeout_s`.
    - `summary`: the counts and the library hash agree with `coverage.json` and `python/cc_softfloat`.
    Negative tests (deep): an edited `fu.opt.ir` or proof result, a changed reference value, a float type
-   in a module, a missing primitive each fail `verify`.
+   in a module, an approximate op's error beyond its limit, a missing primitive each fail `verify`.
 
 7. **Resource behaviour.** Each container gets one CPU and `memory_gb / threads`; `threads` containers
    run at a time. The vectors are at most 2^16 per primitive by default (about 1 MB compressed). Time is
@@ -145,11 +217,26 @@
    The `divide@f16` query takes Bitwuzla about 8 minutes and Z3 48 minutes, which sets
    `recheck_timeout_s`. The hardest Z3 query (`remainder@f8e4m3fn`) peaks at 1.1 GB. Answers are cached
    in `build/.softfloat/cache/` by query hash, so a rerun repeats only the queries that changed or
-   timed out.
+   timed out. The full pass (206 primitives, 12.9 M vectors, proofs from the cache) took 10.7 minutes
+   on 2026-11-04 (iacoma227). The approximate ops build in 1 to 3 seconds each; their IR has 2 to 4
+   nodes for a table, 220 to 500 for the computed ones, and 625 for `rsqrt` at f32.
+   Every input of the f32 approximate ops was checked once with `python -m cc_softfloat sweep` (16
+   one-CPU containers per op, 33 to 91 seconds each for its sixteenth of the 2^32 inputs; Allo `llvm`
+   against the reference, nothing stored): no input outside its limit, and the largest errors, in
+   ulps, exponential 0.5098, log 0.5056, log_plus_one 0.5083, tanh 0.5023, rsqrt 0.5000 (correctly
+   rounded).
 
 8. **Known limitations.**
-   - The approximate ops (exp, log, log1p, tanh, rsqrt, sin, cos, power) are not built yet: they are
-     listed in `coverage.json` and their `characterize` rows stay pending.
+   - `sine`, `cosine` and `power` are not built yet: they are listed in `coverage.json` and their
+     `characterize` rows stay pending.
+   - The approximate ops' check is against NumPy's float64 functions with an allowance for their error,
+     not a correctly rounded reference; the claim is "within the limit plus `2^-48` of the value".
+   - f32 approximate ops are checked on edge and random vectors in the pass; every input was checked
+     once (§7), not on every run.
+   - `tanh` in f32 runs the exp core with 44 fraction bits for the cancellation of `1 - exp(-2|x|)` at
+     small `|x|`; a separate series path there would make it smaller.
+   - The polynomials are Taylor, with closed-form remainders; minimax polynomials (Remez) would need a
+     degree less in some designs.
    - A primitive whose proof runs out of time is checked by simulation only (`exhaustive` or `tested`).
    - The multiply proofs' spec is IEEE's definition (exact product, one rounding) rather than the
      solver's `fp.mul` term; the two are equal by the SMT-LIB definition, not by a separate query.

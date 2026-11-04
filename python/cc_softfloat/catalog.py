@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from . import ops
+from . import approx, ops
 from .formats import BOOL, Float, Int, parse
 
 #: `reduce_precision`'s (exponent bits, mantissa bits) of the catalog primitive.
@@ -23,6 +23,11 @@ class Prim:
     @property
     def input_bits(self) -> int:
         return sum(p.bits for p in self.params)
+
+    @property
+    def approximate(self) -> bool:
+        """An op whose accuracy is this library's choice (`cc_softfloat.approx`)."""
+        return self.op in approx.OPS
 
 
 def parse_key(key: str, precision: tuple[int, int] = DEFAULT_PRECISION) -> Prim:
@@ -54,6 +59,7 @@ def parse_key(key: str, precision: tuple[int, int] = DEFAULT_PRECISION) -> Prim:
         "floor",
         "ceil",
         "reduce_precision",
+        *approx.OPS,
     }:
         return Prim(key, op, None, [t], t, precision)
     raise ValueError(f"{key}: no generator for op {op!r}")
@@ -70,6 +76,9 @@ def is_float_key(key: str) -> bool:
 def source(p: Prim, name: str) -> str:
     """The Allo source of primitive `p` as a function called `name`."""
     t = p.params[-1]
+    if p.approximate:
+        assert isinstance(t, Float)
+        return approx.source(p.op, t, name)
     match p.op:
         case "convert":
             return ops.convert(name, p.params[0], p.ret)

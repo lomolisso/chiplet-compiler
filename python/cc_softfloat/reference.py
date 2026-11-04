@@ -10,29 +10,31 @@ Everything else is a direct definition (NaN results are compared as one class by
 
 from __future__ import annotations
 
-import ml_dtypes
 import numpy as np
 
 from .catalog import Prim
 from .formats import Float, Int
+from .fp import DTYPES, check_ulps, to_f64, udtype
 
-DTYPES = {
-    "f32": np.float32,
-    "f16": np.float16,
-    "bf16": ml_dtypes.bfloat16,
-    "f8e4m3fn": ml_dtypes.float8_e4m3fn,
-    "f8e5m2": ml_dtypes.float8_e5m2,
-}
+#: Accuracy limits in ulps by `approx.Design.accuracy`.
+LIMITS = {"correctly_rounded": 0.5, "faithful": 1.0}
 
 
-def udtype(bits: int) -> type:
-    return {1: np.uint8, 8: np.uint8, 16: np.uint16, 32: np.uint32}.get(bits) or (
-        np.uint8 if bits <= 8 else np.uint16 if bits <= 16 else np.uint32
-    )
-
-
-def to_f64(f: Float, bits: np.ndarray) -> np.ndarray:
-    return bits.astype(udtype(f.bits)).view(DTYPES[f.name]).astype(np.float64)
+def approx_f64(op: str, x: np.ndarray) -> np.ndarray:
+    """The float64 value of an approximate op (NumPy; a few float64 ulps from the exact value)."""
+    with np.errstate(all="ignore"):
+        match op:
+            case "exponential":
+                return np.exp(x)
+            case "log":
+                return np.log(x)
+            case "log_plus_one":
+                return np.log1p(x)
+            case "tanh":
+                return np.tanh(x)
+            case "rsqrt":
+                return 1.0 / np.sqrt(x)
+    raise ValueError(op)
 
 
 def from_f64(f: Float, x: np.ndarray) -> np.ndarray:
@@ -97,7 +99,8 @@ def _reduce_precision(f: Float, a: np.ndarray, eb: int, mb: int) -> np.ndarray:
 
 
 def evaluate(p: Prim, args: list[np.ndarray]) -> np.ndarray:
-    """The result bit patterns of `p` on the operand bit patterns `args` (uint64 arrays)."""
+    """The result bit patterns of `p` on the operand bit patterns `args` (uint64 arrays); for an approximate
+    op, the float64 values (`approx_check` compares with them)."""
     op, ret = p.op, p.ret
     with np.errstate(all="ignore"):
         if op == "convert":
@@ -126,6 +129,8 @@ def evaluate(p: Prim, args: list[np.ndarray]) -> np.ndarray:
         if op == "reduce_precision":
             return _reduce_precision(f, args[0], *p.precision)
         xs = [to_f64(f, a) for a in args]
+        if p.approximate:
+            return approx_f64(op, xs[0])
         if op == "compare":
             x, y = xs
             r = {"EQ": x == y, "NE": x != y, "LT": x < y, "LE": x <= y}[p.variant or ""]
@@ -150,6 +155,13 @@ def evaluate(p: Prim, args: list[np.ndarray]) -> np.ndarray:
             "ceil": np.ceil,
         }[op]
         return from_f64(f, fn(*xs))
+
+
+def approx_check(p: Prim, limit: float, got: np.ndarray, want: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """For an approximate op: per vector, is `got` within `limit` ulps of the float64 value `want`
+    (`fp.check_ulps`), and the error in ulps."""
+    assert isinstance(p.ret, Float)
+    return check_ulps(p.ret, got, want, limit)
 
 
 def same(t: Float | Int, got: np.ndarray, want: np.ndarray) -> np.ndarray:

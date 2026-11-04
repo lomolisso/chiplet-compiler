@@ -139,6 +139,9 @@ Code comment in `customize.py`: "TODO Add XLS DSLX Backend": only the xlscc path
 | `~x` returns `x` | XOR with all ones |
 | `llvm`: `<`/`>=` of two `UInt(n)` variables compares them as signed (the `xls` C++ compares unsigned) | keep the top bit of compared variables clear (one spare bit) |
 | Result width = operand width (`UInt(4) << 16` stays 4 bits); LLVM shifts by >= the width are poison | widen explicitly before shifts and products; guard variable shift amounts |
+| A product is as wide as its operands together, and 8/16/32/64-bit variables are emitted as native C++ integers, which xlscc cannot assign from an `ac_int` wider than 64 bits | give variables that receive wide values other widths (`ac_int` converts between any widths) |
+| A `UInt(n)` array index whose top bit is set is sign-extended by the `llvm` lowering (out of bounds) | copy the index into a variable with a spare top bit |
+| Constant tables: a module-level NumPy array read into a typed local array (`T: UInt(32)[n] = TABLE`) works in both backends (array literal in XLS); `uint64` data for a 36-bit array does not build | `uint32` arrays, one per 32-bit slice |
 
 ## Sources
 

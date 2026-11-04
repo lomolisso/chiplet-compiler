@@ -1,7 +1,8 @@
 //! `softfloat` (design §4.12): the float primitives as integer-only Allo functions (`python/cc_softfloat`),
 //! each simulated on Allo's `llvm` target against a NumPy/ml_dtypes reference, taken through Allo's XLS
-//! backend, xlscc, `opt_main` and `codegen_main` to Verilog, evaluated on its optimized XLS IR, and proven
-//! equal to the op's semantics (`cc_smt::ops`) where the solver finishes (docs/passes/softfloat.md).
+//! backend, xlscc, `opt_main` and `codegen_main` to Verilog, evaluated on its optimized XLS IR, and either
+//! proven equal to the op's semantics (`cc_smt::ops`) where the solver finishes, or, for an approximate op,
+//! checked to be within its accuracy limit in ulps (docs/passes/softfloat.md).
 
 pub mod config;
 pub mod json;
@@ -21,14 +22,16 @@ use rayon::prelude::*;
 use crate::characterize::catalog::{self, Kind, Primitive};
 use crate::datapaths::json::{ProofResult, RESULT_SCHEMA};
 pub use config::SoftfloatConfig;
-use json::{BuildResult, COVERAGE_SCHEMA, CoverageFile, Entry, Evidence, ProofRef, SUMMARY_SCHEMA, Summary};
+use json::{
+    Accuracy, BuildResult, COVERAGE_SCHEMA, CoverageFile, Entry, Evidence, ProofRef, SUMMARY_SCHEMA, Summary,
+};
 
 /// `out/softfloat/{coverage,summary}.json`, `ops/<id>/`.
 pub const SOFTFLOAT: ArtifactKind = ArtifactKind("softfloat");
 pub const VIEW: &str = "softfloat.md";
 
 /// Ops whose float result the spec leaves to an approximate function (uninterpreted in `cc_smt::ops`):
-/// their accuracy is a choice of this library, and they are built separately from the exact ops.
+/// their accuracy is a choice of this library (docs/passes/softfloat.md §4).
 pub const APPROXIMATE: &[&str] = &[
     "exponential",
     "exponential_minus_one",
@@ -45,6 +48,13 @@ pub const APPROXIMATE: &[&str] = &[
     "power",
 ];
 
+/// The approximate ops the library builds (`python/cc_softfloat/approx.py`); the others are listed apart.
+pub const APPROXIMATE_BUILT: &[&str] = &["exponential", "log", "log_plus_one", "tanh", "rsqrt"];
+
+pub fn is_approximate(op: &str) -> bool {
+    APPROXIMATE.contains(&op)
+}
+
 const REPO_IN_CONTAINER: &str = "/work/repo";
 const OUT_IN_CONTAINER: &str = "/work/out";
 
@@ -58,7 +68,8 @@ const TOOLS: &[ToolSpec] = &[ToolSpec {
 #[derive(Debug)]
 pub struct Softfloat;
 
-/// The float op primitives of the catalog: those built here, and the keys of the approximate ones.
+/// The float op primitives of the catalog: those built here, and the keys of the approximate ones not
+/// built yet.
 pub fn primitives(cfg: &SoftfloatConfig) -> Result<(Vec<Primitive>, Vec<String>), String> {
     let cat = catalog::catalog(&cfg.catalog_config())?;
     let mut built = Vec::new();
@@ -67,7 +78,7 @@ pub fn primitives(cfg: &SoftfloatConfig) -> Result<(Vec<Primitive>, Vec<String>)
         if p.kind != Kind::Op || !p.types.iter().any(|t| catalog::format(t).is_some()) {
             continue;
         }
-        if APPROXIMATE.contains(&p.op.as_str()) {
+        if is_approximate(&p.op) && !APPROXIMATE_BUILT.contains(&p.op.as_str()) {
             approx.push(p.key);
         } else {
             built.push(p);
@@ -86,7 +97,7 @@ impl Pass for Softfloat {
     }
 
     fn version(&self) -> u32 {
-        1
+        2
     }
 
     fn requires(&self) -> &[ArtifactKind] {
@@ -198,10 +209,11 @@ impl Pass for Softfloat {
             )));
         }
 
-        // Proofs.
+        // Proofs of the exactly specified ops.
         let mut files: Vec<(String, String)> = Vec::new();
         let mut abstracted: BTreeMap<String, bool> = BTreeMap::new();
-        for p in &prims {
+        let exact: Vec<&Primitive> = prims.iter().filter(|p| !is_approximate(&p.op)).collect();
+        for p in &exact {
             let q = query_of(out.dir(), p).map_err(fail)?;
             let f = format!("ops/{}/proof.smt2", p.id);
             write_file(&out.path(&f)?, &q.text)?;
@@ -223,7 +235,9 @@ impl Pass for Softfloat {
         let mut entries = Vec::new();
         let mut refuted = Vec::new();
         let mut version = String::new();
-        for (p, (f, text)) in prims.iter().zip(&files) {
+        let mut proofs: BTreeMap<String, ProofRef> = BTreeMap::new();
+        let mut proven: BTreeMap<String, Evidence> = BTreeMap::new();
+        for (p, (f, text)) in exact.iter().zip(&files) {
             let (v, verdict) = answers.get(f).cloned().unwrap_or((
                 String::new(),
                 Verdict::Error {
@@ -254,6 +268,24 @@ impl Pass for Softfloat {
                 _ if r.exhaustive => Evidence::Exhaustive,
                 _ => Evidence::Tested,
             };
+            proven.insert(p.id.clone(), evidence);
+            proofs.insert(
+                p.id.clone(),
+                ProofRef {
+                    file: f.clone(),
+                    verdict,
+                    product_abstracted: abstracted[&p.id],
+                },
+            );
+        }
+        for p in &prims {
+            let r = &results[&p.id];
+            let accuracy = r.accuracy.unwrap_or(Accuracy::Exact);
+            let evidence = match proven.get(&p.id) {
+                Some(ev) => *ev,
+                None if r.exhaustive => Evidence::Exhaustive,
+                None => Evidence::Tested,
+            };
             entries.push(Entry {
                 key: p.key.clone(),
                 id: p.id.clone(),
@@ -263,14 +295,14 @@ impl Pass for Softfloat {
                 vectors: r.vectors,
                 exhaustive: r.exhaustive,
                 ir_nodes: r.ir_nodes,
-                proof: Some(ProofRef {
-                    file: f.clone(),
-                    verdict,
-                    product_abstracted: abstracted[&p.id],
-                }),
+                accuracy,
+                bound_ulp: r.bound_ulp,
+                max_ulp: r.max_ulp,
+                proof: proofs.remove(&p.id),
             });
         }
         let count = |ev: Evidence| entries.iter().filter(|x| x.evidence == ev).count() as u64;
+        let by_acc = |a: Accuracy| entries.iter().filter(|x| x.accuracy == a).count() as u64;
         let d = &ctx.tools().docker;
         let summary = Summary {
             schema: SUMMARY_SCHEMA.into(),
@@ -278,6 +310,9 @@ impl Pass for Softfloat {
             proven: count(Evidence::Proven),
             exhaustive: count(Evidence::Exhaustive),
             tested: count(Evidence::Tested),
+            exact: by_acc(Accuracy::Exact),
+            correctly_rounded: by_acc(Accuracy::CorrectlyRounded),
+            faithful: by_acc(Accuracy::Faithful),
             approximate: approximate.len() as u64,
             vectors: entries.iter().map(|x| x.vectors).sum(),
             library_hash: library_hash(ctx.repo_root())?,
