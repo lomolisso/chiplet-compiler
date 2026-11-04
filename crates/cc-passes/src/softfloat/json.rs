@@ -136,7 +136,7 @@ pub struct Entry {
 pub struct CoverageFile {
     pub schema: String,
     pub entries: Vec<Entry>,
-    /// Catalog keys of approximate ops not built yet (sine, cosine, power).
+    /// Catalog keys of approximate ops the library does not build (none of the catalog's today).
     pub approximate: Vec<String>,
 }
 

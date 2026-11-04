@@ -1,5 +1,6 @@
 //! Deep check: `softfloat` on a reduced set (add, multiply, divide, compare, conversions and the
-//! approximate ops exponential, log, log_plus_one, tanh and rsqrt in f16 and f8e4m3fn, integers of 8 bits)
+//! approximate ops exponential, log, log_plus_one, tanh, rsqrt, sine, cosine and power in f16 and
+//! f8e4m3fn, integers of 8 bits)
 //! into the build area's ephemeral `runs/deep-softfloat/`, with Allo, XLS and both solvers for real.
 //! `verify` passes; then each kind of tampering fails its check. The directory is removed when the test
 //! passes.
@@ -11,7 +12,7 @@ use cc_pipeline::{Pipeline, RunOptions, RunStatus};
 use tests::repo_root;
 
 const REDUCED: &[&str] = &[
-    "passes.softfloat.ops=[\"add\", \"multiply\", \"divide\", \"compare\", \"convert\", \"exponential\", \"log\", \"log_plus_one\", \"tanh\", \"rsqrt\"]",
+    "passes.softfloat.ops=[\"add\", \"multiply\", \"divide\", \"compare\", \"convert\", \"exponential\", \"log\", \"log_plus_one\", \"tanh\", \"rsqrt\", \"sine\", \"cosine\", \"power\"]",
     "passes.softfloat.float_formats=[\"f16\", \"f8e4m3fn\"]",
     "passes.softfloat.int_widths=[8]",
     "passes.softfloat.random_vectors=5000",
@@ -83,10 +84,10 @@ fn softfloat_reduced_set_builds_proves_and_verifies() {
     let cov: CoverageFile = kind.read_json("coverage.json").unwrap();
     let entry = |key: &str| cov.entries.iter().find(|e| e.key == key).unwrap();
     // 2 add, 2 multiply, 2 divide, 8 compare, 14 conversions (bool, i8, ui8 with each format; f16 <-> f8),
-    // 10 approximate (5 ops in 2 formats).
+    // 16 approximate (8 ops in 2 formats).
     assert_eq!(
         cov.entries.len(),
-        38,
+        44,
         "{:?}",
         cov.entries.iter().map(|e| &e.key).collect::<Vec<_>>()
     );
@@ -105,6 +106,14 @@ fn softfloat_reduced_set_builds_proves_and_verifies() {
     assert_eq!(entry("rsqrt@f16").accuracy, Accuracy::CorrectlyRounded);
     assert_eq!(entry("log@f8e4m3fn").accuracy, Accuracy::CorrectlyRounded);
     assert!(cov.approximate.is_empty());
+    let sine = entry("sine@f16");
+    assert!(sine.exhaustive && sine.accuracy == Accuracy::Faithful && sine.max_ulp.unwrap() <= 1.0);
+    assert_eq!(entry("cosine@f8e4m3fn").accuracy, Accuracy::CorrectlyRounded);
+    // power is binary: every pair at 8 bits, computed (no table); edge and random pairs at 16 bits
+    let pw8 = entry("power@f8e4m3fn");
+    assert!(pw8.exhaustive && pw8.accuracy == Accuracy::Faithful && pw8.max_ulp.unwrap() <= 1.0);
+    let pw16 = entry("power@f16");
+    assert!(!pw16.exhaustive && pw16.evidence == Evidence::Tested && pw16.max_ulp.unwrap() <= 1.0);
 
     let op = |id: &str, f: &str| kind.dir().join(format!("ops/{id}/{f}"));
     // An edited circuit: its query no longer matches.
