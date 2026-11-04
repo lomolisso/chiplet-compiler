@@ -48,7 +48,7 @@ def parse_key(key: str, precision: tuple[int, int] = DEFAULT_PRECISION) -> Prim:
         return Prim(key, op, None, [t], BOOL)
     if op == "clamp":
         return Prim(key, op, None, [t, t, t], t)
-    if op in {"add", "subtract", "multiply", "divide", "remainder", "maximum", "minimum"}:
+    if op in {"add", "subtract", "multiply", "divide", "remainder", "maximum", "minimum", *approx.BINARY}:
         return Prim(key, op, None, [t, t], t)
     if op in {
         "sqrt",
@@ -59,7 +59,7 @@ def parse_key(key: str, precision: tuple[int, int] = DEFAULT_PRECISION) -> Prim:
         "floor",
         "ceil",
         "reduce_precision",
-        *approx.OPS,
+        *approx.UNARY,
     }:
         return Prim(key, op, None, [t], t, precision)
     raise ValueError(f"{key}: no generator for op {op!r}")

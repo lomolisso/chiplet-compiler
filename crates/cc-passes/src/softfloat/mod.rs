@@ -49,7 +49,16 @@ pub const APPROXIMATE: &[&str] = &[
 ];
 
 /// The approximate ops the library builds (`python/cc_softfloat/approx.py`); the others are listed apart.
-pub const APPROXIMATE_BUILT: &[&str] = &["exponential", "log", "log_plus_one", "tanh", "rsqrt"];
+pub const APPROXIMATE_BUILT: &[&str] = &[
+    "exponential",
+    "log",
+    "log_plus_one",
+    "tanh",
+    "rsqrt",
+    "sine",
+    "cosine",
+    "power",
+];
 
 pub fn is_approximate(op: &str) -> bool {
     APPROXIMATE.contains(&op)
@@ -97,7 +106,7 @@ impl Pass for Softfloat {
     }
 
     fn version(&self) -> u32 {
-        2
+        3
     }
 
     fn requires(&self) -> &[ArtifactKind] {

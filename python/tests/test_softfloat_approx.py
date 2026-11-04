@@ -13,6 +13,7 @@ from cc_softfloat.formats import FLOATS
 
 F32, F16, BF16, E4M3 = FLOATS["f32"], FLOATS["f16"], FLOATS["bf16"], FLOATS["f8e4m3fn"]
 KEYS = [f"{op}@{f}" for op in approx.OPS for f in ("f32", "bf16", "f16", "f8e4m3fn")]
+UNARY_KEYS = [k for k in KEYS if k.split("@")[0] in approx.UNARY]
 
 
 def bits(f, x: float) -> int:
@@ -29,6 +30,23 @@ def test_constants_agree_with_math():
     assert len(cs) == 17 and cs[0] == 1 << 9 and cs[16] == 1 << 8
     assert ls[0] == 0 and ls[16] == consts.ln2_fixed(60)
     assert all(abs(lv / 2**60 + math.log(c / 2**9)) < 2**-51 for c, lv in zip(cs, ls))
+
+
+def test_pi_and_two_over_pi():
+    assert consts.pi_fixed(80) >> 29 == int(math.pi * 2**51)  # math.pi is pi rounded down to 53 bits
+    assert abs(consts.two_over_pi_fixed(80) / 2**80 - 2 / math.pi) < 2**-52
+    # 2/pi = 0.101000101111100110000011011011100100111001000100000101010010100111111100001001110101...
+    assert consts.two_over_pi_fixed(24) == 0b101000101111100110000011
+
+
+def test_trig_worst_cases_are_the_minimum():
+    """The recorded worst cases are the minimum over every input (f32: about 10 s), and each one's distance
+    is what its K claims."""
+    for name, (m, ex, kd) in approx.TRIG_WORST.items():
+        f = FLOATS[name]
+        dist, wm, wex = consts.trig_worst_case(f.m + 1, -1, f.bias)
+        assert (wm, wex) == (m, ex) and 2.0**-kd < dist, name
+        approx._trig_check_worst(f)
 
 
 def test_round_f64_rounds_once():
@@ -71,7 +89,10 @@ def test_designs_bound_their_error():
             assert d.bound_ulp <= limit, (op, f.name, d)
             assert d.accuracy == ("correctly_rounded" if op == "rsqrt" else "faithful")
         d = approx.design(op, E4M3)
-        assert d.accuracy == "correctly_rounded" and d.params["rom"] == 256
+        if op in approx.UNARY:
+            assert d.accuracy == "correctly_rounded" and d.params["rom"] == 256
+        else:
+            assert d.accuracy == "faithful" and "rom" not in d.params and d.bound_ulp <= 1.0
 
 
 def test_rom_tables():
@@ -91,7 +112,7 @@ def test_rom_tables():
 def test_every_approximate_key_generates_valid_python():
     for k in KEYS:
         p = catalog.parse_key(k)
-        assert p.approximate and p.params == [p.ret]
+        assert p.approximate and p.params == [p.ret] * (2 if p.op in approx.BINARY else 1)
         src = catalog.source(p, "kernel_fn")
         compile(src, k, "exec")
         assert "~" not in src.split('"""')[-1], k
@@ -111,11 +132,37 @@ def test_approximate_vectors():
     assert len(h) == 1 << 16
 
 
+def test_power_vectors_cover_the_special_cases():
+    p = catalog.parse_key("power@f32")
+    a, b = vectors.generate(p, 16, 4000)
+    assert len(a) == len(b) > 4000
+    pairs = set(zip(a.tolist(), b.tolist()))
+    one, inf, nan = F32.one, F32.inf, F32.nan
+    neg = 1 << 31
+    for x, y in [(0, neg | bits(F32, 3.0)), (neg | one, inf), (one, nan), (nan, 0), (neg | inf, neg | bits(F32, 3.0))]:
+        assert (x, y) in pairs, (hex(x), hex(y))
+
+
+def test_power_reference_follows_annex_f():
+    """NumPy's float64 power is the reference: it follows C11 Annex F.10.4.4 on the special cases."""
+    inf, nan = math.inf, math.nan
+    cases = [
+        (nan, 0.0, 1.0), (1.0, nan, 1.0), (-1.0, inf, 1.0), (-1.0, -inf, 1.0),
+        (0.0, -3.0, inf), (-0.0, -3.0, -inf), (-0.0, -2.0, inf), (-0.0, 3.0, -0.0), (-0.0, 2.0, 0.0),
+        (0.5, -inf, inf), (2.0, -inf, 0.0), (0.5, inf, 0.0), (2.0, inf, inf),
+        (-inf, -3.0, -0.0), (-inf, -2.0, 0.0), (-inf, 3.0, -inf), (-inf, 2.0, inf),
+        (inf, -1.0, 0.0), (inf, 0.5, inf), (-2.0, 0.5, nan), (-2.0, 3.0, -8.0),
+    ]
+    for x, y, want in cases:
+        got = float(reference.approx_f64("power", np.array([x]), np.array([y]))[0])
+        assert (math.isnan(got) and math.isnan(want)) or (got == want and math.copysign(1, got) == math.copysign(1, want)), (x, y, got)
+
+
 @pytest.mark.skipif(importlib.util.find_spec("allo") is None, reason="needs Allo (the toolchain image)")
 def test_approximate_ops_on_allo(tmp_path):
     from cc_softfloat.build import _simulate
 
-    for key in ["exponential@f8e4m3fn", "rsqrt@bf16"]:
+    for key in ["exponential@f8e4m3fn", "rsqrt@bf16", "sine@f16", "power@f8e4m3fn"]:
         p = catalog.parse_key(key)
         name = key.replace("@", "_")
         out = tmp_path / name
@@ -123,5 +170,6 @@ def test_approximate_ops_on_allo(tmp_path):
         (out / "kernel.py").write_text(catalog.source(p, name))
         args = vectors.generate(p, 16, 0)
         got = _simulate(p, out, name, args)
-        ok, _ = reference.approx_check(p, 0.5, got, reference.evaluate(p, args))
+        limit = reference.LIMITS[approx.design(p.op, p.ret).accuracy]
+        ok, _ = reference.approx_check(p, limit, got, reference.evaluate(p, args))
         assert ok.all(), key

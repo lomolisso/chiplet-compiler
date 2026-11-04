@@ -248,27 +248,30 @@ def recheck(key: str, out: Path, precision: tuple[int, int], sample: int) -> dic
 
 
 def sweep(key: str, name: str, out: Path, part: int, parts: int, block: int = 1 << 20) -> dict:
-    """Every input pattern of a unary approximate op in share `part` of `parts`, on the Allo `llvm` build,
-    against the reference: the inputs outside the accuracy limit and the largest error in ulps (a one-off
-    check of the 32-bit formats, docs/passes/softfloat.md §7; nothing is stored)."""
+    """Every input of an approximate op with 32 input bits in all (a unary op on a 32-bit format, a binary
+    one on a 16-bit format: index `i` is the operand pair `(i >> 16, i & 0xffff)`), in share `part` of
+    `parts`, on the Allo `llvm` build, against the reference: the inputs outside the accuracy limit and the
+    largest error in ulps (a one-off check, docs/passes/softfloat.md §7; nothing is stored)."""
     p = catalog.parse_key(key)
-    if not p.approximate or len(p.params) != 1:
-        raise ValueError(f"{key}: not a unary approximate op")
+    if not p.approximate or p.input_bits != 32:
+        raise ValueError(f"{key}: not an approximate op with 32 input bits")
+    two = len(p.params) == 2
     out.mkdir(parents=True, exist_ok=True)
     (out / "kernel.py").write_text(catalog.source(p, name))
     sim = _simulator(p, out, name, chunk=1 << 16)
-    total = 1 << p.params[0].bits
+    total = 1 << 32
     lo, hi = total * part // parts, total * (part + 1) // parts
     t0 = time.time()
     bad, worst, worst_at, examples = 0, 0.0, -1, []
     for start in range(lo, hi, block):
         x = np.arange(start, min(start + block, hi), dtype=np.uint64)
-        got = sim([x])
-        want = reference.evaluate(p, [x])
+        args = [x >> np.uint64(16), x & np.uint64(0xFFFF)] if two else [x]
+        got = sim(args)
+        want = reference.evaluate(p, args)
         ok, err = _agree(p, got, want)
         bad += int(np.count_nonzero(~ok))
         for i in np.nonzero(~ok)[0][: max(0, 8 - len(examples))]:
-            examples.append({"args": [int(x[i])], "want": float(want[i]), "got": int(got[i])})
+            examples.append({"args": [int(a[i]) for a in args], "want": float(want[i]), "got": int(got[i])})
         if err is not None and np.isfinite(err).any():
             i = int(np.nanargmax(err))
             if err[i] > worst:

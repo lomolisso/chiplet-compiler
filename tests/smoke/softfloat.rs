@@ -37,23 +37,16 @@ fn the_library_covers_every_float_op_of_the_catalog() {
         "log_plus_one@bf16",
         "rsqrt@f8e4m3fn",
         "tanh@f16",
+        "sine@f32",
+        "cosine@bf16",
+        "power@f8e4m3fn",
+        "power@f32",
     ] {
         assert!(built.iter().any(|p| p.key == key), "{key}");
     }
-    // the approximate ops not built yet
-    assert!(approx.iter().any(|k| k == "sine@f32"));
-    assert!(
-        approx
-            .iter()
-            .all(|k| ["sine@", "cosine@", "power@"].iter().any(|o| k.starts_with(o))),
-        "{approx:?}"
-    );
-    assert!(approx.iter().all(|k| !built.iter().any(|p| &p.key == k)));
-    assert!(
-        !built
-            .iter()
-            .any(|p| p.op == "sine" || p.kind != catalog::Kind::Op)
-    );
+    // every approximate op of the catalog is built
+    assert!(approx.is_empty(), "{approx:?}");
+    assert!(built.iter().all(|p| p.kind == catalog::Kind::Op));
 }
 
 fn query(id: &str, mutate: bool) -> (String, proof::Query) {

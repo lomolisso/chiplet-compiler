@@ -30,7 +30,9 @@ from .formats import Float
 
 G = 4
 ROM_BITS = 8
-OPS = ("exponential", "log", "log_plus_one", "tanh", "rsqrt")
+UNARY = ("exponential", "log", "log_plus_one", "tanh", "rsqrt", "sine", "cosine")
+BINARY = ("power",)
+OPS = UNARY + BINARY
 
 
 @dataclass
@@ -265,24 +267,26 @@ def _q_coeffs(d: int, frac: int) -> list[int]:
     return [consts.to_fixed(consts.Fraction(1, i + 1), frac) for i in range(d + 1)]
 
 
-def _log_params(f: Float, t: int, wm: int) -> tuple[dict, float]:
+def _log_params(f: Float, t: int, wm: int, extra: int = 0, exact_m: bool = False) -> tuple[dict, float]:
+    """`extra`: fraction bits beyond what a result of the format needs (`power` takes the log with more);
+    `exact_m`: a significand wider than the format's is exact (not a cut 1 + x)."""
     p = _p(f)
     fc = t + 5
     umax = 2.0 ** -(t + 1) * (1 + 2.0 ** -3)
-    frac = p + G + 4
+    frac = p + G + 4 + extra
     d = 1
     while umax**d / (d + 1) / (1 - umax) > 2.0 ** -(frac - 1):
         d += 1
     # Q's relative error: Taylor tail, coefficient rounding, d truncations
     rel_q = (umax**d / (d + 1) / (1 - umax) + (d + 2) * 2.0**-frac) * 1.01
-    fs = p + G + t + 5
+    fs = p + G + t + 5 + extra
     # general path: absolute errors over |result| >= 2^-(t+2) (bounded below in the docs)
     abs_err = (
         2.0 ** -(fs + 1)  # L_i
         + 160 * 2.0 ** -(fs + 8)  # |E| * ln2
         + umax * rel_q  # u * Q
         + 2.0**-fs  # u * Q truncated to fs bits
-        + (2.0 ** -(wm - 1) if wm > p else 0.0)  # 1 + x truncated to wm bits (log_plus_one)
+        + (2.0 ** -(wm - 1) if wm > p and not exact_m else 0.0)  # 1 + x truncated to wm bits (log_plus_one)
     )
     rel = max(rel_q + 2.0 ** -(frac - 1), abs_err / 2.0 ** -(t + 2) * 1.01)
     return {"t": t, "fc": fc, "frac": frac, "fs": fs, "d": d, "wm": wm, "int_bits": 8}, rel
@@ -676,6 +680,329 @@ def rsqrt(name: str, f: Float) -> str:
     return _ret(s, "res")
 
 
+# ------------------------------------------------------------------------------------------ sine, cosine
+
+#: The worst case of the trig argument reduction per format: (M, ex, K) with `x = M * 2^(ex-p+1)` the float
+#: (ex >= -1) closest to a multiple of pi/2 and `||x * 2/pi|| > 2^-K` for every such float
+#: (`consts.trig_worst_case`, an enumeration of every input; f32: 16367173 * 2^72, as in Muller, *Elementary
+#: Functions*, ch. 11).
+TRIG_WORST = {"f32": (16367173, 95, 30), "bf16": (189, 58, 14), "f16": (1420, 7, 17)}
+
+
+def _trig_design(f: Float, op: str) -> Design:
+    p = _p(f)
+    _, _, kd = TRIG_WORST[f.name]
+    fw = 2 * p + kd + G + 6  # window fraction bits: tail error < 2^(p - fw) <= 2^-(p+G+6) * 2^-kd
+    wf = p + G + 8  # the reduced fraction, normalized
+    wpi = p + G + 8  # pi/2
+    wr = p + G + 7  # r, normalized
+    fr = p + G + 6  # r as fixed point (for z = r^2)
+    frac = p + G + 6  # the polynomial
+    zmax = (math.pi / 4) ** 2 * 1.001
+    d = 1
+    while zmax ** (d + 1) / math.factorial(2 * d + 2) > 2.0 ** -(frac + 1):
+        d += 1
+    rel_r = 2.0 ** (p - fw + kd) + 2.0 ** -(wf - 1) + 2.0 ** -(wpi - 1) + 2.0 ** -(wr - 1)
+    dz = 2.6 * 2.0**-fr + 1.3 * rel_r
+    horner = d * 2.0**-frac + (d + 1) * 2.0 ** -(frac + 1)
+    rem_s = zmax ** (d + 1) / math.factorial(2 * d + 3)
+    rem_c = zmax ** (d + 1) / math.factorial(2 * d + 2)
+    rel_s = rel_r + (dz / 6 + horner + rem_s) / 0.9
+    rel_c = (dz / 2 + horner + rem_c) / math.cos(math.pi / 4)
+    rel = max(rel_s, rel_c) * 1.01
+    prm = {"kd": kd, "fw": fw, "wf": wf, "wpi": wpi, "wr": wr, "fr": fr, "frac": frac, "d": d}
+    return Design(op, f.name, "faithful", 0.5 + _ulps(f, rel), prm)
+
+
+def _trig_check_worst(f: Float) -> None:
+    """The recorded worst case is a real float at the distance its K claims (exact integers)."""
+    p = _p(f)
+    m, ex, kd = TRIG_WORST[f.name]
+    e = ex - (p - 1)
+    n = ex + 2 * kd + 64
+    t = consts.two_over_pi_fixed(n)
+    v = (m * t) << e if e >= 0 else (m * t) >> -e  # x * 2/pi * 2^n, truncated
+    fr = v & ((1 << n) - 1)
+    dist = min(fr, (1 << n) - fr) / 2.0**n
+    assert 2.0 ** -kd < dist < 2.0 ** -(kd - 1), (f.name, dist)
+
+
+def _trig_window(f: Float, fw: int) -> list[int]:
+    """For ex = -1 .. emax (index ex + 1): the bits i of 2/pi = sum b_i 2^-i with E - 1 <= i <= E + fw,
+    E = ex - (p - 1), as an integer (bits below E - 1 add multiples of 4 to x * 2/pi)."""
+    p = _p(f)
+    emax = f.bias
+    n = emax + fw + 8
+    t = consts.two_over_pi_fixed(n)
+    out = []
+    for ex in range(-1, emax + 1):
+        e = ex - (p - 1)
+        lo, hi = max(1, e - 1), e + fw
+        bits = t >> (n - hi)  # b_1 .. b_hi
+        out.append(bits & ((1 << (hi - lo + 1)) - 1))
+    return out
+
+
+def _trig(name: str, f: Float, op: str) -> str:
+    dz = _trig_design(f, op)
+    _trig_check_worst(f)
+    prm = dz.params
+    fw, wf, wpi, wr, fr, frac, d = (prm[k] for k in ("fw", "wf", "wpi", "wr", "fr", "frac", "d"))
+    p, w, xwid = _p(f), f.bits, xw(f) + 2
+    s = Src(name, [("a", w)], w, f"{op} ({f.name})")
+    _head(s, f, xwid)
+    s(f"res: UInt({w}) = 0")
+    # |a| < 1/2: r = |a| exactly, quadrant 0; else Payne-Hanek on |a| = an * 2^(ex - p + 1)
+    s(f"rr: UInt({wr}) = an")
+    s(f"rr = rr << {wr - p}")
+    s(f"re: Int({xwid}) = ex")
+    s("rs: UInt(1) = 0")
+    s("qd: UInt(2) = 0")
+    s("red: UInt(1) = 0")
+    s(f"wi: UInt({clog2(f.bias + 1)}) = 0")
+    with s.if_(f"(ex + 1) >= 0 and ex <= {f.bias}"):
+        s("red = 1")
+        s("wi = ex + 1")
+    win = _trig_window(f, fw)
+    s.rom("wi", win, fw + 2, "wv")
+    s(f"pw: UInt({p + fw + 2}) = an")
+    s("pw = pw * wv")
+    s(f"pm: UInt({fw + 3}) = pw & {s.lit((1 << (fw + 2)) - 1, p + fw + 2)}")
+    s(f"pq: UInt(3) = pm >> {fw}")
+    s(f"pf: UInt({fw + 1}) = pm & {s.lit((1 << fw) - 1, fw + 3)}")
+    s(f"pg: UInt({fw + 1}) = pf")
+    s("ps: UInt(1) = 0")
+    with s.if_(f"pf >= {s.lit(1 << (fw - 1), fw + 1)}"):
+        s(f"pg = {s.lit(1 << fw, fw + 1)} - pf")
+        s("pq = pq + 1")
+        s("ps = 1")
+    s(f"pfw: UInt({fw}) = pg")
+    normalize(s, "pfw", fw, "pn", "plz")
+    s(f"fn: UInt({wf}) = pn >> {fw - wf}")
+    pio2 = consts.pi_fixed(wpi - 2)  # pi/2 with wpi - 1 fraction bits, in [1, 2)
+    s(f"rp: UInt({wf + wpi}) = fn")
+    s(f"rp = rp * {s.lit(pio2, wpi)}")
+    # rp / 2^(wf + wpi - 2) in [pi/2, pi): r = that * 2^(-plz - 1)
+    with s.if_("red == 1"):
+        s("rs = ps")
+        s("qd = pq & 3")
+        with s.if_(f"(rp >> {wf + wpi - 1}) != 0"):
+            s(f"rr = rp >> {wf + wpi - wr}")
+            s("re = 0 - plz")
+        with s.else_():
+            s(f"rr = rp >> {wf + wpi - 1 - wr}")
+            s("re = 0 - plz")
+            s("re = re - 1")
+    # rf = |r| as fixed point (fr bits; re <= -1), z = r^2
+    s(f"rf: UInt({fr}) = 0")
+    s(f"rsh: Int({xwid}) = {wr - 1 - fr} - re")
+    with s.if_(f"rsh < {wr}"):
+        s("rf = rr >> rsh")
+    s(f"zz: UInt({2 * fr}) = rf")
+    s(f"zz = zz * rf")
+    s(f"zf: UInt({fr}) = zz >> {fr}")
+    # which function of r: sine's quadrant k = q, cosine's q + 1; k odd: cos(r), else sin(r); k >= 2: negate
+    s(f"kq: UInt(3) = qd + {1 if op == 'cosine' else 0}")
+    s("kq = kq & 3")
+    s("uc: UInt(1) = kq & 1")
+    # Horner on z, coefficients 1/(2i+1)! (sin(r)/r) or 1/(2i)! (cos(r)), alternating signs
+    wa = frac + 2
+    cs_ = [consts.to_fixed(consts.Fraction(1, math.factorial(2 * i + 1)), frac) for i in range(d + 1)]
+    cc_ = [consts.to_fixed(consts.Fraction(1, math.factorial(2 * i)), frac) for i in range(d + 1)]
+    s(f"ha: UInt({wa}) = {s.lit(cs_[d], wa)}")
+    with s.if_("uc == 1"):
+        s(f"ha = {s.lit(cc_[d], wa)}")
+    for i in range(d - 1, -1, -1):
+        s(f"hz{i}: UInt({fr + wa}) = zf")
+        s(f"hz{i} = (hz{i} * ha) >> {fr}")
+        s(f"hc{i}: UInt({wa}) = {s.lit(cs_[i], wa)}")
+        with s.if_("uc == 1"):
+            s(f"hc{i} = {s.lit(cc_[i], wa)}")
+        s(f"ha = hc{i} - hz{i}")
+    # sin: r * S (exact product, value rr * ha / 2^(wr-1+frac) * 2^re, in [0.9, 2) * 2^re);
+    # cos: C = ha / 2^frac in [0.7, 1]
+    wsn = wr + wa
+    s(f"sv: UInt({wsn}) = rr")
+    s("sv = sv * ha")
+    s(f"se: Int({xwid}) = re + {f.bias}")
+    with s.if_(f"(sv >> {wr + frac - 1}) == 0"):
+        s("sv = sv << 1")
+        s("se = se - 1")
+    s(f"sv = sv << {wsn - (wr + frac)}")
+    s(f"cv: UInt({wa}) = ha")
+    s(f"ce: Int({xwid}) = {f.bias}")
+    with s.if_(f"(cv >> {frac}) == 0"):
+        s("cv = cv << 1")
+        s("ce = ce - 1")
+    s(f"cv = cv << {wa - frac - 1}")
+    sgn = "kq >> 1" if op == "cosine" else "(kq >> 1) ^ a_s"
+    s(f"sgs: UInt(1) = ({sgn}) ^ rs")
+    s(f"sgc: UInt(1) = {sgn}")
+    _pack_choice(s, f, [("uc", "sgc", "cv", wa, "ce"), ("1", "sgs", "sv", wsn, "se")], "res", xwid)
+    with s.if_("a_nan == 1 or a_inf == 1"):
+        s(f"res = {f.nan}")
+    with s.elif_("a_zero == 1"):
+        s(f"res = {f.one if op == 'cosine' else 'a'}")
+    return _ret(s, "res")
+
+
+def sine(name: str, f: Float) -> str:
+    return _trig(name, f, "sine")
+
+
+def cosine(name: str, f: Float) -> str:
+    return _trig(name, f, "cosine")
+
+
+# ------------------------------------------------------------------------------------------------ power
+
+#: (log table bits, exp table bits) of `power` per format.
+POW_T = {"f32": (8, 6), "bf16": (4, 4), "f16": (5, 5), "f8e4m3fn": (3, 3)}
+
+
+def _pow_design(f: Float) -> Design:
+    """pow(x, y) = exp(y * ln|x|): ln|x| from the log core with `ib + 3` extra bits, because an error rho
+    (relative) in it moves z = y ln|x| by |z| rho < 2^ib rho (beyond |z| >= 2^ib the result overflows or
+    underflows), and exp(z) by that much relative."""
+    p = _p(f)
+    tl, te = POW_T[f.name]
+    ib = _exp_int_bits(f)
+    wm = max(p, tl + 2)  # the log core reads t + 2 bits of the significand
+    prm_l, rho = _log_params(f, tl, wm, ib + 3, exact_m=True)
+    fe = p + G + 6
+    prm_e, rel_e = _exp_params(f, fe, ib, te, exact_x=False)
+    wl = p + G + ib + 10  # ln|x| kept to wl bits (truncated)
+    rel = (rel_e + 2.0**ib * (rho + 2.0 ** -(wl - 1))) * 1.01
+    return Design("power", f.name, "faithful", 0.5 + _ulps(f, rel), {"log": prm_l, "exp": prm_e, "wl": wl, "ib": ib, "fe": fe})
+
+
+def _select(s: Src, cands: list[tuple[str, str, str, int, str]], wl: int, xwid: int) -> tuple[str, str, str]:
+    """The first candidate whose condition holds, as (sign, value cut to `wl` bits, biased exponent)."""
+    v, be, sg = s.tmp("sv"), s.tmp("sbe"), s.tmp("ssg")
+    s(f"{v}: UInt({wl}) = 0")
+    s(f"{be}: Int({xwid}) = 0")
+    s(f"{sg}: UInt(1) = 0")
+    first = True
+    for cond, sign, val, wv, bexp in cands:
+        ctx = s.if_(f"{cond} == 1") if first else (s.elif_(f"{cond} == 1") if cond != "1" else s.else_())
+        first = False
+        with ctx:
+            s(f"{sg} = {sign}")
+            s(f"{be} = {bexp}")
+            if wv > wl:
+                s(f"{v} = {val} >> {wv - wl}")
+            else:
+                s(f"{v} = {val}")
+                s(f"{v} = {v} << {wl - wv}")
+    return sg, v, be
+
+
+def _y_parity(s: Src, f: Float, xwid: int) -> None:
+    """`yint`, `yodd` of the finite nonzero operand b (`bn` normalized, `ey` its exponent)."""
+    p = _p(f)
+    s("yint: UInt(1) = 0")
+    s("yodd: UInt(1) = 0")
+    with s.if_(f"ey >= {p - 1}"):
+        s("yint = 1")
+        with s.if_(f"ey == {p - 1}"):
+            s("yodd = bn & 1")
+    with s.elif_("ey >= 0"):
+        s(f"ysh: Int({xwid}) = {p - 1} - ey")
+        s(f"yhi: UInt({p}) = bn >> ysh")
+        s(f"ylo: UInt({p}) = yhi << ysh")
+        with s.if_("ylo == bn"):
+            s("yint = 1")
+            s("yodd = yhi & 1")
+
+
+def power(name: str, f: Float) -> str:
+    dz = _pow_design(f)
+    prm = dz.params
+    pl, pe, wl, ib, fe = prm["log"], prm["exp"], prm["wl"], prm["ib"], prm["fe"]
+    p, w, xwid = _p(f), f.bits, xw(f) + 2
+    s = Src(name, [("a", w), ("b", w)], w, f"power ({f.name}): a^b")
+    _head(s, f, xwid)
+    decode(s, f, "b", "b", xwid)
+    normalize(s, "b_m", p, "bn", "lzb")
+    s(f"ey: Int({xwid}) = b_x - lzb - {f.bias}")
+    s(f"res: UInt({w}) = 0")
+    # ln|a|, then z = b * ln|a| = zp / 2^(p + wl - 2) * 2^ze
+    wm = pl["wm"]
+    s(f"am: UInt({wm}) = an")
+    s(f"am = am << {wm - p}")
+    cands = _log_core(s, f, "am", wm, "ex", pl, xwid)
+    ls, lv, lb = _select(s, cands, wl, xwid)
+    s(f"zp: UInt({p + wl}) = bn")
+    s(f"zp = zp * {lv}")
+    s(f"ze: Int({xwid}) = ey + {lb} - {f.bias}")
+    s(f"zs: UInt(1) = b_s ^ {ls}")
+    # z as fixed point (fe fraction bits); |z| >= 2^ib overflows or underflows
+    wz = ib + fe + 3  # a spare top bit for the comparison
+    s(f"zw: UInt({wz}) = 0")
+    s("zbig: UInt(1) = 0")
+    with s.if_(f"ze > {ib}"):
+        s("zbig = 1")
+    with s.else_():
+        s(f"zsh: Int({xwid}) = {p + wl - 2 - fe} - ze")
+        with s.if_(f"zsh < {p + wl}"):
+            s("zw = zp >> zsh")
+        with s.if_(f"zw >= {s.lit(1 << (ib + fe), wz)}"):
+            s("zbig = 1")
+    wx = ib + fe + 1
+    s(f"zf: UInt({wx}) = zw")
+    with s.if_(f"(a & {f.mag_mask}) == {f.one}"):
+        s("zbig = 0")  # ln|a| = 0: the exponent of the zero logarithm means nothing
+        s("zf = 0")
+    with s.if_("zbig == 1"):
+        s("zf = 0")
+    k, q, wq = _exp_core(s, f, "zf", wx, "zs", pe, xwid)
+    _y_parity(s, f, xwid)
+    s("rsg: UInt(1) = a_s & yodd")
+    _pack_q(s, f, "rsg", k, q, wq, fe, "res", xwid)
+    s(f"sgw: UInt({w}) = rsg")
+    inf_s = f"{f.nan}" if f.finite_nan else f"(sgw << {w - 1}) | {f.inf}"
+    with s.if_("zbig == 1"):
+        with s.if_("zs == 0"):
+            s(f"res = {inf_s}")
+        with s.else_():
+            s(f"res = sgw << {w - 1}")
+    # special values, C11 Annex F.10.4.4, in order of precedence
+    pinf = f"{f.inf}"
+    s(f"xs: UInt({w}) = a_s")
+    s("xsodd: UInt(1) = a_s & yodd")
+    s(f"xo: UInt({w}) = xsodd")
+    s(f"amag: UInt({w}) = a & {f.mag_mask}")
+    s("alt: UInt(1) = 0")
+    with s.if_(f"amag < {f.one}"):
+        s("alt = 1")
+    with s.if_("b_zero == 1"):
+        s(f"res = {f.one}")
+    with s.elif_(f"a == {f.one}"):
+        s(f"res = {f.one}")
+    with s.elif_("a_nan == 1 or b_nan == 1"):
+        s(f"res = {f.nan}")
+    with s.elif_("a_zero == 1"):
+        with s.if_("b_s == 1"):
+            s(f"res = {f.nan if f.finite_nan else f'(xo << {w - 1}) | {pinf}'}")
+        with s.else_():
+            s(f"res = xo << {w - 1}")
+    with s.elif_("b_inf == 1"):
+        with s.if_(f"amag == {f.one}"):
+            s(f"res = {f.one}")
+        with s.elif_("alt == b_s"):
+            s(f"res = {pinf}")
+        with s.else_():
+            s("res = 0")
+    with s.elif_("a_inf == 1"):
+        with s.if_("b_s == 1"):
+            s(f"res = xo << {w - 1}")
+        with s.else_():
+            s(f"res = (xo << {w - 1}) | {pinf}")
+    with s.elif_("a_s == 1 and yint == 0"):
+        s(f"res = {f.nan}")
+    return _ret(s, "res")
+
+
 # --------------------------------------------------------------------------------------------------- ROM
 
 
@@ -706,7 +1033,7 @@ def rom(name: str, f: Float, op: str) -> str:
 
 
 def design(op: str, f: Float) -> Design:
-    if f.bits <= ROM_BITS:
+    if f.bits <= ROM_BITS and op in UNARY:
         return Design(op, f.name, "correctly_rounded", 0.5, {"rom": 1 << f.bits})
     match op:
         case "exponential":
@@ -717,14 +1044,19 @@ def design(op: str, f: Float) -> Design:
             return _tanh_design(f)
         case "rsqrt":
             return _rsqrt_design(f)
+        case "sine" | "cosine":
+            return _trig_design(f, op)
+        case "power":
+            return _pow_design(f)
     raise ValueError(op)
 
 
 def source(op: str, f: Float, name: str) -> str:
-    if f.bits <= ROM_BITS:
+    if f.bits <= ROM_BITS and op in UNARY:
         return rom(name, f, op)
-    gen = {"exponential": exponential, "log": log, "log_plus_one": log_plus_one, "tanh": tanh, "rsqrt": rsqrt}
+    gen = {"exponential": exponential, "log": log, "log_plus_one": log_plus_one, "tanh": tanh, "rsqrt": rsqrt,
+           "sine": sine, "cosine": cosine, "power": power}
     return gen[op](name, f)
 
 
-__all__ = ["G", "OPS", "ROM_BITS", "Design", "design", "rom_values", "source"]
+__all__ = ["BINARY", "G", "OPS", "ROM_BITS", "UNARY", "Design", "design", "rom_values", "source"]

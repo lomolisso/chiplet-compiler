@@ -74,6 +74,10 @@ def _boundaries(op: str, f: Float) -> list[float]:
             return [2.0 ** -prm.get("small", p // 2), prm.get("sat", 9.0), 1.0, 0.5]
         case "rsqrt":
             return [1.0, 2.0, 4.0, 0.25, 0.5, top, tiny]
+        case "sine" | "cosine":
+            m, ex, _ = approx.TRIG_WORST[f.name]
+            half_pi = [k * math.pi / 2 for k in range(1, 9)] + [(1 << 20) * math.pi / 2, (1 << 40) * math.pi]
+            return [0.5, math.pi / 4, 2.0 ** -((p + 1) // 2), m * 2.0 ** (ex - p + 1), top, tiny, *half_pi]
     raise ValueError(op)
 
 
@@ -101,6 +105,11 @@ def _domain(op: str, f: Float, rng: np.random.Generator, n: int) -> np.ndarray:
             return np.where(u < 0.4, pos, np.where(u < 0.8, neg, near_m1))
         case "tanh":
             return sign * logu(-(p // 2 + 2), math.log2(approx.design(op, f).params.get("sat", 9.0)) + 1)
+        case "sine" | "cosine":
+            # near multiples of pi/2 (the reduction's cancellation), and spread over the whole range
+            k = np.floor(logu(0, min(emax, 60))).astype(np.float64)
+            near = k * (math.pi / 2) * (1 + rng.uniform(-1, 1, n) * 2.0 ** -(p - 2))
+            return sign * np.where(u < 0.5, near, logu(-(p + 2), emax - 1))
     raise ValueError(op)
 
 
@@ -114,6 +123,38 @@ def _approx_extra(p: Prim, rng: np.random.Generator, random_n: int) -> np.ndarra
     vals = np.concatenate([vals, vals | np.uint64(1 << (f.bits - 1))])
     dom = fp.round_f64(f, _domain(p.op, f, rng, random_n // 2))
     return np.concatenate([vals, dom])
+
+
+def _power_extra(f: Float, rng: np.random.Generator, n: int) -> list[np.ndarray]:
+    """Operand pairs of `power` where it is hard or changes regime: x near 1 with large |y| (cancellation in
+    ln x, results near 1, overflow and underflow), integer y with negative x (the sign), results near the
+    overflow and underflow thresholds, and pairs spread over both ranges."""
+    p = f.m + 1
+    emin, emax = 1 - f.bias - f.m, f.bias + 1
+    top = math.log(fp.max_value(f))
+    bot = math.log(2.0 ** emin)
+    sign = rng.choice([-1.0, 1.0], n)
+    u = rng.random(n)
+
+    def logu(lo: float, hi: float) -> np.ndarray:
+        return np.exp2(lo + (hi - lo) * rng.random(n))
+
+    x1 = 1 + sign * logu(-p, -1)
+    y1 = rng.choice([-1.0, 1.0], n) * logu(0, min(emax - 1, 40))
+    xi = -logu(emin / 2, emax / 2)
+    yi = np.round(rng.uniform(-40, 40, n))
+    xo = logu(-emax / 2, emax / 2)
+    lx = np.log(xo)
+    yo = np.where(rng.random(n) < 0.5, top, bot) / np.where(lx == 0, 1.0, lx) * (1 + rng.uniform(-1, 1, n) * 2.0 ** -p)
+    xr = logu(emin, emax - 1) * sign
+    yr = rng.choice([-1.0, 1.0], n) * logu(-p, math.log2(emax) + 1)
+    x = np.where(u < 0.3, x1, np.where(u < 0.5, xi, np.where(u < 0.75, xo, xr)))
+    y = np.where(u < 0.3, y1, np.where(u < 0.5, yi, np.where(u < 0.75, yo, yr)))
+    specials = [0.0, -0.0, 1.0, -1.0, 0.5, 2.0, 3.0, -3.0, math.inf, -math.inf, math.nan, 0.25, 1e-3]
+    sx, sy = np.meshgrid(specials, specials, indexing="ij")
+    xs = np.concatenate([sx.ravel(), x])
+    ys = np.concatenate([sy.ravel(), y])
+    return [fp.round_f64(f, xs), fp.round_f64(f, ys)]
 
 
 def _seed(key: str) -> int:
@@ -130,6 +171,12 @@ def generate(p: Prim, exhaustive_bits: int, random_n: int) -> list[np.ndarray]:
         for i, v in enumerate(combo):
             cols[i].append(v)
     rng = np.random.default_rng(_seed(p.key))
+    if p.approximate and len(p.params) == 2:
+        f = p.ret
+        assert isinstance(f, Float)
+        extra2 = _power_extra(f, rng, random_n // 2)
+        rest = [rng.integers(0, 1 << f.bits, random_n - random_n // 2, dtype=np.uint64) for _ in range(2)]
+        return [np.concatenate([np.array(c, dtype=np.uint64), e, r]) for c, e, r in zip(cols, extra2, rest)]
     if p.approximate:
         extra = _approx_extra(p, rng, random_n)
         rand = [np.concatenate([extra, rng.integers(0, 1 << p.params[0].bits, random_n - random_n // 2, dtype=np.uint64)])]
