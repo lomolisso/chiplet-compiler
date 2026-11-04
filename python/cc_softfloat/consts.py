@@ -66,3 +66,66 @@ def log_tables(t: int, fc: int, frac: int) -> tuple[list[int], list[int]]:
         cs.append(c)
         ls.append(to_fixed(_dec(lambda c=c: -(Decimal(c) / (Decimal(2) ** fc)).ln()), frac))
     return cs, ls
+
+
+# ------------------------------------------------------------------------------------ pi, 2/pi (integers)
+
+_GUARD = 64
+
+
+def _atan_inv(x: int, bits: int) -> int:
+    """`atan(1/x) * 2^bits`, each term truncated (error below the number of terms)."""
+    total, k, power = 0, 0, (1 << bits) // x
+    x2 = x * x
+    while power:
+        term = power // (2 * k + 1)
+        total += -term if k & 1 else term
+        power //= x2
+        k += 1
+    return total
+
+
+def pi_fixed(frac: int) -> int:
+    """`floor(pi * 2^frac)`, from Machin's formula `pi = 16 atan(1/5) - 4 atan(1/239)` with 64 guard bits
+    (asserted far enough from an integer that the guard bits' error cannot change the floor)."""
+    b = frac + _GUARD
+    v = 16 * _atan_inv(5, b) - 4 * _atan_inv(239, b)
+    low = v & ((1 << _GUARD) - 1)
+    assert 1 << 16 < low < (1 << _GUARD) - (1 << 16), "pi: too close to an integer"
+    return v >> _GUARD
+
+
+def two_over_pi_fixed(frac: int) -> int:
+    """`floor(2/pi * 2^frac)`: the first `frac` bits of 2/pi after the binary point."""
+    pg = pi_fixed(frac + _GUARD)
+    q = (1 << (2 * frac + 2 * _GUARD + 1)) // pg
+    # pg is pi * 2^(frac+64) to within 1: q is within 2^-62 of the exact value, scaled by 2^64
+    assert 1 << 3 < (q & ((1 << _GUARD) - 1)) < (1 << _GUARD) - (1 << 3), "2/pi: too close to an integer"
+    return q >> _GUARD
+
+
+def trig_worst_case(p: int, ex_lo: int, ex_hi: int) -> tuple[float, int, int]:
+    """The smallest distance `||x * 2/pi||` (to the nearest integer) over the floats `x = M * 2^(ex-p+1)`,
+    `M` in [2^(p-1), 2^p), `ex` in [ex_lo, ex_hi]: the argument reduction of sine and cosine must keep the
+    fraction `x * 2/pi - q` to this many leading zeros plus the result's precision (Muller, *Elementary
+    Functions*, ch. 11). Every such x is enumerated with 64 fraction bits of `2^E * 2/pi` (error below
+    `M * 2^-64 < 2^-39`). Returns (a lower bound of the distance, the worst M, its ex)."""
+    import numpy as np
+
+    n = ex_hi + 64 + 8
+    tpi = two_over_pi_fixed(n)
+    m = np.arange(1 << (p - 1), 1 << p, dtype=np.uint64)
+    best, arg = 2.0, (0, 0)
+    for ex in range(ex_lo, ex_hi + 1):
+        e = ex - (p - 1)
+        # the 64 fraction bits of 2^e * 2/pi: bits e+1 .. e+64 of 2/pi
+        a = (tpi >> (n - e - 64)) & ((1 << 64) - 1) if n - e - 64 >= 0 else (tpi << (e + 64 - n)) & ((1 << 64) - 1)
+        hi, lo = np.uint64(a >> 32), np.uint64(a & 0xFFFFFFFF)
+        with np.errstate(over="ignore"):
+            fr = (m * hi << np.uint64(32)) + m * lo
+            d = np.minimum(fr, np.uint64(0) - fr)
+        i = int(np.argmin(d))
+        v = float(d[i]) * 2.0**-64
+        if v < best:
+            best, arg = v, (int(m[i]), ex)
+    return best - 2.0**-39, arg[0], arg[1]

@@ -20,8 +20,9 @@ from .fp import DTYPES, check_ulps, to_f64, udtype
 LIMITS = {"correctly_rounded": 0.5, "faithful": 1.0}
 
 
-def approx_f64(op: str, x: np.ndarray) -> np.ndarray:
-    """The float64 value of an approximate op (NumPy; a few float64 ulps from the exact value)."""
+def approx_f64(op: str, x: np.ndarray, y: np.ndarray | None = None) -> np.ndarray:
+    """The float64 value of an approximate op (NumPy, whose `power` follows C's `pow`; a few float64 ulps
+    from the exact value). `y` is the second operand of `power`."""
     with np.errstate(all="ignore"):
         match op:
             case "exponential":
@@ -34,6 +35,12 @@ def approx_f64(op: str, x: np.ndarray) -> np.ndarray:
                 return np.tanh(x)
             case "rsqrt":
                 return 1.0 / np.sqrt(x)
+            case "sine":
+                return np.sin(x)
+            case "cosine":
+                return np.cos(x)
+            case "power":
+                return np.power(x, y)
     raise ValueError(op)
 
 
@@ -130,7 +137,7 @@ def evaluate(p: Prim, args: list[np.ndarray]) -> np.ndarray:
             return _reduce_precision(f, args[0], *p.precision)
         xs = [to_f64(f, a) for a in args]
         if p.approximate:
-            return approx_f64(op, xs[0])
+            return approx_f64(op, *xs)
         if op == "compare":
             x, y = xs
             r = {"EQ": x == y, "NE": x != y, "LT": x < y, "LE": x <= y}[p.variant or ""]
