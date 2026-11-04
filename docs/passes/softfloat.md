@@ -217,7 +217,14 @@
    The `divide@f16` query takes Bitwuzla about 8 minutes and Z3 48 minutes, which sets
    `recheck_timeout_s`. The hardest Z3 query (`remainder@f8e4m3fn`) peaks at 1.1 GB. Answers are cached
    in `build/.softfloat/cache/` by query hash, so a rerun repeats only the queries that changed or
-   timed out.
+   timed out. The full pass (206 primitives, 12.9 M vectors, proofs from the cache) took 10.7 minutes
+   on 2026-11-04 (iacoma227). The approximate ops build in 1 to 3 seconds each; their IR has 2 to 4
+   nodes for a table, 220 to 500 for the computed ones, and 625 for `rsqrt` at f32.
+   Every input of the f32 approximate ops was checked once with `python -m cc_softfloat sweep` (16
+   one-CPU containers per op, 33 to 91 seconds each for its sixteenth of the 2^32 inputs; Allo `llvm`
+   against the reference, nothing stored): no input outside its limit, and the largest errors, in
+   ulps, exponential 0.5098, log 0.5056, log_plus_one 0.5083, tanh 0.5023, rsqrt 0.5000 (correctly
+   rounded).
 
 8. **Known limitations.**
    - `sine`, `cosine` and `power` are not built yet: they are listed in `coverage.json` and their
