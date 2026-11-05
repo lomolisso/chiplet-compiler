@@ -1,5 +1,5 @@
 diff --git a/mlir/lib/Translation/EmitXlsHLS.cpp b/mlir/lib/Translation/EmitXlsHLS.cpp
-index 0293945..3df5588 100644
+index 183d048..7c76c6e 100644
 --- a/mlir/lib/Translation/EmitXlsHLS.cpp
 +++ b/mlir/lib/Translation/EmitXlsHLS.cpp
 @@ -38,6 +38,45 @@ static bool BIT_FLAG = false;
@@ -171,7 +171,7 @@ index 0293945..3df5588 100644
      os << "[";
      emitFlattenedAffineIndexHelper(os, memrefType, affineMap, affineEmitter);
 diff --git a/tests/test_xls_extensions.py b/tests/test_xls_extensions.py
-index b2e6581..8919bfb 100644
+index 688b7ac..ba2e7d9 100644
 --- a/tests/test_xls_extensions.py
 +++ b/tests/test_xls_extensions.py
 @@ -1,8 +1,8 @@
@@ -185,7 +185,7 @@ index b2e6581..8919bfb 100644
  emitted C++ is also translated to check that XLS accepts it."""
  
  import os
-@@ -357,3 +357,47 @@ def test_combinational_function_loops_unroll():
+@@ -358,3 +358,47 @@ def test_combinational_function_loops_unroll():
          assert not directive_lines(cpp, "hls_pipeline_init_interval")
          if HAS_XLS:
              xlscc(tmp, "--top=bitcount")

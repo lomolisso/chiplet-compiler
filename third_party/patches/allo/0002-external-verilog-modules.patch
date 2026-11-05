@@ -310,7 +310,7 @@ index d715d6d..4aa9df8 100644
    SmallString<16> getTypeName(Type valType);
    SmallString<16> getTypeName(Value val);
 diff --git a/mlir/lib/Translation/EmitXlsHLS.cpp b/mlir/lib/Translation/EmitXlsHLS.cpp
-index 3cbb275..4963018 100644
+index 3cbb275..5fe6d3d 100644
 --- a/mlir/lib/Translation/EmitXlsHLS.cpp
 +++ b/mlir/lib/Translation/EmitXlsHLS.cpp
 @@ -1271,6 +1271,18 @@ void allo::hls::XlsModuleEmitter::emitFunction(func::FuncOp func) {
@@ -411,7 +411,7 @@ index 3cbb275..4963018 100644
 +  }
 +  os << "\"";
 +  if (auto delay = func->getAttrOfType<IntegerAttr>("extern_delay_ps"))
-+    os << ", " << delay.getInt();
++    os << ", " << delay.getValue().getSExtValue();
 +  os << ")]]\n";
 +}
 +
@@ -419,7 +419,7 @@ index 3cbb275..4963018 100644
    // The callee is emitted as a C++ function that returns its (single, scalar)
    // result, so the call is an expression; the Vitis emitter's pointer outputs
 diff --git a/tests/test_xls_extensions.py b/tests/test_xls_extensions.py
-index 32fa476..0058ef1 100644
+index 4c1b19b..c984e6b 100644
 --- a/tests/test_xls_extensions.py
 +++ b/tests/test_xls_extensions.py
 @@ -1,7 +1,7 @@
@@ -457,10 +457,10 @@ index 32fa476..0058ef1 100644
  def run(cmd, cwd):
      proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=False)
      assert proc.returncode == 0, f"{cmd[0]} failed:\n{proc.stdout}\n{proc.stderr}"
-@@ -69,3 +82,188 @@ def test_call_returns_value():
+@@ -69,3 +82,189 @@ def test_call_returns_value():
              ir = xlscc(tmp, "--top=caller")
              assert re.search(r"invoke\(.*to_apply=\w*scale", ir)
-     assert s.build()(np.int32(4), np.int32(5)) == 17
+     assert s.build()(4, 5) == 17
 +
 +
 +# ---------------------------------------------------------------------------
@@ -492,10 +492,9 @@ index 32fa476..0058ef1 100644
 +
 +def test_extern_llvm_uses_model():
 +    mod = allo.customize(unit).build()
-+    a = np.float32(1.5).view(np.uint32)
-+    b = np.float32(-2.25).view(np.uint32)
-+    c = np.uint32(0x80000000)
-+    out = mod(a, b, c)
++    a = int(np.float32(1.5).view(np.uint32))
++    b = int(np.float32(-2.25).view(np.uint32))
++    out = mod(a, b, 0x80000000)
 +    assert np.uint32(out) == np.uint32(f32_mul(a, b) ^ 0x80000000)
 +    assert np.uint32(out).view(np.float32) == np.float32(3.375)
 +
@@ -513,7 +512,7 @@ index 32fa476..0058ef1 100644
 +
 +def test_extern_llvm_without_model_runs_body():
 +    mod = allo.customize(unit_body).build()
-+    assert np.uint32(mod(np.uint32(0xF0F0), np.uint32(0x0FF0))) == 0xFF00
++    assert np.uint32(mod(0xF0F0, 0x0FF0)) == 0xFF00
 +    with tempfile.TemporaryDirectory() as tmp:
 +        cpp = allo.customize(unit_body).build(target="xls", project=tmp).final_cpp
 +    assert re.search(r'extern_verilog\("[^"]*"\)\]\]', cpp)  # no delay given
@@ -537,17 +536,19 @@ index 32fa476..0058ef1 100644
 +def test_extern_model_error_is_raised():
 +    mod = allo.customize(unit_broken).build()
 +    with pytest.raises(RuntimeError, match="simulation model"):
-+        mod(np.uint32(1), np.uint32(2))
++        mod(1, 2)
 +
 +
 +@allo.extern_verilog("sat8 {fn} (.a({a}), .z({return}))", model=lambda a: min(a, 15))
 +def sat_a(a: uint8) -> uint8:
-+    return a
++    r: uint8 = a
++    return r
 +
 +
 +@allo.extern_verilog("sat8 {fn} (.a({a}), .z({return}))", model=lambda a: min(a, 7))
 +def sat_b(a: uint8) -> uint8:
-+    return a
++    r: uint8 = a
++    return r
 +
 +
 +def two_externs(x: uint8, y: uint8) -> uint8:
@@ -562,7 +563,7 @@ index 32fa476..0058ef1 100644
 +    params = re.findall(r"sat_[ab]\(\s*ac_int<8, false> (\w+)\s*\)", cpp)
 +    assert len(templates) == 2 and templates == params, cpp
 +    assert templates[0] != templates[1]
-+    assert allo.customize(two_externs).build()(np.uint8(200), np.uint8(3)) == 18
++    assert allo.customize(two_externs).build()(200, 3) == 18
 +
 +
 +def test_port_map_template():

@@ -72,7 +72,7 @@ index a46c5b6..3cbb275 100644
  template <int Width, bool Signed = true>
 diff --git a/tests/test_xls_extensions.py b/tests/test_xls_extensions.py
 new file mode 100644
-index 0000000..32fa476
+index 0000000..4c1b19b
 --- /dev/null
 +++ b/tests/test_xls_extensions.py
 @@ -0,0 +1,71 @@
@@ -146,4 +146,4 @@ index 0000000..32fa476
 +        if HAS_XLS:
 +            ir = xlscc(tmp, "--top=caller")
 +            assert re.search(r"invoke\(.*to_apply=\w*scale", ir)
-+    assert s.build()(np.int32(4), np.int32(5)) == 17
++    assert s.build()(4, 5) == 17

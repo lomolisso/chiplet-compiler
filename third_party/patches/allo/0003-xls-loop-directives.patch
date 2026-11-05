@@ -1,5 +1,5 @@
 diff --git a/mlir/lib/Translation/EmitXlsHLS.cpp b/mlir/lib/Translation/EmitXlsHLS.cpp
-index 4963018..0293945 100644
+index 5fe6d3d..183d048 100644
 --- a/mlir/lib/Translation/EmitXlsHLS.cpp
 +++ b/mlir/lib/Translation/EmitXlsHLS.cpp
 @@ -19,6 +19,7 @@
@@ -18,7 +18,7 @@ index 4963018..0293945 100644
 +static std::optional<int64_t> getPipelineII(Operation *op) {
 +  if (auto ii = getLoopDirective(op, "pipeline_ii"))
 +    if (auto intAttr = llvm::dyn_cast<IntegerAttr>(ii))
-+      return std::max<int64_t>(intAttr.getInt(), 1);
++      return std::max<int64_t>(intAttr.getValue().getZExtValue(), 1);
 +  if (op->hasAttr("allo.pipeline") || op->hasAttr("pipeline_ii"))
 +    return 1;
 +  return std::nullopt;
@@ -28,7 +28,7 @@ index 4963018..0293945 100644
 +static std::optional<int64_t> getUnrollFactor(Operation *op) {
 +  if (auto factor = getLoopDirective(op, "unroll"))
 +    if (auto intAttr = llvm::dyn_cast<IntegerAttr>(factor))
-+      return intAttr.getInt();
++      return intAttr.getValue().getZExtValue();
 +  return std::nullopt;
 +}
 +
@@ -142,7 +142,7 @@ index 4963018..0293945 100644
  
  void allo::hls::XlsModuleEmitter::emitAffineFor(AffineForOp op) {
 diff --git a/tests/test_xls_extensions.py b/tests/test_xls_extensions.py
-index 0058ef1..b2e6581 100644
+index c984e6b..688b7ac 100644
 --- a/tests/test_xls_extensions.py
 +++ b/tests/test_xls_extensions.py
 @@ -1,7 +1,8 @@
@@ -155,7 +155,16 @@ index 0058ef1..b2e6581 100644
  emitted C++ is also translated to check that XLS accepts it."""
  
  import os
-@@ -267,3 +268,92 @@ def test_extern_module_instantiated_by_codegen():
+@@ -15,7 +16,7 @@ import pytest
+ 
+ import allo
+ from allo.extern import port_template
+-from allo.ir.types import int32, uint8, uint32
++from allo.ir.types import int8, int32, uint8, uint32
+ 
+ HAS_XLS = all(shutil.which(t) for t in ("xlscc", "opt_main", "codegen_main"))
+ needs_xls = pytest.mark.skipif(not HAS_XLS, reason="XLS tools not on PATH")
+@@ -268,3 +269,92 @@ def test_extern_module_instantiated_by_codegen():
      assert "endmodule" in verilog
      latency = int(re.search(r"latency: (\d+)", sig).group(1))
      assert latency >= 2  # 800 ps of the 1000 ps clock: the xor goes in a later stage
@@ -171,7 +180,7 @@ index 0058ef1..b2e6581 100644
 +    return c
 +
 +
-+def gemm(A: int32[4, 4], B: int32[4, 4]) -> int32[4, 4]:
++def gemm(A: int8[4, 4], B: int8[4, 4]) -> int32[4, 4]:
 +    C: int32[4, 4] = 0
 +    for i, j in allo.grid(4, 4, name="C"):
 +        for k in allo.reduction(4):
