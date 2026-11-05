@@ -221,7 +221,7 @@ targets = ["clock", "fast"]      # clock: the area row at the clock target; fast
 fast_fraction = 0.05             # the fast period as a fraction of the clock target
 ops = []                         # element-wise ops of the catalog; [] = every op of the op table
 int_widths = [2, 4, 8, 16, 32]   # signed and unsigned integer widths (bool is the 1-bit type)
-float_formats = ["f32", "f16", "bf16", "f8e4m3fn"]   # RTL from XLS apfloat, provisional until softfloat
+float_formats = ["f32", "f16", "bf16", "f8e4m3fn"]   # RTL from XLS apfloat, provisional until float IP cores
 mux_inputs = [2, 3, 4, 5, 6, 7, 8]
 mux_widths = [1, 2, 4, 8, 16, 32]
 register_widths = [1, 2, 4, 8, 16, 32]
@@ -284,15 +284,6 @@ timeout_s = 30                   # wall-clock limit per solve (safety net); on e
 threads = 16
 memory_gb = 32                   # solver jobs share it: 2 GB each
 timeout_min = 240
-
-[passes.softfloat]
-formats = ["e4m3fn", "bf16", "fp16", "fp32"]   # add "e5m2" if a recipe needs it (none does today)
-subnormals = "ieee"              # "ieee" | "ftz"
-random_vectors = 100000
-[passes.softfloat.resources]
-threads = 16                     # containers (builds, solver jobs) in parallel
-memory_gb = 64                   # 4 GB per container (Z3 needs about 1 GB on the hardest query)
-timeout_min = 120
 
 [passes.allo_emit]
 [passes.allo_emit.resources]

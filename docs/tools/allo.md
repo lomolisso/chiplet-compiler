@@ -1,8 +1,8 @@
 # Allo (functional-unit description language)
 
 Allo is a Python-embedded, MLIR-based accelerator design language and compiler (Cornell, PLDI'24). In
-chiplet-compiler every functional unit (FU) is written as an Allo kernel over **integer types only**; floats are
-handled by our soft-float library (bit patterns in `UInt`). Flow per FU:
+chiplet-compiler every functional unit (FU) is written as an Allo kernel over **integer types only**; float
+operators are third-party IP cores (design §4.12). Flow per FU:
 Allo `llvm` target (functional simulation) → Allo `xls` backend (xlscc C++) → xlscc → XLS IR → opt → codegen
 (see `xls.md`). Repo: https://github.com/cornell-zhang/allo ; docs: https://cornell-zhang.github.io/allo
 
@@ -58,7 +58,7 @@ mod = s.build()              # default target "llvm"
   `UFixed(w,f)`, `Float` (16/32/64 bits only: `float16`, `bfloat16`, `float32`, `float64`), `Index`, `Struct`, `Stream`.
   No FP8 type.
 - Bit operations (`tests/test_bitop.py`): bit get `x[0]`, slice `x[lo:hi]` (e.g. `a[28:32]` = top nibble of int32),
-  bit set `b[0] = …`, `.reverse()`. These are what the soft-float library is built from.
+  bit set `b[0] = …`, `.reverse()`. These handle values as bit patterns.
 - Schedule primitives (`allo/customize.py`): `split(axis, factor)`, `reorder(*axes)`, `unroll(axis, factor=0)`,
   `fuse`, `pipeline(axis, initiation_interval=1)`, `parallel`, `partition(target, partition_type, dim, factor)`,
   `buffer_at`, `reuse_at`, `compute_at`, `reshape`, `inline`, `dataflow`, `to` (streams), `unfold`,
@@ -89,7 +89,7 @@ Code comment in `customize.py`: "TODO Add XLS DSLX Backend": only the xlscc path
 - Pipeline: parse MLIR → `decompose_library_function` → lower linalg → `empty-tensor-to-alloc-tensor`,
   `convert-linalg-to-affine-loops` → mark top → `allo_d.emit_xhls` emits C++.
 - **Validation rejects any line of the lowered MLIR matching `\b(f16|f32|f64|bf16)\b`** ("Floating-point type … is
-  not supported by XLS [CC] backend") and any dynamic shape `memref/tensor<…?…>`. So a soft-float FU must not
+  not supported by XLS [CC] backend") and any dynamic shape `memref/tensor<…?…>`. So an FU sent through it must not
   contain a single float-typed value, cast or constant. Errors go to `<project>/xls_errors.txt`.
 - `Fixed`/`UFixed` are emitted via a generated `Fixed<WIDTH,FRAC,SIGNED>` C++ template over `ac_int`.
 - No array arguments → plain combinational function. Array arguments → a `TestBlock` class with `#pragma hls_top`,
@@ -111,18 +111,7 @@ Code comment in `customize.py`: "TODO Add XLS DSLX Backend": only the xlscc path
   bit-precise arithmetic (types are erased to `int`). Use it for schedule certificates; bit-level FU semantics are
   checked by simulation + XLS/EDA equivalence.
 
-## 7. Soft-float plan (what we build on Allo)
-
-- Representation: bf16/f16 = `UInt(16)`, f32 = `UInt(32)`, FP8 E4M3/E5M2 = `UInt(8)`; fields extracted with
-  slices (`x[0:m]` mantissa, `x[m:m+e]` exponent, `x[n-1]` sign).
-- Operations written in plain Allo with integer add/sub/mul, shifts, slices, compares; leading-zero count and
-  rounding (RNE) as small integer loops/priority logic, fully unrolled. Same code feeds `llvm` sim and `xls`.
-- Oracles: (a) host reference using `ml_dtypes`/numpy float types on tiny generated vectors; (b) XLS DSLX
-  `apfloat` (`add`, `sub`, `mul`, `fma`, casts) for formats it models (`xls.md` §6). Divide/sqrt/exp are not in
-  apfloat and need their own oracle.
-- Merged FUs (Moreano-style) are also integer Allo kernels with mux-select inputs.
-
-## 8. Pitfalls
+## 7. Pitfalls
 
 | Pitfall | Mitigation |
 |---|---|

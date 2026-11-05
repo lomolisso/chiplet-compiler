@@ -5,7 +5,7 @@ Git submodules (shallow). Each pin is recorded in `config.toml` `[tools.*]`. `ch
 | Submodule | Upstream | Pin (commit) | `config.toml` key | Used by |
 |---|---|---|---|---|
 | `grami/` | https://github.com/ehab-abdelhamid/GraMi | `d2875ae80afa2f141323a3f6b89a387787fcda38` (2018-06-03, last upstream commit) | `tools.grami.commit` | `mine` (directed build) |
-| `allo/` | https://github.com/cornell-zhang/allo | `ac21bae49ca5f912ecebea00908b56976d2361a2` (`main`, 2026-10-12) | `tools.allo.commit` | `softfloat`, `allo_emit`, `xls` |
+| `allo/` | https://github.com/cornell-zhang/allo | `ac21bae49ca5f912ecebea00908b56976d2361a2` (`main`, 2026-10-12) | `tools.allo.commit` | `allo_emit`, `xls` |
 | `xls/` | https://github.com/google/xls | `8ddae8bf466742285aa2d405470512cc73a9aeec` = release tag `v0.0.0-10898-g8ddae8bf4` (2026-10-24) | `tools.xls.commit`, `tools.xls.tag` | `xls`, `characterize` |
 
 The Allo pin also fixes LLVM. Allo's own submodule `externals/llvm-project` records `6b09f739c4d085dc39eb9ff220c786bc3aa8c7fb` (`tools.allo.llvm_commit`). Nested submodules are **not** checked out on the host: `/home` is NFS and nearly full, and LLVM is large. The image build fetches LLVM at that commit itself. Allo's other nested submodule, `past-python-bindings`, is not needed: its `requirements.txt` installs the pinned `past` wheel.

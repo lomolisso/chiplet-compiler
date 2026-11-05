@@ -52,7 +52,7 @@ Action facts:
 |---|---|
 | `cargo fmt --check`, `cargo clippy -D warnings` | whole workspace |
 | `cargo nextest run --profile smoke` | all passes on all 25 models at the `reduced` config, schema + invariant checks, negative (mutation) tests, fixtures in `tests/fixtures/`; no external tools |
-| Python `pytest` (`python/tests`) | `cc_export` unit tests at `testing.tiny_dim` only, export of tiny synthetic modules, JSON schema checks; `cc_softfloat` tests that need Allo are skipped when `allo` is not importable |
+| Python `pytest` (`python/tests`) | `cc_export` unit tests at `testing.tiny_dim` only, export of tiny synthetic modules, JSON schema checks |
 | JSON Schema validation of committed fixtures/reports | cheap |
 
 ## 4. What does NOT run in CI, and why

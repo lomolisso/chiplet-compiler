@@ -38,7 +38,7 @@ codegen_main fu.opt.ir --top=fu --generator=pipeline \
   --output_block_ir_path=fu.block.ir
 ```
 
-DSLX path (for hand-written reference FUs / soft-float checks): `ir_converter_main fu.x --top=fu > fu.ir`.
+DSLX path (for hand-written reference FUs): `ir_converter_main fu.x --top=fu > fu.ir`.
 
 ## 3. codegen_main options we use (https://google.github.io/xls/codegen_options/)
 
@@ -98,7 +98,7 @@ has_fractional_part has_negative_exponent ceil_with_denorms ceil_daz floor_with_
 Missing: **div, sqrt, rsqrt, exp, log, min/max** (compare via `lt_2`/`gt_2`), FP8 instances (any `EXP_SZ/FRACTION_SZ`
 works generically, e.g. E4M3 = `APFloat<4,3>`, but E4M3FN's no-inf/NaN encoding is not modelled (unverified)).
 `xls/modules/add_dual_path/` has a dual-path FP adder with quickcheck files for bf16/f32/f64; `xls/modules/ml/`
-has `activation.x`, `ws_matmul.x`. These are references for our Allo soft-float library and test oracles; our FUs
+has `activation.x`, `ws_matmul.x`. These are references and test oracles; our FUs
 come from Allo, not DSLX.
 
 ## 7. xlscc (C++ front end)

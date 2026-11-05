@@ -71,7 +71,7 @@
       and minimum are written per the spec (NaN propagates, -0 < +0). A conversion between formats where
       neither contains the other widens exactly to Float32 and rounds once. These rows are
       **provisional**: `apfloat` flushes subnormals and models IEEE special values for every format (E4M3FN
-      has no infinities); the soft-float library replaces them. Float ops without an `apfloat` function
+      has no infinities); third-party float IP cores (design §4.12) replace them. Float ops without an `apfloat` function
       (divide, remainder, sqrt, rsqrt, exponential, log, log_plus_one, sine, cosine, tanh, power,
       reduce_precision) are **pending**: no RTL, no rows. One container converts every DSLX file
       (`ir_converter_main`, `opt_main`, `codegen_main --generator=combinational`); registers,
@@ -213,7 +213,7 @@
 
 8. **Limitations.**
    - Float rows are provisional (XLS `apfloat`: subnormals flushed, IEEE special values for E4M3FN) and
-     12 float ops are pending until the soft-float library exists; `merge` must treat pending
+     12 float ops are pending until the third-party float IP cores are integrated; `merge` must treat pending
      primitives as unpriced.
    - Formality does not finish some timing-driven DesignWare 32-bit dividers and remainders
      (divide@ui32, remainder@i32, remainder@ui32): for divide@ui32 20 of 32 outputs pass, 12 stay

@@ -91,7 +91,7 @@ Nothing else changes; the pipeline manager derives the order from `requires`/`pr
 ### 3.3 Pipeline manager
 
 - **DAG.** The pass graph is built from `requires`/`provides` (`petgraph`). Cycles or a missing producer are a configuration error.
-- **Parallel passes.** Supported from day one: the DAG already has independent branches (`characterize` vs the analysis chain; the soft-float library). Execution is Kahn-style. A ready pass is *admitted* when:
+- **Parallel passes.** Supported from day one: the DAG already has independent branches (`characterize` vs the analysis chain). Execution is Kahn-style. A ready pass is *admitted* when:
   - fewer than `pipeline.max_parallel_passes` passes are running, **and**
   - Σ `memory_gb` of the running passes, including this one, is ≤ `resources.memory_budget_gb`, **and**
   - Σ `threads` of the running passes, including this one, is ≤ `resources.threads_total`.
@@ -161,11 +161,11 @@ Names are config sections and build directories. Arrows show data dependencies.
 
 ```
 export → import → components → normalize → kernels → kernel_classes → iteration_space → datapaths → mine → merge → allo_emit → xls → rtl_verify → synth → report
-                                                                                                         ↑               ↑
-                                                                                    characterize ────────┘   softfloat ──┘
+                                                                                                         ↑
+                                                                                    characterize ────────┘
 ```
 
-- `characterize` (primitive area/delay library) and `softfloat` (the Allo soft-float library) depend only on the environment, so they run in parallel with the analysis chain.
+- `characterize` (primitive area/delay library) depends only on the environment, so it runs in parallel with the analysis chain.
 - `synth` and `rtl_verify` both consume `xls` and run in parallel.
 
 For each pass: purpose, method, reused tools, outputs and **verification**. The verification is formal or structural and never needs model-scale compute. Implementation details are in `docs/passes/<pass>.md`.
@@ -322,7 +322,8 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
   - The primitive set follows the op semantics: every element-wise op of the op table at every
     configured type the SMT semantics defines it on.
   - Generate each primitive once (DSLX → XLS → Verilog, or a small Verilog template); float RTL comes
-    from XLS's `apfloat` until `softfloat` exists, and float ops without it are pending.
+    from XLS's `apfloat` (provisional) until the third-party float IP cores of section 4.12 are
+    integrated, and float ops without it are pending.
   - Synthesize with DC (Nangate45 and a merged ASAP7 `.db`, both built by `lc_shell` in `chipc doctor`)
     or Genus, at two timing points: the clock target (the area) and a tight constraint (the minimum
     delay). Yosys with ABC on the same Liberty files is the license-free alternative.
@@ -368,24 +369,20 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
   - Every merged unit is acyclic and every multiplexer has at least two inputs.
   - Coverage: Z_compute ⊆ ⋃ cover(F).
 
-### 4.12 `softfloat` (parallel branch)
+### 4.12 Float operators (third-party IP cores)
 
-- **Purpose.** An Allo library of float formats implemented with integer bit operations:
-  - the formats the recipes use: FP8 E4M3FN, bf16, fp16, fp32 (E5M2 is optional; no port uses it today);
-  - add, mul, FMA-or-not per contract, compare, convert, round-to-nearest-even;
-  - FTZ / DAZ as configured.
-
-  It makes every FU integer to Allo, so the Allo `llvm` simulator and the Allo XLS backend accept it.
-- **Verification.**
-  - Exhaustive tests for 8-bit formats (every operand pair).
-  - Randomized and edge-case tests for wider formats against a bit-exact reference (`ml_dtypes`/NumPy with explicit rounding).
-  - SMT QF_FP equivalence of the integer circuit vs the FP theory for small formats.
+- **Purpose.** Every float operator of a unit is an instance of a third-party floating-point IP core
+  (a vendor library such as Synopsys DesignWare, or an open-source core), chosen per format and EDA flow.
+- **Trust.** The cores are taken as verified by their vendors. Proofs treat each instance as an opaque
+  function with the core's documented contract; verification covers what is built around the instances.
+- **Status.** Until the cores are integrated, `characterize` prices floats with XLS `apfloat`
+  (provisional, section 4.9).
 
 ### 4.13 `allo_emit`
 
 - **Purpose.** Each FU and each template instance → an Allo kernel plus its configuration interface.
 - **Method.**
-  - Emit Allo Python from the merged datapath (and template parameters), using `softfloat` for float families.
+  - Emit Allo Python from the merged datapath (and template parameters); float operators are instances of third-party IP cores (section 4.12).
   - Schedule customizations: pipelining and unrolling follow from the skeleton.
 - **Verification (functional).**
   - The Allo `llvm` target runs each FU × configuration × width on generated vectors at **tiny sizes** (symbolic dims set to `testing.tiny_dim`).
@@ -467,7 +464,7 @@ The variant per model follows its recipe by default (`passes.merge.requant_varia
 
 ### 6.4 Float formats
 
-Every float FU uses the `softfloat` library: FP8 E4M3FN, bf16, fp16 and fp32 (E5M2 optional), with fp32 accumulation where the recipe says so. FP8 conversions follow the OCP OFP8 spec: round-to-nearest-even, with saturating and non-saturating modes and the overflow-boundary rules of Rev 1.1 (`docs/context/literature/fp8_formats.md`).
+Float operators are third-party IP cores (section 4.12) in FP8 E4M3FN, bf16, fp16 and fp32 (E5M2 optional), with fp32 accumulation where the recipe says so. FP8 conversions follow the OCP OFP8 spec: round-to-nearest-even, with saturating and non-saturating modes and the overflow-boundary rules of Rev 1.1 (`docs/context/literature/fp8_formats.md`).
 
 ## 7. "Solved" kernels without hard-coded mappings
 
@@ -531,7 +528,7 @@ build/         (ignored) build/.<pass>/ artifacts
 | Width = parameter, family = identity | Width in identity | Cross-width reuse (section 6.2) |
 | Template eligibility by space-time mapping proof | Name-based mapping of GEMM/conv | No hard-coded mappings |
 | Configuration by construction + ∀-only SMT | ∃∀ synthesis per (FU, kernel) | The clique already gives the mapping |
-| Soft-float in plain Allo | Fork Allo / DSLX for floats | One RTL route; FP8 bit-exact; no fork to maintain |
+| Float operators from third-party IP cores | An in-house soft-float library in Allo | Vendor and open-source cores exist and are verified by their makers; building and proving float circuits again adds area, run time and code |
 | Host driver + capped Docker + `eda-run` | Single container | glibc 2.28 host, cgroups v1, host-only licensed EDA |
 | Parallel pass execution with memory admission | Sequential only | Independent branches exist; about 100 lines; shared machine |
 | Requantization has two verified variants | Integer only | The ports rescale in fp32 as deployed; fixed point is the integer-only form (TFLite). It is not smaller by itself: at ASAP7 (DC) `rescale@i32` is 636 µm² against 331 µm² for the fp32 chain, whose multiply works on 24-bit significands after the convert, while `rescale` forms the exact 32×24 product |
@@ -595,15 +592,15 @@ build/         (ignored) build/.<pass>/ artifacts
 | Block-scaled GEMMs are batched contractions (block index as batch) with a scale epilogue | A separate class kind; cross-kernel fusion now | The partition already separates the block sum; fusing it into the array is a later cross-kernel step |
 | Window and padding values from shape operands are run-time parameters of the maps | Lift them into attributes upstream | The proofs are parametric anyway; the affected classes are reductions or keep their template eligibility |
 | Access proofs over variables in {0, …, 7} in 32-bit vectors | Integer arithmetic (QF_NIA) | Both sides are polynomials of low degree, so the grid proves the identity (Alon 1999, Lemma 2.1); Bitwuzla has no integer theory and both solvers must answer |
-| Datapath float encoding: f16/f32 in the FP theory; bf16 and FP8 as bit patterns computed in a Float32 carrier and rounded back explicitly, each encoding proven once by Z3 against a native sort | Bit-precise soft-float now; Z3-only proofs for bf16/FP8 | Bitwuzla has only the IEEE interchange sorts and both solvers must answer; soft-float circuits are `softfloat`'s; the lemmas make the carrier exact (an i32 → bf16 lemma failed through Float32 and now rounds to odd) |
-| Ops whose float result the spec leaves to an approximate function (`exponential`, `tanh`, `rsqrt`, …) are uninterpreted functions per op and format | Pick one approximation | The proof then holds for any implementation; `softfloat` implements and proves them |
+| Datapath float encoding: f16/f32 in the FP theory; bf16 and FP8 as bit patterns computed in a Float32 carrier and rounded back explicitly, each encoding proven once by Z3 against a native sort | Bit-precise soft-float now; Z3-only proofs for bf16/FP8 | Bitwuzla has only the IEEE interchange sorts and both solvers must answer; float circuits are third-party IP cores; the lemmas make the carrier exact (an i32 → bf16 lemma failed through Float32 and now rounds to odd) |
+| Ops whose float result the spec leaves to an approximate function (`exponential`, `tanh`, `rsqrt`, …) are uninterpreted functions per op and format | Pick one approximation | The proof then holds for any implementation; the IP cores implement them |
 | Integer accumulators wrap; order freedom is proven per class and tuple | Saturating option; freedom stated by family | Two's-complement add is what the spec computes; the proof states it for every combiner (variadic bodies included) |
 | One datapath file per class, template stages included (vertices tagged by stage) | Separate files per stage | One proof per class and tuple covers every stage; mining sees one graph per class |
 | Width tuples: distinct element types (and constant types, structural attributes) over T_z; constants free | One proof per (tuple, constant values) | Fewer obligations, and the proof covers every constant value |
 | `cc-smt` writes SMT-LIB files and runs the solvers in batch | `easy-smt` interactive sessions | The file is the certificate; no query is incremental; one container per batch |
 | `characterize`: two timing points per primitive (the clock target and 5% of it) | One synthesis at the clock target | At the clock target synthesis spends slack on area, so the delay is about the period; a logic-depth bound needs the minimum delay |
 | License-free characterization by Yosys + ABC on the same Liberty files, chosen only explicitly | XLS's area model | XLS's area model is ASAP7/sky130 only and its tool is Bazel-only; Yosys is in the image; a silent switch would mix estimators in one library |
-| Float primitives from XLS `apfloat`, provisional; float ops without an `apfloat` function pending | DesignWare floating-point parts; hand-written DSLX now | One RTL route: `softfloat` replaces them; vendor IP would price parts no unit will contain |
+| Float primitives from XLS `apfloat`, provisional; float ops without an `apfloat` function pending | Hand-written DSLX now | Provisional until the third-party IP cores of section 4.12 are priced instead |
 | The primitive set is every element-wise op at every configured type the SMT semantics defines | A hand-written primitive list | No hard-coded op set; a new op or type in the semantics enters the library by itself |
 | ASAP7's group libraries merged into one Liberty and `.db` by `chipc doctor` | DC on the five group `.db` files | DC's library analysis leaves placeholders per group (no inverters or flops) and repeats about 100 s on every compile; Yosys' ABC reads one file (OpenROAD's `mergeLib.pl` does the same) |
 | Characterization jobs are directories named by the hash of their scripts, RTL and libraries, reused by later runs | Pass-level caching only | A full run takes hours; an interrupted or partly changed run redoes only what changed |
