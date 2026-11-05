@@ -1,5 +1,5 @@
 diff --git a/mlir/lib/Translation/EmitXlsHLS.cpp b/mlir/lib/Translation/EmitXlsHLS.cpp
-index 5fe6d3d..183d048 100644
+index 5f34e7c..8c20b21 100644
 --- a/mlir/lib/Translation/EmitXlsHLS.cpp
 +++ b/mlir/lib/Translation/EmitXlsHLS.cpp
 @@ -19,6 +19,7 @@
@@ -142,7 +142,7 @@ index 5fe6d3d..183d048 100644
  
  void allo::hls::XlsModuleEmitter::emitAffineFor(AffineForOp op) {
 diff --git a/tests/test_xls_extensions.py b/tests/test_xls_extensions.py
-index c984e6b..688b7ac 100644
+index ee17b7e..e8d4c9d 100644
 --- a/tests/test_xls_extensions.py
 +++ b/tests/test_xls_extensions.py
 @@ -1,7 +1,8 @@

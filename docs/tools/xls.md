@@ -141,7 +141,7 @@ the pinned tools, 2 CPUs: `fp_sincos_32` to combinational Verilog in about 7.5 s
   keeps the invoke, and `codegen_main` turns it into an instance (`xls/codegen/ffi_instantiation_pass.cc`),
   scheduled as one block of `--ffi_fallback_delay_ps` unless the data carries a delay.
 - `xlscc`, with our pinned patch (`third_party/patches/xls`, `docs/third-party.md`), takes the attribute on a C++
-  function: `[[xlscc::extern_verilog("<template>", <delay_ps>)]]` (also spelled `hls_extern_verilog`; the delay
+  function: `[[xlscc::hls_extern_verilog("<template>", <delay_ps>)]]` (also `[[hls_extern_verilog(...)]]` and GNU `__attribute__`; the delay
   is optional). The function keeps its body (the simulation model, as in DSLX) and becomes its own IR function
   with the template as its foreign function data; placeholders name the C++ parameters, which keep their
   names in the IR. It must be a called free function (or static method) of value parameters returning one

@@ -131,7 +131,7 @@ The image's Allo carries four patches; their tests are `tests/test_xls_extension
   name); `module=`, `params=` and `ports=` build the same template from a port map (`ports` values: an argument
   name, `"return"`, a Verilog constant, or `None` for unconnected). The declaration is checked when the function
   is decorated (unknown placeholders, missing `{fn}`, negative delay).
-  - `target="xls"` emits `[[xlscc::extern_verilog("<template>", <delay_ps>)]]` before the callee, with the
+  - `target="xls"` emits `[[xlscc::hls_extern_verilog("<template>", <delay_ps>)]]` before the callee, with the
     placeholders renamed to the emitted C++ argument names; the patched `xlscc` turns it into the IR function's
     foreign function data (`xls.md` §7a), and `codegen_main` instantiates the module.
   - `target="llvm"` replaces the callee by a declaration bound to `model` (`ExecutionEngine.register_runtime`):

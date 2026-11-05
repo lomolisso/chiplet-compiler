@@ -433,7 +433,7 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
 
 - **Purpose.** RTL.
 - **Method.** Allo `xls` target → C++ for `xlscc` → XLS IR → `opt_main` → `codegen_main` (pipeline generator, delay model `asap7`, clock and stages from config).
-  - External modules: an `extern_verilog` attribute on the called C++ function (a pinned patch to `xlscc`, with the matching Allo emission; `docs/third-party.md`) gives its IR function XLS's foreign-function data; `codegen_main` instantiates the module, scheduled as one combinational block of the core's delay. XLS supports combinational external modules only; every chosen core is combinational.
+  - External modules: an `hls_extern_verilog` attribute on the called C++ function (a pinned patch to `xlscc`, with the matching Allo emission; `docs/third-party.md`) gives its IR function XLS's foreign-function data; `codegen_main` instantiates the module, scheduled as one combinational block of the core's delay. XLS supports combinational external modules only; every chosen core is combinational.
   - A unit that accepts a new input only every N cycles is scheduled with `--worst_case_throughput=N`.
 - **Verification.**
   - The same golden vectors run in the XLS IR interpreter/JIT, for units without external modules; with them, every external call must be an instance of its declared module, and the evidence of section 4.13 applies.
@@ -684,5 +684,5 @@ build/         (ignored) build/.<pass>/ artifacts
 | Accumulation by f32 IP cores in a recorded order *(planned)* | An exact integer FP8 accumulator; block-fused alignment as in GPU matrix units | Cores only; a recorded order keeps the proof bit-exact |
 | Approximate operators: a configurable error budget, loose by default; a core at its documented guarantee *(planned)* | At most 1 ulp everywhere | Precision beyond what the workload keeps costs area; a core's guarantee does not depend on the target |
 | E4M3FN through a bit-level wrapper around f16 or f32 cores *(planned)* | A native FP8 core | No core implements E4M3FN's encoding without infinities |
-| External modules through an `extern_verilog` attribute in `xlscc` (pinned patch) | Annotating the IR after `xlscc`; Allo's HLS backends | XLS IR already instantiates foreign functions; the attribute makes it a front-end feature, checked where the C++ is parsed |
+| External modules through an `hls_extern_verilog` attribute in `xlscc` (pinned patch) | Annotating the IR after `xlscc`; Allo's HLS backends | XLS IR already instantiates foreign functions; the attribute makes it a front-end feature, checked where the C++ is parsed |
 | Array units delivered as their PE plus a description; grids in later versions *(planned)* | A fixed-size array per unit | The PE does not depend on the grid size, which is chosen together with the memory system |

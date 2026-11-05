@@ -19,7 +19,7 @@ All notable changes to this project are listed here. The format follows
 - `merge` pass: configurable functional units by datapath merging (compatibility graph and maximum-weight clique, agglomerated under a depth bound) and parameterized arrays for template classes, every configuration proven equal to its datapath.
 - `merge` fixed requantization (`requant_variant = "fixed"`): rescaling chains become one integer `rescale` block (exact multiply by the scale's significand, rounding shift), proven within 1 of fp32, with its RTL in the `characterize` library.
 - `iteration_space` pass and the op table's iteration semantics: per class its affine accesses proven against the spec, dependences, the embedding relation, and routing of uniform contractions to systolic templates by a proven space-time mapping.
-- Toolchain image 0.5.0: external Verilog modules in Allo (`allo.extern_verilog`) and `xlscc` (`extern_verilog` attribute), Allo's XLS emitter fixed for calls and following loop and partition schedules (pinned patches), FloPoCo, GHDL with its Yosys plugin, and XLS's DSLX sine/cosine and exponential libraries.
+- Toolchain image 0.5.0: external Verilog modules in Allo (`allo.extern_verilog`) and `xlscc` (`hls_extern_verilog` attribute), Allo's XLS emitter fixed for calls and following loop and partition schedules (pinned patches), FloPoCo, GHDL with its Yosys plugin, and XLS's DSLX sine/cosine and exponential libraries.
 
 ### Changed
 

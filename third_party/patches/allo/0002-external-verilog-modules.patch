@@ -135,7 +135,7 @@ index f7f907c..e13ca62 100644
          * https://github.com/llvm/llvm-project/blob/llvmorg-15.0.0/mlir/test/python/execution_engine.py
 diff --git a/allo/extern.py b/allo/extern.py
 new file mode 100644
-index 0000000..86ee9e2
+index 0000000..186e26d
 --- /dev/null
 +++ b/allo/extern.py
 @@ -0,0 +1,138 @@
@@ -148,7 +148,7 @@ index 0000000..86ee9e2
 +its body. Allo keeps the function as a separate callee:
 +
 +* ``target="xls"`` emits it with the xlscc attribute
-+  ``[[xlscc::extern_verilog("<template>", <delay>)]]``, so XLS codegen
++  ``[[xlscc::hls_extern_verilog("<template>", <delay>)]]``, so XLS codegen
 +  instantiates the module and schedules it as one combinational block of the
 +  given delay. XLS supports combinational modules only.
 +* ``target="llvm"`` simulates it with ``model`` (a Python callable on the raw
@@ -310,7 +310,7 @@ index d715d6d..4aa9df8 100644
    SmallString<16> getTypeName(Type valType);
    SmallString<16> getTypeName(Value val);
 diff --git a/mlir/lib/Translation/EmitXlsHLS.cpp b/mlir/lib/Translation/EmitXlsHLS.cpp
-index 3cbb275..5fe6d3d 100644
+index 3cbb275..5f34e7c 100644
 --- a/mlir/lib/Translation/EmitXlsHLS.cpp
 +++ b/mlir/lib/Translation/EmitXlsHLS.cpp
 @@ -1271,6 +1271,18 @@ void allo::hls::XlsModuleEmitter::emitFunction(func::FuncOp func) {
@@ -400,7 +400,7 @@ index 3cbb275..5fe6d3d 100644
 +    pos = close + 1;
 +  }
 +
-+  os << "[[xlscc::extern_verilog(\"";
++  os << "[[xlscc::hls_extern_verilog(\"";
 +  for (char c : rewritten) {
 +    if (c == '\\' || c == '"')
 +      os << '\\' << c;
@@ -419,7 +419,7 @@ index 3cbb275..5fe6d3d 100644
    // The callee is emitted as a C++ function that returns its (single, scalar)
    // result, so the call is an expression; the Vitis emitter's pointer outputs
 diff --git a/tests/test_xls_extensions.py b/tests/test_xls_extensions.py
-index 4c1b19b..c984e6b 100644
+index 4c1b19b..ee17b7e 100644
 --- a/tests/test_xls_extensions.py
 +++ b/tests/test_xls_extensions.py
 @@ -1,7 +1,7 @@
@@ -482,7 +482,7 @@ index 4c1b19b..c984e6b 100644
 +    s = allo.customize(unit)
 +    with tempfile.TemporaryDirectory() as tmp:
 +        cpp = s.build(target="xls", project=tmp).final_cpp
-+    m = re.search(r'\[\[xlscc::extern_verilog\("(.*)", 800\)\]\]\s*\n\s*uint32_t fmul\(', cpp)
++    m = re.search(r'\[\[xlscc::hls_extern_verilog\("(.*)", 800\)\]\]\s*\n\s*uint32_t fmul\(', cpp)
 +    assert m, cpp
 +    names = re.search(r"fmul\(\s*uint32_t (\w+),\s*uint32_t (\w+)\s*\)", cpp)
 +    assert names, cpp
