@@ -233,7 +233,10 @@
 
    Deep test (`tests/deep/characterize.rs`: doctor, then `add` and `multiply` at 8 bits and f32, their
    accumulators, a 2-input mux, a register and a 16-from-8 split multiplier on both kits and targets,
-   through Design Compiler without and then with Formality, and Yosys): DEEPTIME.
+   through Design Compiler without and then with Formality, and Yosys): about 25 minutes from scratch
+   (2026-11-05, iacoma227 under load: doctor with the `.db` compilation, then 76 Design Compiler rows; the
+   same 76 with Formality, every one proven, reusing every synthesis; 76 Yosys rows, floats and the split
+   multiplier included now that its equivalence flow is off).
 
 8. **Limitations.**
    - Float rows are provisional (XLS `apfloat`: subnormals flushed, IEEE special values for E4M3FN) and
