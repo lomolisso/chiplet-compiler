@@ -281,7 +281,12 @@
    parallel batches of twice the thread count; families run in parallel. Proofs are one query per
    (unit, configuration, tuple) and per (array, class, tuple), milliseconds each except composed steps.
    With `fixed`, one tolerance lemma per integer type rescaled (one CPU: Bitwuzla 23 s at i8, 57 s at
-   i32; Z3, in `verify`, 91 s at i8, 11 minutes at i32).
+   i32; Z3, in `verify`, 91 s at i8, 11 minutes at i32), solved once per solver version thanks to the
+   shared answer cache.
+   Measured on the model set at `full` (2026-11-05, iacoma227): 572 s in a debug build (pass about 430 s,
+   `verify` about 140 s), 165 s in a release build (`verify` 69 s). About 390 s of the debug pass are 38
+   slow evaluations, most of them one pair with 13 254 vertex mappings evaluated again after every merge
+   into its growing host (about 10 s each); a bound that survives the host's growth would avoid them.
 
 8. **Known limitations.**
    - Merging is pairwise and greedy (Moreano Sec. VI-A); the result depends on the merge order, which the

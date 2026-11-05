@@ -128,7 +128,8 @@
 
 7. **Resources.** Small: the components are about 9 MB at `full`. Run and verification together at `full`:
    11 s, 165 MB peak RSS; the proofs take 2 s (Bitwuzla) and 3.4 s (Z3) in one container each
-   (2026-11-01).
+   (2026-11-01). The rule queries are constant, so the shared solver-answer cache answers them after the
+   first run (1.6 s in a release build, 2026-11-05).
 
 8. **Limitations.**
    - The rule set is small: identities only where the labelled graph proves them (a reshape back to its

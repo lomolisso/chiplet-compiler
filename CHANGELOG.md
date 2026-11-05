@@ -22,6 +22,9 @@ All notable changes to this project are listed here. The format follows
 
 ### Changed
 
+- Solver answers are cached once for every pass and for `verify` (`paths.smt_cache`, shared by every build directory of a host): constant lemmas and rules are solved once per solver version, `verify` still regenerates and compares every query.
+- `mine` runs GraMi once, at the last threshold, and derives every step's pattern set by MNI (`grami_runs = "once"`, outputs unchanged; `"sweep"` restores one run per step).
+- Pass manifests and run summaries record the time spent in `verify`; `chipc run` prints it; `CC_PROFILE=release` runs the optimized `chipc` through `scripts/on-build-host`.
 - A pass's containers share its declared memory and threads (each at most the `[tools.docker]` ceiling, now 16 GB and 8 CPUs) instead of one fixed 8 GB cap; run budget 128 GB and 32 threads, and pass resources raised to their measured needs (export, datapaths, mine, merge, solver passes).
 - `export` records each symbol's integer size at the exported config and a census of the phase lowered on concrete shapes (`census_concrete.json`, integer FLOPs).
 - `chipc doctor` also merges the ASAP7 group libraries into one Liberty file and `.db`.
