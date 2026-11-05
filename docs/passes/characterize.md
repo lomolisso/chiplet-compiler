@@ -215,6 +215,9 @@
    - Float rows are provisional (XLS `apfloat`: subnormals flushed, IEEE special values for E4M3FN) and
      12 float ops are pending until the third-party float IP cores are integrated; `merge` must treat pending
      primitives as unpriced.
+   - Planned changes (design §3.7, §4.9, §5): float primitives as wrappers around the flow's IP cores, float
+     `remainder` dropped (its only use is constant computation), the Genus path removed, and the
+     equivalence check optional and off by default, replaced by cheap structural checks.
    - Formality does not finish some timing-driven DesignWare 32-bit dividers and remainders
      (divide@ui32, remainder@i32, remainder@ui32): for divide@ui32 20 of 32 outputs pass, 12 stay
      unverified, none fails, with the default strategy, s1 to s3, and datapath effort `high` and

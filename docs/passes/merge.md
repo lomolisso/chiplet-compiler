@@ -284,6 +284,9 @@
    i32; Z3, in `verify`, 91 s at i8, 11 minutes at i32).
 
 8. **Known limitations.**
+   - Float prices come from `characterize`'s provisional `apfloat` rows until the float IP cores are
+     integrated (design §4.12); the planned numerics (design §6.4: f32 and bf16 flushing to zero) will
+     change both the prices and the proofs.
    - Merging is pairwise and greedy (Moreano Sec. VI-A); the result depends on the merge order, which the
      lazy greedy fixes by gain. A clique answered by `greedy` or out of budget is not optimal (recorded).
      With `rank = "greedy"` the order follows greedy gains; the exact solve improves only the accepted pair.
