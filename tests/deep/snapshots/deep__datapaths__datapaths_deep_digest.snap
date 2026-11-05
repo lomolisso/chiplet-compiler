@@ -3,7 +3,7 @@ source: tests/deep/datapaths.rs
 expression: digest
 ---
 {
-  "checks": 460,
+  "checks": 501,
   "classes": [
     {
       "id": "z036424d17c97a2c5",
@@ -1728,7 +1728,7 @@ expression: digest
       "subtract@sint": 13,
       "tanh@float": 2
     },
-    "lemmas": 6,
+    "lemmas": 11,
     "order_bound": 17,
     "order_free": 24,
     "order_queries": 41,
