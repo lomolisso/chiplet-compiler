@@ -28,6 +28,7 @@ All notable changes to this project are listed here. The format follows
 ### Changed
 
 - `characterize` checks netlist against RTL only with `lec = true` (off by default); `library.json` and `summary.json` schemas 2 (`lec` and `lec_tool` optional, the kit's clock recorded).
+- `characterize` Design Compiler job directories no longer depend on the toolchain image tag (the RTL is in their key by its text), so a new image reuses them.
 - `paths.nangate45_lib`, `nangate45_lef`, `asap7_root`, `asap7_nldm_dir`, `asap7_lef_dir` and `[tools.pdk]` are replaced by the PDK manifests and `paths.pdk_root` / `paths.pdks.<kit>`; the old keys are rejected with a message.
 - Solver answers are cached once for every pass and for `verify` (`paths.smt_cache`, shared by every build directory of a host): constant lemmas and rules are solved once per solver version, `verify` still regenerates and compares every query.
 - `mine` runs GraMi once, at the last threshold, and derives every step's pattern set by MNI (`grami_runs = "once"`, outputs unchanged; `"sweep"` restores one run per step).

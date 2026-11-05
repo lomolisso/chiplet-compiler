@@ -226,7 +226,7 @@ pub struct Job {
     pub target: String,
     pub period_ps: f64,
     pub designs: Vec<Design>,
-    /// Named by the hash of the synthesis inputs (scripts, RTL, libraries, image).
+    /// Named by the hash of the synthesis inputs (scripts, RTL, libraries, the image for an image flow).
     pub dir: PathBuf,
     /// File name → text of the synthesis scripts.
     pub synth: Vec<(String, String)>,
@@ -245,7 +245,8 @@ struct Done {
 }
 
 /// The jobs of a run, in a fixed order (kit, target, batch). A job's directory is named by the flow, the
-/// library hashes, the image and the full text of every synthesis script and RTL file.
+/// library hashes, the image (for a flow that runs in it) and the full text of every synthesis script and
+/// RTL file.
 pub fn jobs(
     ctx: &PassContext,
     cfg: &CharacterizeConfig,
@@ -294,13 +295,12 @@ pub fn job_list(
                 };
                 let scripts = flow.synth_scripts(&job);
                 let lec = flow.lec_scripts(&job);
-                let mut key = format!(
-                    "{}\n{}\n{}\n{}\n",
-                    flow.name(),
-                    info.liberty_hash,
-                    info.db_hash,
-                    image
-                );
+                let mut key = format!("{}\n{}\n{}\n", flow.name(), info.liberty_hash, info.db_hash);
+                // A flow in the toolchain image depends on the image. A licensed flow runs on the host:
+                // the image's only input to it is the RTL, which is in the key by its text.
+                if !flow.capabilities().licensed {
+                    key.push_str(&format!("{image}\n"));
+                }
                 for (f, t) in &scripts {
                     key.push_str(&format!("{f}\n{t}\n"));
                 }

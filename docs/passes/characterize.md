@@ -92,7 +92,10 @@
       `cc_smt::ops::rescale_reference` on edge cases and 3000 operands per width.
    3. *Jobs.* The designs go in batches of `batch`, one job per (kit, target, batch): a directory
       `eda/<kit>-<target>-<hash>/` named by the hash of the flow's name, the `.lib` and `.db` hashes, the
-      image and the full text of every synthesis script and RTL file, with the RTL copied in. The Design
+      toolchain image (only for a flow that runs in it, Yosys; Design Compiler runs on the host, and the
+      image's part in its input, the RTL, enters by its text) and the full text of every synthesis script
+      and RTL file, with the RTL copied in. A new image tag thus reuses every Design Compiler job whose
+      RTL did not change. The Design
       Compiler scripts contain absolute paths (the `.db` directory, `alib/`), so a copy of a build
       directory elsewhere reuses no job. `synth.done` marks a finished synthesis and `lec.done` a finished
       equivalence run with the hash of its scripts: a later run reuses both, a changed equivalence
