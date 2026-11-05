@@ -355,4 +355,3 @@ fn an_edited_summary_fails_summary() {
     });
     s.expect("summary");
 }
-

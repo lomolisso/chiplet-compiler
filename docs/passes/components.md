@@ -165,3 +165,6 @@
      a VF2 search over `vf2_budget` fails the pass instead of guessing.
    - Size values of `size_in` nodes come from import's interpreter (`size_value::interpret`), which
      both the pass and its verification use; import's `sym_eval` validates that interpreter.
+   - A `const_in` node carries no value: two instances that differ only in a constant-computation
+     result (two tables computed differently) share a component. The values are folded or precomputed
+     outside the hardware.

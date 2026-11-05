@@ -263,7 +263,13 @@ mod tests {
             v
         }
 
-        fn op(&mut self, r: RegionId, name: &str, operands: &[ValueId], res: Option<Type>) -> (OpId, ValueId) {
+        fn op(
+            &mut self,
+            r: RegionId,
+            name: &str,
+            operands: &[ValueId],
+            res: Option<Type>,
+        ) -> (OpId, ValueId) {
             let o = OpId(self.m.ops.len() as u32);
             let mut results = Vec::new();
             if let Some(t) = res {
@@ -382,7 +388,12 @@ mod tests {
             let r = b.region(rd);
             let p = b.arg(r, ty(&[], "f32"), None);
             let q = b.arg(r, ty(&[], "f32"), None);
-            let (ad, s) = b.op(r, "stablehlo.add", &[p, capture.unwrap_or(q)], Some(ty(&[], "f32")));
+            let (ad, s) = b.op(
+                r,
+                "stablehlo.add",
+                &[p, capture.unwrap_or(q)],
+                Some(ty(&[], "f32")),
+            );
             let (rt, _) = b.op(r, "stablehlo.return", &[s], None);
             (rd, ad, rt, out)
         };

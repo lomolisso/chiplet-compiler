@@ -149,6 +149,12 @@
    - Comparisons are decided with intervals and single facts; the cases of a guard are pruned only when
      an interval or a fact contradicts them.
    - Run-time integers are taken at 0 in `sym_eval`; the builder already rejects dims that depend on them.
+   - Constant computation is tagged, not evaluated: its values reach later passes as `const_in` inputs,
+     not as literals. A scalar computed from constants (a quantization bound written as `convert` of an
+     integer constant) is therefore an input of its kernel where a literal would have been folded into a
+     port by `normalize`.
+   - A decomposition shared by several calls is tagged once, for all of them: an op that is constant at
+     one call and reached at another stays untagged.
    - Every composite with a `chlo.` name is inlined by default: JAX emits `chlo.top_k`, `chlo.erf` and
      `chlo.erfc` as composites, which are not module boundaries.
    - The table holds the ops the 25 models use plus the dynamic ops of the spec; another op needs an

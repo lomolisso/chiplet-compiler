@@ -1230,7 +1230,8 @@ fn check_const_tag(m: &Module, a: &mut Acc) {
             let l = match class(op) {
                 Some(OpClass::Constant) => true,
                 Some(OpClass::Layout) => op.operands.iter().enumerate().all(|(p, &v)| {
-                    shape_port(m, op, p) || matches!(m.value(v).def, Def::Result { op: d, .. } if lit[d.index()])
+                    shape_port(m, op, p)
+                        || matches!(m.value(v).def, Def::Result { op: d, .. } if lit[d.index()])
                 }),
                 _ => false,
             };
@@ -1277,7 +1278,10 @@ fn check_const_tag(m: &Module, a: &mut Acc) {
             ));
         }
         if op.size && !op.constant {
-            a.fail(format!("op {oi} `{}`: size computation not tagged constant", op.name));
+            a.fail(format!(
+                "op {oi} `{}`: size computation not tagged constant",
+                op.name
+            ));
         }
         tagged += u64::from(want[oi]);
         if !want[oi] {
