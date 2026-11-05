@@ -16,20 +16,21 @@ fn chipc(config: &std::path::Path, args: &[&str]) -> (i32, String) {
     (code, String::from_utf8(out).unwrap())
 }
 
-/// A config whose machine paths point at the header-only fixtures in tests/fixtures/liberty/.
+/// A config whose kit roots point at the header-only fixtures in tests/fixtures/liberty/ (laid out as the
+/// kits are), read through the repository's PDK manifests.
 fn doctor_env() -> Env {
     let env = Env::new();
     let fx = repo_root().join("tests/fixtures/liberty");
     let toggle = env.root().join("eda-toggle.sh");
     std::fs::write(&toggle, "eda-run() { \"$@\"; }\n").unwrap();
     let text = format!(
-        "{TOY_CONFIG}\n[paths]\neda_toggle = \"{}\"\nscratch_dir = \"{}\"\nnangate45_lib = \"{}\"\n\
-         nangate45_lef = \"{}\"\nasap7_nldm_dir = \"{}\"\n",
+        "{TOY_CONFIG}\n[paths]\neda_toggle = \"{}\"\nscratch_dir = \"{}\"\npdk_manifests = \"{}\"\n\
+         pdks = {{ nangate45 = \"{}\", asap7 = \"{}\" }}\n",
         toggle.display(),
         env.root().join("scratch").display(),
-        fx.join("nangate45/stdcells.lib").display(),
-        fx.join("nangate45/stdcells.lef").display(),
-        fx.join("asap7_nldm").display(),
+        repo_root().join("pdks").display(),
+        fx.join("nangate45").display(),
+        fx.join("asap7").display(),
     );
     std::fs::write(env.config_path(), text).unwrap();
     env
@@ -47,10 +48,7 @@ fn doctor_dry_prints_capped_commands_and_writes_nothing() {
     );
     assert!(out.contains("eda-run lc_shell -f make_db.tcl"), "{out}");
     assert!(out.contains("eda-run dc_shell -no_home_init -f syn.tcl"), "{out}");
-    assert!(
-        out.contains("eda-run lec -XL -nogui -nolicwait -dofile exit.do"),
-        "{out}"
-    );
+    assert!(!out.contains("eda-run genus") && !out.contains("eda-run lec "), "{out}");
     // Container calls carry hard caps and no network.
     let selftest = out
         .lines()
@@ -65,9 +63,13 @@ fn doctor_dry_prints_capped_commands_and_writes_nothing() {
     ] {
         assert!(selftest.contains(flag), "{flag} missing: {selftest}");
     }
-    // The fixture Liberty set is found (LVT and .7z files are ignored).
+    // The fixture Liberty set is found (LVT and .7z files are ignored), and both kits are checked.
     assert!(
         out.contains("pass  pdk.asap7") && out.contains("RVT TT: 5 libraries"),
+        "{out}"
+    );
+    assert!(
+        out.contains("pass  pdk.nangate45") && out.contains("library NangateOpenCellLibrary"),
         "{out}"
     );
     assert!(out.contains("dry run:"), "{out}");

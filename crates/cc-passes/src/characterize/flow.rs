@@ -5,16 +5,18 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use cc_core::runner::{Caps, EdaTool, Invocation, Mount};
-use cc_core::{ArtifactStore, PassDir, canon};
-use cc_pipeline::env::doctor::{ENV_DIR, asap7_merged_name};
+use cc_core::adapters::{FlowRunners, Lec, ReportTexts, SynthJob};
+use cc_core::runner::{Caps, Invocation, Mount};
+use cc_core::pdk::Pdk;
+use cc_core::{ArtifactStore, PassDir, PassResources, canon};
+use cc_pipeline::env::doctor::ENV_DIR;
 use cc_pipeline::env::pdk_db;
 use cc_pipeline::{PassContext, PassError};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use super::catalog::{Primitive, Source};
-use super::config::{CharacterizeConfig, Tool};
+use super::config::CharacterizeConfig;
 use super::json::{KitInfo, Row};
 use crate::eda::{self, Design, Kit, parse};
 
@@ -28,24 +30,40 @@ fn missing(what: &Path) -> String {
     format!("{} is missing: run `chipc doctor` first", what.display())
 }
 
-/// The kits of `cfg.pdks`, with what the rows record about them.
+/// The kits of the run: `cfg.pdks`, or every PDK manifest when it is empty.
+pub fn kit_names(ctx: &PassContext, cfg: &CharacterizeConfig) -> Result<Vec<String>, String> {
+    if cfg.pdks.is_empty() {
+        ctx.pdk_names().map_err(|e| e.to_string())
+    } else {
+        Ok(cfg.pdks.clone())
+    }
+}
+
+/// The kits of the run, from their PDK manifests and `chipc doctor`'s libraries, with what the rows
+/// record about them.
 pub fn kits(ctx: &PassContext, cfg: &CharacterizeConfig) -> Result<Vec<(Kit, KitInfo)>, String> {
-    let env = env_dir(ctx);
+    let pdks = kit_names(ctx, cfg)?
+        .iter()
+        .map(|n| ctx.pdk(n).map_err(|e| e.to_string()))
+        .collect::<Result<Vec<_>, _>>()?;
+    kits_of(&env_dir(ctx), &pdks, cfg)
+}
+
+/// [`kits`] from the manifests and the environment's directory (`build/.env/`).
+pub fn kits_of(env: &PassDir, pdks: &[Pdk], cfg: &CharacterizeConfig) -> Result<Vec<(Kit, KitInfo)>, String> {
     let db_dir = env.out_dir().join("pdk_db");
     let mut out = Vec::new();
-    for name in &cfg.pdks {
-        let liberty = match name.as_str() {
-            "nangate45" => ctx.resolve(
-                ctx.paths()
-                    .nangate45_lib
-                    .as_deref()
-                    .ok_or("paths.nangate45_lib is unset (config.local.toml)")?,
-            ),
-            "asap7" => env
-                .out_dir()
-                .join("pdk_lib")
-                .join(format!("{}.lib", asap7_merged_name(&ctx.tools().pdk))),
-            k => return Err(format!("unknown kit {k}")),
+    for pdk in pdks {
+        let name = pdk.name().to_string();
+        // A kit shipped as group libraries is linked as the one library `chipc doctor` merged them into.
+        let liberty = match pdk.merged_name() {
+            Some(m) => env.out_dir().join("pdk_lib").join(format!("{m}.lib")),
+            None => pdk
+                .liberty_files()
+                .map_err(|e| e.to_string())?
+                .into_iter()
+                .next()
+                .ok_or_else(|| format!("{name}: no Liberty file"))?,
         };
         if !liberty.is_file() {
             return Err(missing(&liberty));
@@ -56,11 +74,9 @@ pub fn kits(ctx: &PassContext, cfg: &CharacterizeConfig) -> Result<Vec<(Kit, Kit
             return Err(missing(&db));
         }
         let text = std::fs::read_to_string(&liberty).map_err(|e| format!("{}: {e}", liberty.display()))?;
-        let cell = cfg
-            .driving_cell
-            .get(name)
-            .ok_or_else(|| format!("driving_cell has no entry for {name}"))?;
-        let kit = Kit::from_liberty(name, &text, liberty.clone(), db.clone(), cell, cfg.load_fanout)?;
+        let cell = cfg.driving_cell.get(&name).unwrap_or(&pdk.manifest.driving_cell);
+        let clock_ps = cfg.clock_ps.get(&name).copied().unwrap_or(pdk.manifest.clock_ps);
+        let kit = eda::kit(&name, &text, liberty.clone(), db.clone(), cell, cfg.load_fanout)?;
         let hash = |p: &Path| canon::hash_file(p).map_err(|e| e.to_string());
         let info = KitInfo {
             name: name.clone(),
@@ -73,6 +89,7 @@ pub fn kits(ctx: &PassContext, cfg: &CharacterizeConfig) -> Result<Vec<(Kit, Kit
             time_unit_ps: kit.time_unit_ps,
             driving_cell: kit.driving_cell.clone(),
             load: kit.load,
+            clock_ps,
         };
         out.push((kit, info));
     }
@@ -121,17 +138,22 @@ done
 echo "@@done"
 "#;
 
-/// RTL for every primitive with a source: Verilog sources as they are, DSLX through XLS in one container.
-/// The job directory is named by the hash of the sources and the image, so a rerun reuses it.
-pub fn rtl(ctx: &PassContext, cat: &[Primitive]) -> Result<PathBuf, PassError> {
-    let fail = |e: String| PassError::failed(e);
-    let mut key = format!("rtl\n{}\n{RTL_SCRIPT}", image(ctx));
+/// The RTL job directory's name: `rtl-` and the hash of the image, the script and every source.
+pub fn rtl_dir_name(image: &str, cat: &[Primitive]) -> String {
+    let mut key = format!("rtl\n{image}\n{RTL_SCRIPT}");
     for p in cat {
         if let Some(s) = &p.source {
             key.push_str(&format!("{}\n{:?}\n", p.id, s));
         }
     }
-    let dir = ctx.dir().path().join("eda").join(format!("rtl-{}", short(&key)));
+    format!("rtl-{}", short(&key))
+}
+
+/// RTL for every primitive with a source: Verilog sources as they are, DSLX through XLS in one container.
+/// The job directory is named by the hash of the sources and the image, so a rerun reuses it.
+pub fn rtl(ctx: &PassContext, cat: &[Primitive]) -> Result<PathBuf, PassError> {
+    let fail = |e: String| PassError::failed(e);
+    let dir = ctx.dir().path().join("eda").join(rtl_dir_name(&image(ctx), cat));
     let done = dir.join("rtl.done");
     if done.is_file() {
         return Ok(dir);
@@ -181,14 +203,7 @@ pub fn rtl(ctx: &PassContext, cat: &[Primitive]) -> Result<PathBuf, PassError> {
     Ok(dir)
 }
 
-fn lib_file(kit: &Kit) -> String {
-    kit.liberty
-        .file_name()
-        .map(|f| f.to_string_lossy().into_owned())
-        .unwrap_or_default()
-}
-
-fn image(ctx: &PassContext) -> String {
+pub fn image(ctx: &PassContext) -> String {
     let d = &ctx.tools().docker;
     format!("{}:{}", d.image, d.tag)
 }
@@ -229,7 +244,8 @@ struct Done {
     key: String,
 }
 
-/// The jobs of a run, in a fixed order (kit, target, batch).
+/// The jobs of a run, in a fixed order (kit, target, batch). A job's directory is named by the flow, the
+/// library hashes, the image and the full text of every synthesis script and RTL file.
 pub fn jobs(
     ctx: &PassContext,
     cfg: &CharacterizeConfig,
@@ -237,93 +253,64 @@ pub fn jobs(
     designs: &[Design],
     rtl_dir: &Path,
 ) -> Result<Vec<Job>, PassError> {
-    let alib = ctx.dir().path().join("alib");
-    let preamble = |tool: EdaTool| tool.cap_preamble(&job_caps(ctx, cfg)).join("\n");
+    job_list(
+        cfg,
+        kits,
+        designs,
+        rtl_dir,
+        ctx.dir().path(),
+        &image(ctx),
+        session_caps(ctx.resources(), cfg),
+    )
+    .map_err(PassError::failed)
+}
+
+/// [`jobs`] of the pass directory `pass_dir` (the job directories are `pass_dir/eda/…`, DC's library
+/// analysis `pass_dir/alib`), the image `image` and the session caps `caps`.
+pub fn job_list(
+    cfg: &CharacterizeConfig,
+    kits: &[(Kit, KitInfo)],
+    designs: &[Design],
+    rtl_dir: &Path,
+    pass_dir: &Path,
+    image: &str,
+    caps: Caps,
+) -> Result<Vec<Job>, String> {
+    let flow = cfg.flow()?;
+    let alib = pass_dir.join("alib");
+    let lec = cfg.lec_options();
     let mut out = Vec::new();
     for (ki, (kit, info)) in kits.iter().enumerate() {
         for target in &cfg.targets {
-            let period = cfg.period_ps(&kit.name, target).map_err(PassError::failed)?;
+            let period = cfg.period_ps(info.clock_ps, target)?;
             for chunk in designs.chunks(cfg.batch) {
-                let (mut scripts, mut lec) = (Vec::new(), Vec::new());
-                match cfg.tool {
-                    Tool::Dc => {
-                        // One session per design: a session that synthesized one design gives the next
-                        // a different result (a 32-bit divider after a 16-bit one: 15 614 against
-                        // 9 340 µm²), so every primitive starts from a fresh tool.
-                        for d in chunk {
-                            scripts.push((
-                                format!("syn_{}.tcl", d.id),
-                                eda::scripts::dc(
-                                    &preamble(EdaTool::Dc),
-                                    kit,
-                                    std::slice::from_ref(d),
-                                    period,
-                                    &alib,
-                                ),
-                            ));
-                        }
-                        lec.push((
-                            "lec.tcl".into(),
-                            eda::scripts::formality(
-                                &preamble(EdaTool::Fm),
-                                kit,
-                                chunk,
-                                cfg.lec_timeout_min,
-                                &cfg.lec_strategies,
-                            ),
-                        ));
-                    }
-                    Tool::Genus => {
-                        for d in chunk {
-                            scripts.push((
-                                format!("syn_{}.tcl", d.id),
-                                eda::scripts::genus(
-                                    &preamble(EdaTool::Genus),
-                                    kit,
-                                    std::slice::from_ref(d),
-                                    period,
-                                ),
-                            ));
-                        }
-                        for d in chunk {
-                            lec.push((
-                                format!("{}.do", d.id),
-                                eda::scripts::conformal(&preamble(EdaTool::Lec), kit, d),
-                            ));
-                        }
-                    }
-                    Tool::Yosys => {
-                        scripts.push((
-                            "run.sh".into(),
-                            eda::scripts::yosys(
-                                &format!("/kit/{}", lib_file(kit)),
-                                chunk,
-                                period,
-                                u64::from(cfg.lec_timeout_min) * 60,
-                            ),
-                        ));
-                    }
-                }
+                let job = SynthJob {
+                    kit,
+                    designs: chunk,
+                    period_ps: period,
+                    caps,
+                    cache_dir: &alib,
+                    lec: lec.as_ref(),
+                };
+                let scripts = flow.synth_scripts(&job);
+                let lec = flow.lec_scripts(&job);
                 let mut key = format!(
                     "{}\n{}\n{}\n{}\n",
-                    cfg.tool.name(),
+                    flow.name(),
                     info.liberty_hash,
                     info.db_hash,
-                    image(ctx)
+                    image
                 );
                 for (f, t) in &scripts {
                     key.push_str(&format!("{f}\n{t}\n"));
                 }
                 for d in chunk {
                     for f in &d.files {
-                        let text = std::fs::read_to_string(rtl_dir.join(f))
-                            .map_err(|e| PassError::failed(format!("{f}: {e}")))?;
+                        let text = std::fs::read_to_string(rtl_dir.join(f)).map_err(|e| format!("{f}: {e}"))?;
                         key.push_str(&format!("{f}\n{text}\n"));
                     }
                 }
-                let dir = ctx
-                    .dir()
-                    .path()
+                let dir = pass_dir
                     .join("eda")
                     .join(format!("{}-{target}-{}", kit.name, short(&key)));
                 let mut lec_key = String::new();
@@ -347,8 +334,7 @@ pub fn jobs(
 }
 
 /// Caps of one tool session: the pass's memory split over its parallel sessions, `cores` CPUs.
-fn job_caps(ctx: &PassContext, cfg: &CharacterizeConfig) -> Caps {
-    let r = ctx.resources();
+pub fn session_caps(r: &PassResources, cfg: &CharacterizeConfig) -> Caps {
     let par = r.threads.max(1) as f64;
     Caps {
         memory_gb: (r.memory_gb / par).max(1.0),
@@ -367,7 +353,9 @@ pub fn run_jobs(
     jobs: &[Job],
     rtl_dir: &Path,
 ) -> Result<(u64, u64, f64), PassError> {
-    let caps = job_caps(ctx, cfg);
+    let caps = session_caps(ctx.resources(), cfg);
+    let lec = cfg.lec_options();
+    let alib = ctx.dir().path().join("alib");
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(ctx.resources().threads.max(1))
         .build()
@@ -377,7 +365,15 @@ pub fn run_jobs(
             .with_max_len(1)
             .map(|j| {
                 ctx.check_cancelled()?;
-                run_job(ctx, cfg, &kits[j.kit].0, j, rtl_dir, &caps)
+                let job = SynthJob {
+                    kit: &kits[j.kit].0,
+                    designs: &j.designs,
+                    period_ps: j.period_ps,
+                    caps,
+                    cache_dir: &alib,
+                    lec: lec.as_ref(),
+                };
+                run_job(ctx, cfg, &job, j, rtl_dir)
             })
             .collect()
     });
@@ -397,11 +393,11 @@ pub fn run_jobs(
 fn run_job(
     ctx: &PassContext,
     cfg: &CharacterizeConfig,
-    kit: &Kit,
+    job: &SynthJob,
     j: &Job,
     rtl_dir: &Path,
-    caps: &Caps,
 ) -> Result<Option<f64>, PassError> {
+    let flow = cfg.flow().map_err(PassError::failed)?;
     let synth_done = j.dir.join("synth.done");
     let lec_done = j.dir.join("lec.done");
     let lec_current = std::fs::read_to_string(&lec_done)
@@ -414,16 +410,9 @@ fn run_job(
         return Ok(None);
     }
     let t0 = Instant::now();
-    let eda = || ctx.eda().with_caps(*caps);
-    let keep = |o: &cc_core::runner::ToolOutcome, name: &str| -> Result<(), PassError> {
-        if let Some(k) = &o.killed {
-            return Err(PassError::failed(format!(
-                "{}: {name} killed ({k:?})",
-                j.dir.display()
-            )));
-        }
-        std::fs::copy(&o.stdout, j.dir.join(name)).map_err(|e| PassError::failed(e.to_string()))?;
-        Ok(())
+    let runners = FlowRunners {
+        eda: ctx.eda().with_caps(job.caps),
+        docker: ctx.docker().with_caps(job.caps),
     };
     let done = |path: &Path, key: &str, t: Instant| {
         write(
@@ -446,57 +435,7 @@ fn run_job(
         for (f, t) in &j.synth {
             write(&j.dir.join(f), t)?;
         }
-        match cfg.tool {
-            Tool::Dc | Tool::Genus => {
-                // Each design's session log, appended in order (the markers split it again).
-                let mut log = String::new();
-                for d in &j.designs {
-                    let script = format!("syn_{}.tcl", d.id);
-                    let inv = if cfg.tool == Tool::Dc {
-                        Invocation::new("dc_shell", EdaTool::Dc.program())
-                            .args(EdaTool::Dc.batch_args(&script))
-                    } else {
-                        Invocation::new("genus", EdaTool::Genus.program()).args([
-                            "-batch",
-                            "-no_gui",
-                            "-disable_user_startup",
-                            "-log",
-                            &format!("genus_{}", d.id),
-                            "-files",
-                            &script,
-                        ])
-                    };
-                    let o = eda().run(&inv.cwd(&j.dir))?;
-                    if let Some(k) = &o.killed {
-                        return Err(PassError::failed(format!(
-                            "{}: {} killed ({k:?})",
-                            j.dir.display(),
-                            d.id
-                        )));
-                    }
-                    log.push_str(&std::fs::read_to_string(&o.stdout).unwrap_or_default());
-                }
-                write(&j.dir.join("synth.log"), &log)?;
-            }
-            Tool::Yosys => {
-                let lib_dir = kit.liberty.parent().unwrap_or(Path::new("/"));
-                let inv = Invocation::new("yosys", "bash")
-                    .arg("run.sh")
-                    .cwd("/work")
-                    .mount(Mount {
-                        src: j.dir.clone(),
-                        dst: "/work".into(),
-                        readonly: false,
-                    })
-                    .mount(Mount {
-                        src: lib_dir.to_path_buf(),
-                        dst: "/kit".into(),
-                        readonly: true,
-                    });
-                let o = ctx.docker().with_caps(Caps { cpus: 1.0, ..*caps }).run(&inv)?;
-                keep(&o, "synth.log")?;
-            }
-        }
+        flow.synthesize(&runners, job, &j.dir)?;
         done(&synth_done, "", t0)?;
     }
     if need_lec {
@@ -508,33 +447,7 @@ fn run_job(
         for (f, t) in &j.lec {
             write(&j.dir.join(f), t)?;
         }
-        match cfg.tool {
-            Tool::Dc => {
-                let o = eda().run(
-                    &Invocation::new("fm_shell", EdaTool::Fm.program())
-                        .args(["-work_path", "fm"])
-                        .args(EdaTool::Fm.batch_args("lec.tcl"))
-                        .cwd(&j.dir),
-                )?;
-                keep(&o, "lec.log")?;
-            }
-            Tool::Genus => {
-                for d in &j.designs {
-                    let o = eda().run(
-                        &Invocation::new("lec", EdaTool::Lec.program())
-                            .args(EdaTool::Lec.batch_args(&format!("{}.do", d.id)))
-                            .cwd(&j.dir),
-                    )?;
-                    if let Some(k) = &o.killed {
-                        return Err(PassError::failed(format!(
-                            "{}: lec killed ({k:?})",
-                            j.dir.display()
-                        )));
-                    }
-                }
-            }
-            Tool::Yosys => {}
-        }
+        flow.check_equivalence(&runners, job, &j.dir)?;
         done(&lec_done, &j.lec_key, t1)?;
     }
     Ok(Some(t0.elapsed().as_secs_f64()))
@@ -551,9 +464,16 @@ pub fn rows(
     cat: &BTreeMap<&str, &Primitive>,
     out_root: &Path,
 ) -> Result<Vec<(Row, Problems)>, PassError> {
+    let flow = cfg.flow().map_err(PassError::failed)?;
+    let caps = flow.capabilities();
     let read = |f: &str| std::fs::read_to_string(j.dir.join(f)).unwrap_or_default();
     let synth = parse::segments(&read("synth.log"));
-    let lec_log = parse::segments(&read("lec.log"));
+    // A job directory may hold an earlier check's log; it counts only when the check is on.
+    let lec_log = if cfg.lec {
+        parse::segments(&read("lec.log"))
+    } else {
+        BTreeMap::new()
+    };
     let mut out = Vec::new();
     for d in &j.designs {
         let p = cat[d.id.as_str()];
@@ -563,39 +483,27 @@ pub fn rows(
         let seg = seg.unwrap_or_default();
         let lseg = lec_log.get(id).cloned().unwrap_or_default();
         let check = read(&format!("{id}.check.rpt"));
+        // A flow that writes a log per design (Yosys): its text, appended to the session's segment.
+        let design_log = read(&format!("{id}.log"));
         let mut problems = Vec::new();
         if !ran {
             problems.push("no log segment (the session stopped before this design)".to_string());
         }
-        let (measured, lec) = match cfg.tool {
-            Tool::Dc => (
-                parse::dc(
-                    &read(&format!("{id}.area.rpt")),
-                    &read(&format!("{id}.qor.rpt")),
-                    &read(&format!("{id}.power.rpt")),
-                    kit.time_unit_ps,
-                ),
-                parse::formality(&read(&format!("{id}.lec.rpt"))),
-            ),
-            Tool::Genus => (
-                parse::genus(
-                    &read(&format!("{id}.area.rpt")),
-                    &read(&format!("{id}.timing.rpt")),
-                    &read(&format!("{id}.power.rpt")),
-                    id,
-                ),
-                parse::conformal(&read(&format!("{id}.lec.rpt"))),
-            ),
-            Tool::Yosys => (
-                parse::yosys(
-                    &read(&format!("{id}.area.rpt")),
-                    &read(&format!("{id}.log")),
-                    id,
-                    j.period_ps,
-                ),
-                parse::yosys_equiv(&read(&format!("{id}.lec.rpt"))),
-            ),
-        };
+        let measured = flow.measure(
+            &ReportTexts {
+                area: &read(&format!("{id}.area.rpt")),
+                qor: &read(&format!("{id}.qor.rpt")),
+                timing: &read(&format!("{id}.timing.rpt")),
+                power: &read(&format!("{id}.power.rpt")),
+                log: &design_log,
+            },
+            id,
+            j.period_ps,
+            kit.time_unit_ps,
+        );
+        let lec = cfg
+            .lec
+            .then(|| flow.equivalence(&read(&format!("{id}.lec.rpt"))));
         let net_text = read(&format!("{id}.net.v"));
         let rtl_text = read(&format!("rtl/{id}.v"));
         problems.extend(problems_of(
@@ -609,12 +517,12 @@ pub fn rows(
                 top: id,
                 flops: expected_flops(p.kind, p.width),
                 // ABC reports no path for a design that is only flip-flops.
-                need_delay: !(cfg.tool == Tool::Yosys && d.clocked),
+                need_delay: caps.flop_only_paths || !d.clocked,
             },
             &measured,
-            &lec,
+            lec.as_ref(),
         ));
-        let inconclusive = lec.inconclusive();
+        let inconclusive = lec.as_ref().is_some_and(Lec::inconclusive);
         // Copy the evidence.
         let rel_dir = format!("{}/{}", kit.name, j.target);
         let netlist = format!("netlist/{rel_dir}/{id}.v");
@@ -622,7 +530,7 @@ pub fn rows(
         let mut reports = Vec::new();
         for what in ["area", "qor", "timing", "power", "check", "lec"] {
             let src = j.dir.join(format!("{id}.{what}.rpt"));
-            if src.is_file() {
+            if src.is_file() && (what != "lec" || cfg.lec) {
                 let rel = format!("reports/{rel_dir}/{id}.{what}.rpt");
                 std::fs::copy(&src, out_root.join(&rel))
                     .or_else(|_| {
@@ -634,14 +542,9 @@ pub fn rows(
             }
         }
         let log_rel = format!("reports/{rel_dir}/{id}.log");
-        let yosys_log = if cfg.tool == Tool::Yosys {
-            read(&format!("{id}.log"))
-        } else {
-            String::new()
-        };
         write(
             &out_root.join(&log_rel),
-            &format!("{seg}{yosys_log}@@lec\n{lseg}"),
+            &format!("{seg}{design_log}@@lec\n{lseg}"),
         )?;
         reports.push(log_rel);
         out.push((
@@ -658,10 +561,10 @@ pub fn rows(
                 corner: kit.corner.clone(),
                 target: j.target.clone(),
                 period_ps: j.period_ps,
-                designware: cfg.tool == Tool::Dc && parse::designware(&seg),
+                designware: flow.used_ip_blocks(&seg),
                 measured,
-                estimator: cfg.tool.name().into(),
-                lec_tool: cfg.tool.lec().into(),
+                estimator: flow.name().into(),
+                lec_tool: cfg.lec.then(|| caps.equivalence.to_string()),
                 lec,
                 inconclusive,
                 provisional: p.provisional,
@@ -701,10 +604,11 @@ pub fn expected_flops(kind: super::catalog::Kind, width: u32) -> u64 {
 }
 
 /// Everything wrong with one design: the tool's log, the netlist against the library and the RTL (the
-/// sanity checks), the reports, and the equivalence check. A check that ran out of time without a
-/// failing point is not a problem by itself (`Lec::inconclusive`); with any other problem the row fails.
-/// Shared with `verify`, which calls it on the copies in `out/library/`.
-pub fn problems_of(kit: &Kit, e: &Evidence, m: &parse::Measured, lec: &parse::Lec) -> Problems {
+/// cheap checks: ports and widths, every output driven, flip-flops, library cells only, no latches, a
+/// positive area), the reports, and the equivalence check when it ran. A check that ran out of time
+/// without a failing point is not a problem by itself (`Lec::inconclusive`); with any other problem the
+/// row fails. Shared with `verify`, which calls it on the copies in `out/library/`.
+pub fn problems_of(kit: &Kit, e: &Evidence, m: &parse::Measured, lec: Option<&parse::Lec>) -> Problems {
     let mut p = Vec::new();
     for err in parse::errors(e.seg).into_iter().chain(parse::errors(e.lec_seg)) {
         p.push(format!("tool error: {err}"));
@@ -746,7 +650,12 @@ pub fn problems_of(kit: &Kit, e: &Evidence, m: &parse::Measured, lec: &parse::Le
             eda::netlist::ports(e.rtl, e.top),
             eda::netlist::ports(e.netlist, e.top),
         ) {
-            (Some(r), Some(nl)) if r == nl => {}
+            (Some(r), Some(nl)) if r == nl => {
+                let open = eda::netlist::undriven_outputs(e.netlist, e.top);
+                if !open.is_empty() {
+                    p.push(format!("outputs not driven in the netlist: {}", open.join(", ")));
+                }
+            }
             (Some(r), Some(nl)) => p.push(format!("ports differ: RTL {r:?}, netlist {nl:?}")),
             (None, _) => p.push(format!("no module {} in the RTL", e.top)),
             (_, None) => p.push(format!("no module {} in the netlist", e.top)),
@@ -761,7 +670,10 @@ pub fn problems_of(kit: &Kit, e: &Evidence, m: &parse::Measured, lec: &parse::Le
     if e.need_delay && m.delay_ps.is_none() && !wiring {
         p.push("no delay in the report".into());
     }
-    if !lec.equivalent && !lec.inconclusive() {
+    if let Some(lec) = lec
+        && !lec.equivalent
+        && !lec.inconclusive()
+    {
         p.push(format!(
             "equivalence not proven: {} ({} failing, {} unverified, {} passing)",
             lec.verdict, lec.failing, lec.aborted, lec.passing

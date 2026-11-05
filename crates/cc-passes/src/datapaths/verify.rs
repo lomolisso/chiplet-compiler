@@ -577,7 +577,7 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
             Ok(p)
                 if p.verdict.is_unsat()
                     && p.query_hash == cc_smt::query_hash(text)
-                    && p.solver == Solver::Z3 => {}
+                    && p.solver == cc_smt::lemma_solver() => {}
             Ok(p) => ln.push(format!("{f}: stored {:?} {:?}", p.solver, p.verdict)),
             Err(e) => ln.push(format!("{f}: no result: {e}")),
         }
@@ -586,7 +586,7 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
     match cc_smt::run_cached(
         &runner,
         &location,
-        Solver::Z3,
+        cc_smt::lemma_solver(),
         &out.path("lemmas")?,
         &names,
         cfg.lemma_timeout_s,

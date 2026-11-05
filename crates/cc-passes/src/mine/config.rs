@@ -4,6 +4,8 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct MineConfig {
+    /// The frequent subgraph miner (`algo::grami::MINERS`): `grami`.
+    pub miner: String,
     /// First support threshold of the sweep (MNI, an absolute count of distinct images).
     pub tau_start: u64,
     /// Last support threshold; the sweep halves τ from `tau_start` down to it.
@@ -67,6 +69,7 @@ impl MisAlgorithm {
 impl Default for MineConfig {
     fn default() -> Self {
         Self {
+            miner: "grami".into(),
             tau_start: 40,
             tau_min: 2,
             max_vertices: 6,
@@ -93,6 +96,9 @@ impl Default for MisConfig {
 
 impl MineConfig {
     pub fn check(&self) -> Result<(), String> {
+        super::algo::grami::MINERS
+            .by_name(&self.miner)
+            .map_err(|e| format!("miner: {e}"))?;
         if self.tau_min < 1 || self.tau_min > self.tau_start {
             return Err(format!(
                 "need 1 <= tau_min <= tau_start (tau_min = {}, tau_start = {})",

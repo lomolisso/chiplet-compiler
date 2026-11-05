@@ -11,9 +11,79 @@
 //!
 //! Every strategy runs per connected component; isolated occurrences are all taken.
 
+use cc_core::adapters::{Limits, MisSolver, Named, Registry, SelectCapabilities};
 use good_lp::{Expression, ProblemVariables, Solution, SolverModel, constraint, microlp, variable};
 
 use crate::mine::config::MisAlgorithm;
+
+/// The MIS solvers, by `[passes.mine.mis] algorithm` (`MisAlgorithm::name`).
+pub static SOLVERS: Registry<dyn MisSolver<Overlap, MisOut>> =
+    Registry::new("MIS algorithm", &[&ExactIlp, &BranchAndBound, &GreedyMinDegree]);
+
+/// `exact_ilp`.
+#[derive(Debug, Clone, Copy)]
+pub struct ExactIlp;
+/// `branch_and_bound`.
+#[derive(Debug, Clone, Copy)]
+pub struct BranchAndBound;
+/// `greedy_min_degree`.
+#[derive(Debug, Clone, Copy)]
+pub struct GreedyMinDegree;
+
+impl Named for ExactIlp {
+    fn name(&self) -> &'static str {
+        MisAlgorithm::ExactIlp.name()
+    }
+}
+impl Named for BranchAndBound {
+    fn name(&self) -> &'static str {
+        MisAlgorithm::BranchAndBound.name()
+    }
+}
+impl Named for GreedyMinDegree {
+    fn name(&self) -> &'static str {
+        MisAlgorithm::GreedyMinDegree.name()
+    }
+}
+
+impl MisSolver<Overlap, MisOut> for ExactIlp {
+    fn capabilities(&self) -> SelectCapabilities {
+        SelectCapabilities {
+            exact: true,
+            budgeted: false,
+            timed: false,
+        }
+    }
+    fn solve(&self, g: &Overlap, _l: &Limits) -> Result<MisOut, String> {
+        per_component(self.name(), g, ilp)
+    }
+}
+
+impl MisSolver<Overlap, MisOut> for BranchAndBound {
+    fn capabilities(&self) -> SelectCapabilities {
+        SelectCapabilities {
+            exact: true,
+            budgeted: true,
+            timed: false,
+        }
+    }
+    fn solve(&self, g: &Overlap, l: &Limits) -> Result<MisOut, String> {
+        per_component(self.name(), g, |c| Ok(bnb(&c.adj, l.node_budget)))
+    }
+}
+
+impl MisSolver<Overlap, MisOut> for GreedyMinDegree {
+    fn capabilities(&self) -> SelectCapabilities {
+        SelectCapabilities {
+            exact: false,
+            budgeted: false,
+            timed: false,
+        }
+    }
+    fn solve(&self, g: &Overlap, _l: &Limits) -> Result<MisOut, String> {
+        per_component(self.name(), g, |c| Ok(greedy(&c.adj)))
+    }
+}
 
 /// The overlap graph: `adj` sorted, `cliques` the occurrences through each shared vertex.
 #[derive(Debug, Clone, Default)]
@@ -123,6 +193,22 @@ fn components(g: &Overlap) -> Vec<Comp> {
 
 /// Solve with `alg`; `node_budget` bounds `branch_and_bound` per component.
 pub fn solve(alg: MisAlgorithm, g: &Overlap, node_budget: u64) -> Result<MisOut, String> {
+    SOLVERS.by_name(alg.name()).map_err(|e| e.to_string())?.solve(
+        g,
+        &Limits {
+            node_budget,
+            timeout: None,
+        },
+    )
+}
+
+/// `one` on every connected component (an isolated vertex is taken without it), each answer checked
+/// to be independent, mapped back to the graph's ids.
+fn per_component(
+    name: &str,
+    g: &Overlap,
+    one: impl Fn(&Comp) -> Result<MisOut, String>,
+) -> Result<MisOut, String> {
     let mut chosen = Vec::new();
     let mut optimal = true;
     let mut bound = 0u64;
@@ -134,16 +220,12 @@ pub fn solve(alg: MisAlgorithm, g: &Overlap, node_budget: u64) -> Result<MisOut,
                 bound: 1,
             }
         } else {
-            match alg {
-                MisAlgorithm::ExactIlp => ilp(&c)?,
-                MisAlgorithm::BranchAndBound => bnb(&c.adj, node_budget),
-                MisAlgorithm::GreedyMinDegree => greedy(&c.adj),
-            }
+            one(&c)?
         };
         for &v in &r.chosen {
             for &w in &c.adj[v as usize] {
                 if r.chosen.binary_search(&w).is_ok() {
-                    return Err(format!("{}: chose adjacent occurrences", alg.name()));
+                    return Err(format!("{name}: chose adjacent occurrences"));
                 }
             }
         }
@@ -388,6 +470,46 @@ mod tests {
             let r = solve(MisAlgorithm::GreedyMinDegree, &g, 0).unwrap();
             assert!(independent(&g.adj, &r.chosen));
             assert!(r.bound >= alpha as u64, "{e:?}: bound {} < {alpha}", r.bound);
+        }
+    }
+
+    /// Conformance of every registered solver (design §3.7): on the same graphs, an exact solver returns
+    /// an independent set of maximum size claimed optimal, a heuristic an independent set no larger, with a
+    /// bound no smaller than the maximum.
+    #[test]
+    fn every_registered_solver_conforms() {
+        assert_eq!(SOLVERS.names(), ALL.map(MisAlgorithm::name));
+        let mut st: u64 = 0x2545_f491_4f6c_dd1d;
+        let mut next = move || {
+            st ^= st << 13;
+            st ^= st >> 7;
+            st ^= st << 17;
+            st
+        };
+        let limits = Limits {
+            node_budget: 1_000_000,
+            timeout: None,
+        };
+        for round in 0..40 {
+            let n = 2 + (next() % 14) as u32;
+            let edges: Vec<(u32, u32)> = (0..n)
+                .flat_map(|a| (a + 1..n).map(move |b| (a, b)))
+                .filter(|_| next() % 3 == 0)
+                .collect();
+            let g = graph(n, &edges);
+            let mut alpha = None;
+            for s in SOLVERS.iter().filter(|s| s.capabilities().exact) {
+                let r = s.solve(&g, &limits).unwrap();
+                assert!(independent(&g.adj, &r.chosen), "{} round {round}", s.name());
+                assert!(r.optimal && r.bound == r.chosen.len() as u64, "{}", s.name());
+                assert_eq!(*alpha.get_or_insert(r.chosen.len()), r.chosen.len(), "{} round {round}", s.name());
+            }
+            let alpha = alpha.expect("an exact solver");
+            for s in SOLVERS.iter().filter(|s| !s.capabilities().exact) {
+                let r = s.solve(&g, &limits).unwrap();
+                assert!(independent(&g.adj, &r.chosen) && r.chosen.len() <= alpha, "{}", s.name());
+                assert!(r.bound >= alpha as u64, "{}", s.name());
+            }
         }
     }
 

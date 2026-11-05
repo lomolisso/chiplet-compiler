@@ -1,7 +1,8 @@
 //! `characterize` on stand-in tools: the image's XLS calls write a module per DSLX file, `dc_shell` and
 //! `fm_shell` write reports per design (from the scripts the pass generated) on a synthetic four-cell
-//! library. The pass runs green, a rerun reuses its job directories, a failed equivalence fails the pass,
-//! and every check of its `verify` fails on a mutated artifact.
+//! library, the kit `mini` of the test manifest `tests/fixtures/characterize/pdks/mini.toml`. The pass runs
+//! green, a rerun reuses its job directories, a failed equivalence fails the pass, the check stays off
+//! unless `lec` is set, and every check of its `verify` fails on a mutated artifact.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -24,7 +25,8 @@ threads_total = 4
 [models]
 keys = []
 [passes.characterize]
-pdks = ["nangate45"]
+lec = true
+pdks = ["mini"]
 targets = ["clock"]
 int_widths = [4, 8]
 float_formats = ["f16"]
@@ -32,7 +34,6 @@ mux_inputs = [2]
 mux_widths = [2, 4, 8]
 register_widths = [8]
 split_multipliers = [[8, 4]]
-driving_cell = { nangate45 = "BUF_X1" }
 batch = 40
 [passes.characterize.resources]
 threads = 2
@@ -81,10 +82,20 @@ fn netlist(cwd: &Path, id: &str) -> String {
         }
     }
     s.push_str("  NAND2_X1 U1 ( .A1(n1), .A2(n2), .ZN(n3) );\n  BUF_X1 U2 ( .A(n3), .Z(n4) );\n");
+    let outs: Vec<(&String, u32)> = ports
+        .iter()
+        .filter(|(_, (d, _))| *d == Dir::Output)
+        .map(|(n, (_, w))| (n, *w))
+        .collect();
     if ports.contains_key("clk") {
-        let w = ports.values().find(|(d, _)| *d == Dir::Output).map_or(0, |p| p.1);
-        for i in 0..w {
-            s.push_str(&format!("  DFF_X1 R{i} ( .D(n4), .CK(clk), .Q(q{i}) );\n"));
+        for (n, w) in &outs {
+            for i in 0..*w {
+                s.push_str(&format!("  DFF_X1 R{i} ( .D(n4), .CK(clk), .Q({n}[{i}]) );\n"));
+            }
+        }
+    } else {
+        for (n, _) in &outs {
+            s.push_str(&format!("  assign {n} = n4;\n"));
         }
     }
     s.push_str("endmodule\n");
@@ -232,8 +243,12 @@ impl Setup {
     }
 
     fn config(&self) -> LoadedConfig {
-        let lib = repo_root().join("tests/fixtures/characterize/mini.lib");
-        let text = format!("{CONFIG}\n[paths]\nnangate45_lib = \"{}\"\n", lib.display());
+        let fx = repo_root().join("tests/fixtures/characterize");
+        let text = format!(
+            "{CONFIG}\n[paths]\npdk_manifests = \"{}\"\npdks = {{ mini = \"{}\" }}\n",
+            fx.join("pdks").display(),
+            fx.display()
+        );
         let sets = self.sets.lock().unwrap().clone();
         let sets: Vec<&str> = sets.iter().map(String::as_str).collect();
         self.env.config(&text, &sets)
@@ -313,7 +328,7 @@ fn runs_green_on_stand_in_tools_and_reuses_its_jobs() {
     assert!(
         lib.rows
             .iter()
-            .all(|r| r.lec.equivalent && r.measured.area_um2.is_some())
+            .all(|r| r.lec.as_ref().is_some_and(|l| l.equivalent) && r.measured.area_um2.is_some())
     );
     assert_eq!(lib.kits[0].lib_name, "mini_lib");
     assert!(
@@ -381,26 +396,26 @@ fn verify_catches_a_failed_equivalence_report() {
     let s = Setup::green();
     let id = first_id(&s, "add_i8");
     std::fs::write(
-        s.out(&format!("reports/nangate45/clock/{id}.lec.rpt")),
+        s.out(&format!("reports/mini/clock/{id}.lec.rpt")),
         "Verification FAILED\n",
     )
     .unwrap();
-    s.expect("nangate45:clock:lec");
+    s.expect("mini:clock:lec");
 }
 
 #[test]
 fn verify_catches_a_latch_and_a_cell_outside_the_library() {
     let s = Setup::green();
     let id = first_id(&s, "add_i8");
-    let net = format!("netlist/nangate45/clock/{id}.v");
+    let net = format!("netlist/mini/clock/{id}.v");
     let p = s.out(&net);
     let text = std::fs::read_to_string(&p).unwrap().replace(
         "endmodule",
         "  DLH_X1 L1 ( .D(a[3]), .G(a[4]), .Q(out[2]) );\nendmodule",
     );
     std::fs::write(&p, text).unwrap();
-    s.expect("nangate45:clock:sanity");
-    s.expect("nangate45:clock:rows");
+    s.expect("mini:clock:sanity");
+    s.expect("mini:clock:rows");
 
     let s = Setup::green();
     let p = s.out(&net);
@@ -409,28 +424,28 @@ fn verify_catches_a_latch_and_a_cell_outside_the_library() {
         "  GTECH_AND2 G1 ( .A(a[3]), .B(a[4]), .Z(out[2]) );\nendmodule",
     );
     std::fs::write(&p, text).unwrap();
-    s.expect("nangate45:clock:sanity");
+    s.expect("mini:clock:sanity");
 }
 
 #[test]
 fn verify_catches_an_unresolved_reference_and_a_tool_error() {
     let s = Setup::green();
     let id = first_id(&s, "add_i8");
-    let log = s.out(&format!("reports/nangate45/clock/{id}.log"));
+    let log = s.out(&format!("reports/mini/clock/{id}.log"));
     let text = std::fs::read_to_string(&log).unwrap().replacen(
         "@@lec\n",
         "Warning: Design 'x' has '1' unresolved references. For more detailed information, use the \"link\" command. (UID-341)\n@@lec\n",
         1,
     );
     std::fs::write(&log, text).unwrap();
-    s.expect("nangate45:clock:sanity");
+    s.expect("mini:clock:sanity");
     let s = Setup::green();
     std::fs::write(
-        s.out(&format!("reports/nangate45/clock/{id}.log")),
+        s.out(&format!("reports/mini/clock/{id}.log")),
         "Error: Cannot find the design 'x' in the library 'WORK'. (LBR-0)\n@@lec\n",
     )
     .unwrap();
-    s.expect("nangate45:clock:sanity");
+    s.expect("mini:clock:sanity");
 }
 
 #[test]
@@ -440,7 +455,7 @@ fn verify_catches_an_edited_value_a_missing_row_and_an_edited_catalog() {
         let a = v["rows"][0]["measured"]["area_um2"].as_f64().unwrap();
         v["rows"][0]["measured"]["area_um2"] = (a + 1.0).into();
     });
-    s.expect("nangate45:clock:rows");
+    s.expect("mini:clock:rows");
 
     let s = Setup::green();
     s.edit_json("library.json", |v| {
@@ -460,26 +475,34 @@ fn verify_catches_an_edited_value_a_missing_row_and_an_edited_catalog() {
     s.expect("rtl");
 }
 
-#[test]
-fn an_off_trend_point_is_a_note_not_a_failure() {
-    let s = Setup::green();
-    // mux2 at 8 bits gets less area than at 4 bits, in the report and the library alike.
+/// Give mux2 at 8 bits `fraction` of its area at 4 bits, in the report and the library alike.
+fn shrink_mux2_w8(s: &Setup, fraction: f64) {
     let lib = s.library();
-    let i = lib.rows.iter().position(|r| r.key == "mux2@w8").unwrap();
+    let at = |key: &str| lib.rows.iter().position(|r| r.key == key).unwrap();
+    let (i, w4) = (at("mux2@w8"), at("mux2@w4"));
+    let a = lib.rows[w4].measured.area_um2.unwrap() * fraction;
     let id = lib.rows[i].id.clone();
-    let rpt = s.out(&format!("reports/nangate45/clock/{id}.area.rpt"));
+    let rpt = s.out(&format!("reports/mini/clock/{id}.area.rpt"));
     std::fs::write(
         &rpt,
-        "Combinational area:  1.0\nNoncombinational area:  0.000000\nTotal cell area:   1.0\n",
+        format!("Combinational area:  {a}\nNoncombinational area:  0.000000\nTotal cell area:   {a}\n"),
     )
     .unwrap();
     s.edit_json("library.json", |v| {
-        v["rows"][i]["measured"]["area_um2"] = 1.0.into();
+        v["rows"][i]["measured"]["area_um2"] = a.into();
     });
+}
+
+#[test]
+fn an_off_trend_point_is_a_note_and_a_clear_violation_a_failure() {
+    // A little less area at 8 bits than at 4: a note.
+    let s = Setup::green();
+    shrink_mux2_w8(&s, 0.9);
     let checks = s.pipeline().verify_pass("characterize").unwrap();
-    let sanity = checks.checks.iter().find(|c| c.name == "trends").unwrap();
-    assert_eq!(sanity.status, CheckStatus::Pass);
-    assert!(sanity.evidence.counts["flags"] >= 1, "{sanity:?}");
+    let trends = checks.checks.iter().find(|c| c.name == "trends").unwrap();
+    assert_eq!(trends.status, CheckStatus::Pass);
+    assert!(trends.evidence.counts["flags"] >= 1, "{trends:?}");
+    assert_eq!(trends.evidence.counts["violations"], 0);
     // Only the framework's output hashes notice the edit.
     let own: Vec<String> = s
         .failing()
@@ -487,6 +510,65 @@ fn an_off_trend_point_is_a_note_not_a_failure() {
         .filter(|c| !c.starts_with("framework."))
         .collect();
     assert!(own.is_empty(), "{own:?}");
+
+    // Less than half: a failure.
+    let s = Setup::green();
+    shrink_mux2_w8(&s, 0.3);
+    s.expect("trends");
+}
+
+#[test]
+fn verify_catches_an_output_the_netlist_does_not_drive() {
+    let s = Setup::green();
+    let id = first_id(&s, "add_i8");
+    let net = s.out(&format!("netlist/mini/clock/{id}.v"));
+    let text = std::fs::read_to_string(&net)
+        .unwrap()
+        .replace("  assign out = n4;\n", "");
+    std::fs::write(&net, text).unwrap();
+    s.expect("mini:clock:sanity");
+}
+
+#[test]
+fn without_lec_no_equivalence_check_runs() {
+    let s = Setup::new();
+    s.sets
+        .lock()
+        .unwrap()
+        .push("passes.characterize.lec=false".into());
+    // A failing check would fail the run, but none runs.
+    s.tools.lec_fails.lock().unwrap().push("add_i8".into());
+    let sum = s.run();
+    assert!(sum.ok, "{sum:?}");
+    assert!(!s.tools.calls.lock().unwrap().iter().any(|c| c == "fm_shell"));
+    let lib = s.library();
+    assert!(lib.lec_tool.is_none());
+    assert!(lib.rows.iter().all(|r| r.lec.is_none() && r.lec_tool.is_none() && !r.inconclusive));
+    let checks = s.checks();
+    assert!(checks.contains(&("mini:clock:lec".into(), CheckStatus::Skip)));
+    assert!(s.failing().is_empty(), "{:?}", s.failing());
+    // Turning the check on reruns only the check, not synthesis.
+    let calls = s.tools.calls.lock().unwrap().len();
+    s.sets.lock().unwrap().clear();
+    s.tools.lec_fails.lock().unwrap().clear();
+    let sum = s.run();
+    assert!(sum.ok, "{sum:?}");
+    let new: Vec<String> = s.tools.calls.lock().unwrap()[calls..].to_vec();
+    assert!(new.iter().any(|c| c == "fm_shell") && !new.iter().any(|c| c == "dc_shell"), "{new:?}");
+}
+
+#[test]
+fn a_flow_that_does_not_exist_is_a_config_error() {
+    let s = Setup::new();
+    s.sets
+        .lock()
+        .unwrap()
+        .push("passes.characterize.tool=\"genus\"".into());
+    let e = match Pipeline::new(cc_passes::registry(), s.config()) {
+        Ok(p) => format!("{:?}", p.run(&RunOptions::default())),
+        Err(e) => e.to_string(),
+    };
+    assert!(e.contains("synthesis flow `genus` is not available") && e.contains("dc, yosys"), "{e}");
 }
 
 fn datapath(dir: &Path, id: &str, op: &str, elem: &str) {
@@ -599,14 +681,14 @@ fn an_inconclusive_check_passes_only_with_every_sanity_check_and_a_failing_one_n
     let sum = s.run();
     assert!(sum.ok, "{sum:?}");
     let row = s.library().rows.into_iter().find(|r| r.key == "add@i8").unwrap();
-    assert!(row.inconclusive && !row.lec.equivalent);
+    assert!(row.inconclusive && !row.lec.as_ref().unwrap().equivalent);
     let failing = s.failing();
     assert!(failing.is_empty(), "{failing:?}");
     let checks = s.pipeline().verify_pass("characterize").unwrap();
     let lec = checks
         .checks
         .iter()
-        .find(|c| c.name == "nangate45:clock:lec")
+        .find(|c| c.name == "mini:clock:lec")
         .unwrap();
     assert_eq!(lec.evidence.counts["inconclusive"], 1);
     let summary: Summary =
@@ -614,12 +696,12 @@ fn an_inconclusive_check_passes_only_with_every_sanity_check_and_a_failing_one_n
     assert_eq!(summary.lec_inconclusive, 1);
 
     // Inconclusive and a sanity check fails (a port the RTL does not have): verify fails.
-    let net = s.out(&format!("netlist/nangate45/clock/{}.v", row.id));
+    let net = s.out(&format!("netlist/mini/clock/{}.v", row.id));
     let text = std::fs::read_to_string(&net)
         .unwrap()
         .replacen(" );", ", extra );\n  output extra;", 1);
     std::fs::write(&net, text).unwrap();
-    s.expect("nangate45:clock:sanity");
+    s.expect("mini:clock:sanity");
 
     // A failing compare point always fails the run.
     let s = Setup::new();
@@ -631,30 +713,30 @@ fn an_inconclusive_check_passes_only_with_every_sanity_check_and_a_failing_one_n
 fn verify_catches_ports_and_flip_flops_that_differ_from_the_rtl() {
     let s = Setup::green();
     let id = first_id(&s, "add_i8");
-    let net = s.out(&format!("netlist/nangate45/clock/{id}.v"));
+    let net = s.out(&format!("netlist/mini/clock/{id}.v"));
     let text = std::fs::read_to_string(&net)
         .unwrap()
         .replace("output [7:0] out", "output [6:0] out");
     std::fs::write(&net, text).unwrap();
-    s.expect("nangate45:clock:sanity");
+    s.expect("mini:clock:sanity");
 
     // A register with one flop fewer than its width.
     let s = Setup::green();
     let id = first_id(&s, "register_w8");
-    let net = s.out(&format!("netlist/nangate45/clock/{id}.v"));
+    let net = s.out(&format!("netlist/mini/clock/{id}.v"));
     let text = std::fs::read_to_string(&net)
         .unwrap()
-        .replace("  DFF_X1 R7 ( .D(n4), .CK(clk), .Q(q7) );\n", "");
+        .replace("  DFF_X1 R7 ( .D(n4), .CK(clk), .Q(q[7]) );\n", "");
     std::fs::write(&net, text).unwrap();
-    s.expect("nangate45:clock:sanity");
+    s.expect("mini:clock:sanity");
 
     // A combinational design with a flop.
     let s = Setup::green();
     let id = first_id(&s, "add_i8");
-    let net = s.out(&format!("netlist/nangate45/clock/{id}.v"));
+    let net = s.out(&format!("netlist/mini/clock/{id}.v"));
     let text = std::fs::read_to_string(&net)
         .unwrap()
         .replace("endmodule", "  DFF_X1 R0 ( .D(n4), .CK(n1), .Q(n9) );\nendmodule");
     std::fs::write(&net, text).unwrap();
-    s.expect("nangate45:clock:sanity");
+    s.expect("mini:clock:sanity");
 }

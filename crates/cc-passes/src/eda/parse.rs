@@ -1,10 +1,9 @@
-//! Report and log parsers, pure functions of the tool's text (docs/tools/synopsys.md §4–5, cadence.md
-//! §2–3). Every value comes back in the flow's units: area µm², time ps, leakage nW.
+//! Report and log parsers, pure functions of the tool's text (docs/tools/synopsys.md §4–5). Every value
+//! comes back in the flow's units: area µm², time ps, leakage nW.
 
 use std::collections::BTreeMap;
 
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+pub use cc_core::adapters::{Lec, Measured};
 
 /// The log of a multi-design session split at `@@begin <id>` / `@@end <id>`. A design whose end marker
 /// is missing gets the text up to the end of the log.
@@ -41,7 +40,7 @@ pub fn segments(log: &str) -> BTreeMap<String, String> {
     out
 }
 
-/// Lines that start with `Error` (every tool here prints errors so; Genus as `Error   : …`). The echo
+/// Lines that start with `Error` (every tool here prints errors so; Yosys as `ERROR:`). The echo
 /// of a script command that mentions errors does not count: those lines start with the command.
 pub fn errors(text: &str) -> Vec<String> {
     text.lines()
@@ -51,8 +50,7 @@ pub fn errors(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// Unresolved references reported by `link` / `check_design` (DC `UID-341`, `LINK-5`; Genus's check
-/// report lists them by name).
+/// Unresolved references reported by `link` / `check_design` (DC `UID-341`, `LINK-5`).
 pub fn unresolved(log: &str, check_rpt: &str) -> u64 {
     let mut n = 0u64;
     for l in log.lines().chain(check_rpt.lines()) {
@@ -104,24 +102,6 @@ pub fn power_nw(value: f64, unit: &str) -> Option<f64> {
         _ => return None,
     };
     Some(value * k)
-}
-
-/// Area, delay and leakage of one design as the synthesis reports state them.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct Measured {
-    /// Total cell area, µm².
-    pub area_um2: Option<f64>,
-    /// Sequential (non-combinational) cell area, µm².
-    pub seq_area_um2: Option<f64>,
-    /// Longest path: arrival at the endpoint, ps.
-    pub delay_ps: Option<f64>,
-    /// Worst slack against the period, ps.
-    pub slack_ps: Option<f64>,
-    /// Cell leakage, nW.
-    pub leakage_nw: Option<f64>,
-    /// Area per direct child instance (hierarchy kept: split pieces, DesignWare parts), µm².
-    pub children: BTreeMap<String, f64>,
 }
 
 /// Design Compiler: `report_area -hierarchy`, `report_qor` and `report_power` (the time unit is the
@@ -177,38 +157,6 @@ fn dc_children(area: &str) -> BTreeMap<String, f64> {
     out
 }
 
-/// Genus: `report_area` (the row of `top`), `report_timing` (`Data Path` and `Slack`, in ps) and
-/// `report_power` (`Power Unit`, leakage of the `Subtotal` row).
-pub fn genus(area: &str, timing: &str, power: &str, top: &str) -> Measured {
-    let area_um2 = area.lines().find_map(|l| {
-        let w: Vec<&str> = l.split_whitespace().collect();
-        (w.first() == Some(&top) && w.len() >= 5)
-            .then(|| w[2].parse::<f64>().ok())
-            .flatten()
-    });
-    let data = all_after(timing, "Data Path:-");
-    let slack = all_after(timing, "Slack:=");
-    let unit = power
-        .lines()
-        .find_map(|l| l.trim().strip_prefix("Power Unit:").map(|u| u.trim().to_string()));
-    let leakage = power.lines().find_map(|l| {
-        let w: Vec<&str> = l.split_whitespace().collect();
-        if w.first() != Some(&"Subtotal") {
-            return None;
-        }
-        let v: f64 = w.get(1)?.parse().ok()?;
-        power_nw(v, unit.as_deref()?)
-    });
-    Measured {
-        area_um2,
-        seq_area_um2: None,
-        delay_ps: data.into_iter().reduce(f64::max),
-        slack_ps: slack.into_iter().reduce(f64::min),
-        leakage_nw: leakage,
-        children: BTreeMap::new(),
-    }
-}
-
 /// Yosys `stat -liberty` (`Chip area for module '\<top>': <a>`) and ABC's `stime -p` (`Delay = <d> ps`;
 /// the last mapping's).
 pub fn yosys(area: &str, log: &str, top: &str, period_ps: f64) -> Measured {
@@ -234,32 +182,11 @@ pub fn yosys(area: &str, log: &str, top: &str, period_ps: f64) -> Measured {
     }
 }
 
-/// An equivalence check's outcome.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct Lec {
-    /// Every compare point proven equivalent and none failing, aborted or unmatched.
-    pub equivalent: bool,
-    pub passing: u64,
-    pub failing: u64,
-    /// Aborted or inconclusive points (never a pass).
-    pub aborted: u64,
-    pub unmatched: u64,
-    pub verdict: String,
-}
-
 fn row_total(text: &str, label: &str) -> Option<u64> {
     text.lines().find_map(|l| {
         let rest = l.trim_start().strip_prefix(label)?;
         rest.split_whitespace().last()?.parse().ok()
     })
-}
-
-impl Lec {
-    /// The check ran out of time: nothing failed, some points stayed unverified.
-    pub fn inconclusive(&self) -> bool {
-        !self.equivalent && self.failing == 0 && self.aborted > 0
-    }
 }
 
 /// Formality `report_status`: the verdict line and the matched compare point table.
@@ -281,40 +208,6 @@ pub fn formality(status: &str) -> Lec {
         aborted,
         unmatched,
         verdict,
-    }
-}
-
-/// Conformal LEC log: the last `compare` table (`Equivalent`, `Non-equivalent`, `Abort` rows).
-pub fn conformal(log: &str) -> Lec {
-    let last = log.rfind("Compared points").map_or("", |k| &log[k..]);
-    let table = last.split("CPU time").next().unwrap_or("");
-    let get = |label: &str| row_total(table, label).unwrap_or(0);
-    let passing = get("Equivalent");
-    let failing = get("Non-equivalent");
-    let aborted = get("Abort") + get("Not-compared");
-    let unmapped = log
-        .lines()
-        .filter_map(|l| {
-            let t = l.trim();
-            t.strip_suffix("Unmapped point(s) reported")
-                .or_else(|| t.strip_suffix("unmapped point(s) reported"))
-                .and_then(|n| n.trim().parse::<u64>().ok())
-        })
-        .sum::<u64>();
-    let equivalent = passing > 0 && failing == 0 && aborted == 0;
-    Lec {
-        equivalent,
-        passing,
-        failing,
-        aborted,
-        unmatched: unmapped,
-        verdict: if table.is_empty() {
-            "no compare".into()
-        } else if equivalent {
-            "equivalent".into()
-        } else {
-            "not proven".into()
-        },
     }
 }
 
@@ -411,18 +304,6 @@ mod tests {
     }
 
     #[test]
-    fn genus_reports() {
-        let area = "Instance Module  Cell Count  Cell Area  Net Area   Total Area       Wireload\n------\nmul_s32                1006   1858.542     0.000     1858.542 5K_hvratio_1_1 (D)\n";
-        let timing = "         Data Path:-     3395\n             Slack:=  1996549\n";
-        let power =
-            "Power Unit: W\n    Subtotal     4.01583e-05  1.69663e-06  1.15963e-06  4.30146e-05 100.00%\n";
-        let m = genus(area, timing, power, "mul_s32");
-        assert_eq!(m.area_um2, Some(1858.542));
-        assert_eq!(m.delay_ps, Some(3395.0));
-        assert!((m.leakage_nw.unwrap() - 40158.3).abs() < 1e-6);
-    }
-
-    #[test]
     fn formality_status() {
         let ok = "Verification SUCCEEDED\n----\nPassing (equivalent)           0       0       0       0      32       0       0      32\nFailing (not equivalent)       0       0       0       0       0       0       0       0\n";
         assert!(formality(ok).equivalent);
@@ -437,11 +318,7 @@ mod tests {
     }
 
     #[test]
-    fn conformal_and_abc() {
-        let log = "Compared points      PO        Total\n------\nEquivalent           32        32\n======\nCPU time     : 1.32    seconds\n";
-        assert!(conformal(log).equivalent);
-        let ab = "Compared points      PO        Total\nEquivalent           31        31\nAbort                 1         1\nCPU time\n";
-        assert!(!conformal(ab).equivalent);
+    fn yosys_equivalence() {
         let ok = "Found 64 $equiv cells in eq:\n  Of those cells 64 are proven and 0 are unproven.\n  Equivalence successfully proven!\n";
         assert!(yosys_equiv(ok).equivalent);
         assert_eq!(yosys_equiv(ok).passing, 64);

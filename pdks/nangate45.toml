@@ -1,0 +1,10 @@
+# FreePDK45 with the Nangate 45 nm Open Cell Library (docs/tools/pdks.md). Paths are relative to the kit's
+# root: paths.pdks.nangate45, or paths.pdk_root joined with `root`.
+name = "nangate45"
+description = "FreePDK45, Nangate 45 nm Open Cell Library, typical corner"
+root = "FreePDK45/Nangate45_OpenCellLib"
+liberty = "stdcells.lib"          # one library, time unit 1 ns
+lef = ["stdcells.lef"]
+driving_cell = "BUF_X1"           # drives every input of a characterized design
+clock_ps = 2000                   # default clock target (500 MHz)
+# XLS has no delay model for this library (docs/tools/xls.md).

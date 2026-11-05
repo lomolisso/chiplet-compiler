@@ -168,8 +168,17 @@ pub(crate) fn component_ids(ctx: &PassContext) -> Result<Vec<String>, PassError>
 /// The configured solver, its runner and where its binary is.
 pub(crate) fn smt(ctx: &PassContext) -> Result<(Solver, BoundRunner, Location), PassError> {
     let c = ctx.smt();
-    let solver = Solver::parse(&c.solver)
-        .ok_or_else(|| PassError::failed(format!("tools.smt.solver: unknown solver `{}`", c.solver)))?;
+    let solver = cc_smt::SOLVERS
+        .by_name(&c.solver)
+        .ok()
+        .and_then(|s| Solver::parse(s.name()))
+        .ok_or_else(|| {
+            PassError::failed(format!(
+                "tools.smt.solver: SMT solver `{}` is not available (available: {})",
+                c.solver,
+                cc_smt::SOLVERS.names().join(", ")
+            ))
+        })?;
     match c.runner.as_str() {
         "docker" => Ok((solver, ctx.docker(), Location::Image)),
         "host" => Ok((solver, ctx.host(), cc_smt::host_paths(&c.z3, &c.bitwuzla))),

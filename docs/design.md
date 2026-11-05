@@ -136,7 +136,7 @@ Each artifact kind has a versioned schema (a Rust type with `serde`, plus a JSON
 |---|---|
 | `[pipeline]` | `max_parallel_passes`, `targets` (passes to reach), `stop_on_failure` |
 | `[resources]` | `memory_budget_gb`, `threads_total` |
-| `[paths]` | `build_dir`, `models_dir`, `third_party_dir`, `eda_toggle`, `pdk_*` (local file) |
+| `[paths]` | `build_dir`, `models_dir`, `third_party_dir`, `pdk_manifests`; `eda_toggle`, `pdk_root`, `pdks.<kit>` (local file) |
 | `[models]` | `keys` (`"all"` or a list), `config` (`full` / `reduced`) |
 | `[testing]` | `deep_models`, `tiny_dim` (the size used for tiny instantiations) |
 | `[tools.<tool>]` | docker image and caps, tool binaries, versions |
@@ -149,7 +149,7 @@ One trait, three implementations. Every call is logged with its command line, ca
 | Runner | Used for | Isolation and limits |
 |---|---|---|
 | `DockerRunner` | JAX export, Allo, XLS, `xlscc`, GraMi, Yosys / Verilator / iverilog, z3 / bitwuzla | Our image (`docker/Dockerfile`), `--memory=M --memory-swap=M --cpus=C --pids-limit`, `--user $(id -u):$(id -g)`, repo and `build/` bind-mounted. An OOM kills only the container. |
-| `EdaRunner` | dc_shell, lc_shell, fm_shell, pt_shell, vcs, spyglass, genus, lec, xrun | Host, via `bash --norc -i -c '. "$EDA_TOGGLE"; eda-run "$@"' eda-run <tool> … </dev/null`. `eda-run` relies on an interactive shell: plain `bash -c` loads no modules. It inherits the session's Lmod variables and filters bash's no-TTY warnings (`docs/tools/eda_environment.md` §2). The driver's own environment is never touched. Tool-native CPU/memory caps, `ulimit`, an RSS watchdog that kills the process tree over `memory_gb`, timeouts; temp dirs on scratch disk, not the 8 GB `/tmp`. |
+| `EdaRunner` | dc_shell, lc_shell, fm_shell, pt_shell, vcs, spyglass, xrun (Innovus in later versions) | Host, via `bash --norc -i -c '. "$EDA_TOGGLE"; eda-run "$@"' eda-run <tool> … </dev/null`. `eda-run` relies on an interactive shell: plain `bash -c` loads no modules. It inherits the session's Lmod variables and filters bash's no-TTY warnings (`docs/tools/eda_environment.md` §2). The driver's own environment is never touched. Tool-native CPU/memory caps, `ulimit`, an RSS watchdog that kills the process tree over `memory_gb`, timeouts; temp dirs on scratch disk, not the 8 GB `/tmp`. |
 | `HostRunner` | uv-managed Python on the host (fallback), small utilities | `ulimit` plus watchdog. |
 
 Why this split:
@@ -158,23 +158,23 @@ Why this split:
 
 Details are in `docs/tools/`.
 
-### 3.7 External resources *(planned)*
+### 3.7 External resources
 
-Every external resource family has one Rust trait, implementations chosen in `config.toml`, a declaration of what each implementation supports, and one conformance test suite shared by all implementations:
+Every external resource family has one Rust trait (`cc_core::adapters`), implementations chosen by name in `config.toml`, a declaration of what each implementation supports (its capabilities), and one conformance test suite shared by all implementations (the same input to each; the same verdict, or the same answer class for heuristics). The implementations stay next to the code that uses them; `cc_passes::adapters` lists every family's registry (docs/framework/adapters.md).
 
-| Trait | Implementations | Role |
-|---|---|---|
-| `SynthFlow` | Design Compiler; Yosys | synthesize a module, parse area, delay and power; optional equivalence check |
-| `PnrFlow` | Innovus; OpenROAD (later versions) | place and route |
-| `IpProvider` | Synopsys DesignWare (DC flow); Berkeley HardFloat, FloPoCo and other open cores (open flow) | for an op, format and mode: the instantiation template, the contract (accuracy, special values, subnormal mode), a delay hint, the license, the flows that accept it, a NumPy model |
-| `SmtSolver` | Bitwuzla; Z3 | prove and re-check queries |
-| `CliqueSolver`, MIS | exact ILP, branch and bound, Östergård, greedy | NP-hard selections of `mine` and `merge` |
-| `Miner` | GraMi | frequent subgraph mining |
-| `HlsFrontend` | Allo (with XLS) | unit description to RTL |
+| Trait | Implementations | Selected by | Role |
+|---|---|---|---|
+| `SynthFlow` | Design Compiler (`dc`); Yosys (`yosys`) | `[passes.characterize] tool` | synthesize a module, parse area, delay and power; optional equivalence check (Formality; Yosys' equivalence flow) |
+| `PnrFlow` | Innovus; OpenROAD (later versions; declared, none registered) | | place and route |
+| `IpProvider` *(planned)* | Synopsys DesignWare (DC flow); Berkeley HardFloat, FloPoCo and other open cores (open flow) | | for an op, format and mode: the instantiation template, the contract (accuracy, special values, subnormal mode), a delay hint, the license, the flows that accept it, a NumPy model |
+| `SmtSolver` | Bitwuzla; Z3 | `[tools.smt] solver` (the lemmas: the solver that declares them, Z3) | prove and re-check queries |
+| `CliqueSolver`, `MisSolver` | exact ILP, Östergård, greedy; exact ILP, branch and bound, greedy | `[passes.merge.clique] algorithm`, `[passes.mine.mis] algorithm` | NP-hard selections of `merge` and `mine` |
+| `Miner` | GraMi | `[passes.mine] miner` | frequent subgraph mining |
+| `HlsFrontend` | Allo with XLS (a stub until `allo_emit` and `xls` exist) | `[passes.allo_emit] frontend` | unit description to RTL |
 
-- **Flows.** Two: the industry flow (Design Compiler for synthesis; Innovus for place and route in later versions) and the open flow (Yosys; OpenROAD later). A flow uses only IP cores it can synthesize; prices and caches are per flow and cell library.
-- **PDKs are data.** One manifest per cell library (Liberty and `.db` files, LEF, corners, driving cell, default clock); code names no library.
-- A configuration whose choices do not fit together (an IP its flow cannot read, an op no provider covers) is reported before anything runs.
+- **Flows.** Two: the industry flow (Design Compiler for synthesis; Innovus for place and route in later versions) and the open flow (Yosys; OpenROAD later). A flow uses only IP cores it can synthesize *(planned)*; prices and caches are per flow and cell library.
+- **PDKs are data.** One manifest per cell library, `pdks/<kit>.toml`: its Liberty files (a pattern, with cell groups merged into one library), LEF, VT, corner, driving cell, default clock and XLS delay model, relative to a root under `paths.pdk_root`. Code names no library (docs/tools/pdks.md).
+- A configuration that names an implementation no registry has is reported before anything runs, with the available ones; a configuration whose choices do not fit together (an IP its flow cannot read, an op no provider covers) is reported likewise *(planned, with `IpProvider`)*.
 
 ## 4. The pass pipeline
 
@@ -349,18 +349,17 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
     glue, and an op no provider covers is reported as a gap. Float `remainder` has no primitive
     *(planned)*: its only use is constant computation.
   - Synthesize through the configured `SynthFlow`: DC (Nangate45 and a merged ASAP7 `.db`, both built by
-    `lc_shell` in `chipc doctor`) or Yosys with ABC on the same Liberty files, at two timing points: the
-    clock target (the area) and a tight constraint (the minimum delay). The Genus path is removed
-    *(planned)*.
+    `lc_shell` in `chipc doctor` from the kits' manifests) or Yosys with ABC on the same Liberty files, at
+    two timing points: the clock target (the area) and a tight constraint (the minimum delay).
   - Record area, delay and leakage.
 - **Verification.**
   - Synthesis logs are free of errors, unresolved references and latches; netlists use only library
     cells.
-  - Cheap checks *(planned)*: the netlist has the module's ports and widths, every output is driven, the
-    area is not zero, and area against width follows the expected trend (monotone; multipliers about
-    quadratic, adders about linear), a clear violation failing.
+  - Cheap checks: the netlist has the module's ports and widths, every output is driven, the area is not
+    zero, and area against width follows the expected trend (monotone; multipliers about quadratic,
+    adders about linear), a clear violation (less than half the area of a narrower width) failing.
   - Equivalence of netlist and RTL checks the synthesis tool, which section 5 trusts: it is optional and
-    off by default *(planned)*. When enabled it is bounded per design as today.
+    off by default (`lec`). When enabled it is bounded per design.
   - Coverage: every vertex of the datapaths maps to a primitive.
 
 ### 4.10 `mine`
@@ -600,7 +599,7 @@ build/         (ignored) build/.<pass>/ artifacts
 | Legacy `docker build` with `--memory`/`--memory-swap`/`--cpu-quota` | A buildx builder | buildx is not installed here; the legacy builder caps every RUN step hard |
 | apt frozen to one `snapshot.ubuntu.com` date, PyPI by `uv --exclude-newer` | Per-package version pins | The archive drops old versions; one date freezes the whole package set |
 | XLS Bazel tools built on Ubuntu 22.04, final image Ubuntu 24.04 | One base for every stage | 22.04 is XLS's build platform; 24.04 has Python 3.12 and the glibc 2.39 the z3 release needs |
-| ASAP7 `.db` for RVT TT only (`[tools.pdk]`) | All VTs or corners | Spec default; more sets need only a config change |
+| ASAP7 `.db` for RVT TT only (`pdks/asap7.toml`) | All VTs or corners | Spec default; another VT or corner is another manifest |
 | CI neither builds nor pulls the image | Pull from a registry | The image is host-only and ~15 GB; CI lints the Dockerfile and runs `doctor --dry` |
 | Host-specific EDA fixes live in the EDA environment (`~/pdks/setup_env.sh`, wrappers in `~/pdks/extra_bin/`) | A per-tool env map in chipc's config | One place for the environment: `eda-on` users and `eda-run` get the same fix; chipc only calls `eda-run` (e.g. LC's bundled `libk5crypto`) |
 | Every module level is a nested composite (phase root excluded) | Leaf modules only | Attention BMMs, MoE dots and other function-level ops sit in parent modules: leaf-only leaves them `anon`; the `components` pass keeps the hierarchy |
@@ -676,9 +675,12 @@ build/         (ignored) build/.<pass>/ artifacts
 | `fixed` requantization is one fused `rescale` primitive (32×24 multiply, rounding shift, saturation, convert) | Generic shift ops and 64-bit integers in the op table and the library | The fused design has minimal widths and lets synthesis optimize across its parts; generic ops put the product in a 64-bit multiplier, and every op would gain 64-bit rows, dividers included, that the equivalence checker cannot prove; no other kernel uses shifts |
 | The `rescale` multiplier and shift come from the f32 scale's bits, in hardware | Integer multiplier and shift as inputs, computed offline | No offline step outside the graph; decoding is wiring and a small subtract |
 | The `fixed` tolerance lemma is per integer type, on the rescaled value, with the fp32 product bounded by IEEE 754's rounding error and the product a free variable | A lemma per class on its outputs, against the solver's f32 multiply | The f32 operations after the round can turn a difference of 1 into 2 at an int8 output (a non-integer zero point), so the per-class claim is false; and an f32 multiplier against an integer one ran past 10 minutes at 8 bits, while the bounded form is proven in under a minute at 32 bits |
-| Third-party resources (IP cores, EDA tools, PDKs) trusted; equivalence of netlist and RTL optional, off by default *(planned)* | LEC of every primitive and unit | The check verifies the vendor's tool, not our work; it cost hours on dividers and left rows inconclusive; cheap structural checks catch our own script errors |
-| Two flows: Design Compiler (Innovus later) and Yosys (OpenROAD later) *(planned)* | Every Synopsys and Cadence tool as alternatives | One standard industry RTL-to-GDS flow and one open flow; fewer paths to maintain |
-| One adapter trait per external resource family, PDKs as data *(planned)* | Match arms per tool inside passes; library names in code | Adding a flow, an IP library, a solver or a PDK is one implementation, tested by a shared suite |
+| Third-party resources (IP cores, EDA tools, PDKs) trusted; equivalence of netlist and RTL optional, off by default | LEC of every primitive and unit | The check verifies the vendor's tool, not our work; it cost hours on dividers and left rows inconclusive; cheap structural checks catch our own script errors |
+| Two flows: Design Compiler (Innovus later) and Yosys (OpenROAD later) | Every Synopsys and Cadence tool as alternatives | One standard industry RTL-to-GDS flow and one open flow; fewer paths to maintain |
+| One adapter trait per external resource family, PDKs as data | Match arms per tool inside passes; library names in code | Adding a flow, an IP library, a solver or a PDK is one implementation, tested by a shared suite |
+| Adapter traits in `cc-core`, generic over the problem type where the data is a pass's (clique, MIS); a registry per family | One trait object per resource with a common data model | Traits only at the resource boundary (development.md); the passes keep their graph types and certificates |
+| The lemma solver is the one declaring lemmas (Z3), not `[tools.smt] solver` | A second config key | The lemmas need native float sorts of any width, a capability, not a choice |
+| A kit's driving cell and clock come from its manifest; `[passes.characterize] clock_ps`, `driving_cell` override them | Per-kit tables in the pass section | A new kit is one file; the DC scripts (and the cached job directories) are unchanged |
 | Constant computation (no path from an entry argument) tagged and never hardware *(planned)* | Kernels for every op | Position and rotary tables depend only on sizes; float `remainder` occurs only there |
 | f32 and bf16 flush to zero; f16 and FP8 keep subnormals *(planned)* | IEEE gradual underflow in every format | Most accelerators flush bf16 and many f32 (our JAX reference on XLA:CPU runs f32 flush-to-zero); FP8's subnormals are a real part of its range |
 | Accumulation by f32 IP cores in a recorded order *(planned)* | An exact integer FP8 accumulator; block-fused alignment as in GPU matrix units | Cores only; a recorded order keeps the proof bit-exact |

@@ -15,7 +15,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use cc_core::{ArtifactKind, CoreError, LoadedConfig, PassSection, VerifyReport};
 use cc_pipeline::{Pass, PassContext, PassError};
-use cc_smt::{Solver, Verdict};
+use cc_smt::Verdict;
 use rayon::prelude::*;
 
 pub use config::{Allowed, DatapathsConfig};
@@ -134,7 +134,7 @@ impl Pass for Datapaths {
         let lemma_answers = cc_smt::solve_cached(
             &runner,
             &location,
-            Solver::Z3,
+            cc_smt::lemma_solver(),
             &out.path("lemmas")?,
             &lemmas,
             cfg.lemma_timeout_s,
@@ -197,7 +197,7 @@ impl Pass for Datapaths {
                     schema: RESULT_SCHEMA.into(),
                     file: f.clone(),
                     query_hash: cc_smt::query_hash(text),
-                    solver: Solver::Z3,
+                    solver: cc_smt::lemma_solver(),
                     version,
                     verdict,
                     expect: "unsat".into(),

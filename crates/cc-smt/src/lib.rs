@@ -17,6 +17,7 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use cc_core::CoreError;
+use cc_core::adapters::{Named, Registry, SmtCapabilities, SmtSolver};
 use cc_core::runner::{BoundRunner, Invocation, Mount};
 use serde::{Deserialize, Serialize};
 
@@ -30,22 +31,87 @@ pub enum Solver {
     Z3,
 }
 
+/// Bitwuzla (Niemetz and Preiner, CAV 2023): word-level rewriting and bit-blasting, SymFPU for floats.
+#[derive(Debug, Clone, Copy)]
+pub struct Bitwuzla;
+
+/// Z3 (de Moura and Bjørner, TACAS 2008).
+#[derive(Debug, Clone, Copy)]
+pub struct Z3;
+
+impl Named for Bitwuzla {
+    fn name(&self) -> &'static str {
+        "bitwuzla"
+    }
+}
+
+impl SmtSolver for Bitwuzla {
+    /// The release build has only the interchange float sorts (others need its `--fpexp` option).
+    fn capabilities(&self) -> SmtCapabilities {
+        SmtCapabilities {
+            bit_vectors: true,
+            uninterpreted_functions: true,
+            interchange_floats: true,
+            any_float_sort: false,
+            lemmas: false,
+        }
+    }
+
+    fn program(&self) -> &'static str {
+        "bitwuzla"
+    }
+}
+
+impl Named for Z3 {
+    fn name(&self) -> &'static str {
+        "z3"
+    }
+}
+
+impl SmtSolver for Z3 {
+    fn capabilities(&self) -> SmtCapabilities {
+        SmtCapabilities {
+            bit_vectors: true,
+            uninterpreted_functions: true,
+            interchange_floats: true,
+            any_float_sort: true,
+            lemmas: true,
+        }
+    }
+
+    fn program(&self) -> &'static str {
+        "z3"
+    }
+}
+
+/// Every solver, by `[tools.smt] solver`.
+pub static SOLVERS: Registry<dyn SmtSolver> = Registry::new("SMT solver", &[&Bitwuzla, &Z3]);
+
+/// The solver that proves the lemmas: the first one whose capabilities declare them.
+pub fn lemma_solver() -> Solver {
+    Solver::ALL
+        .into_iter()
+        .find(|s| s.adapter().capabilities().lemmas)
+        .unwrap_or(Solver::Z3)
+}
+
 impl Solver {
     pub const ALL: [Solver; 2] = [Solver::Bitwuzla, Solver::Z3];
 
     pub fn parse(s: &str) -> Option<Solver> {
-        match s {
-            "bitwuzla" => Some(Solver::Bitwuzla),
-            "z3" => Some(Solver::Z3),
-            _ => None,
+        Solver::ALL.into_iter().find(|x| x.name() == s)
+    }
+
+    /// Its implementation (capabilities, program).
+    pub fn adapter(self) -> &'static dyn SmtSolver {
+        match self {
+            Solver::Bitwuzla => &Bitwuzla,
+            Solver::Z3 => &Z3,
         }
     }
 
     pub fn name(self) -> &'static str {
-        match self {
-            Solver::Bitwuzla => "bitwuzla",
-            Solver::Z3 => "z3",
-        }
+        self.adapter().name()
     }
 
     /// The other solver (for re-checking a proof).
@@ -130,11 +196,11 @@ pub fn run_batch(
     timeout_s: u64,
 ) -> Result<Batch, CoreError> {
     let (program, base) = match location {
-        Location::Image => (solver.name().to_string(), DIR_IN_CONTAINER.to_string()),
+        Location::Image => (solver.adapter().program().to_string(), DIR_IN_CONTAINER.to_string()),
         Location::Host(p) => (
             p.get(&solver)
                 .cloned()
-                .unwrap_or_else(|| solver.name().to_string()),
+                .unwrap_or_else(|| solver.adapter().program().to_string()),
             dir.display().to_string(),
         ),
     };
@@ -341,6 +407,21 @@ mod tests {
         assert_eq!(b.verdicts["a.smt2"], Verdict::Unsat);
         assert!(matches!(&b.verdicts["b.smt2"], Verdict::Sat { model } if model.contains("define-fun x")));
         assert_eq!(b.verdicts["c.smt2"], Verdict::Timeout);
+    }
+
+    #[test]
+    fn the_registry_matches_the_enum_and_one_solver_proves_lemmas() {
+        assert_eq!(SOLVERS.names(), Solver::ALL.map(Solver::name));
+        for s in Solver::ALL {
+            assert_eq!(Solver::parse(s.name()), Some(s));
+            assert_eq!(SOLVERS.by_name(s.name()).unwrap().name(), s.name());
+            let c = s.adapter().capabilities();
+            assert!(c.bit_vectors && c.interchange_floats && c.uninterpreted_functions);
+            // The lemmas compare against native sorts of any width.
+            assert!(!c.lemmas || c.any_float_sort);
+        }
+        assert_eq!(lemma_solver(), Solver::Z3);
+        assert!(Solver::parse("cvc5").is_none());
     }
 
     #[test]

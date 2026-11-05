@@ -1,17 +1,20 @@
 use std::collections::BTreeMap;
 
+use cc_core::adapters::{LecOptions, SynthFlow};
 use serde::Deserialize;
 
 /// `[passes.characterize]`.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct CharacterizeConfig {
-    /// `dc` (Design Compiler + Formality), `genus` (Genus + Conformal) or `yosys` (Yosys + ABC, its
-    /// equivalence flow; no license).
-    pub tool: Tool,
-    /// Kits: `nangate45`, `asap7`.
+    /// The synthesis flow (`eda::FLOWS`): `dc` (Design Compiler) or `yosys` (Yosys + ABC, no license).
+    pub tool: String,
+    /// Check every netlist against its RTL with the flow's equivalence checker (Formality, Yosys'
+    /// equivalence flow). Off by default: the synthesis tool is trusted (design §5).
+    pub lec: bool,
+    /// Kits, by PDK manifest (`pdks/<kit>.toml`); empty: every manifest.
     pub pdks: Vec<String>,
-    /// Clock target per kit, in ps.
+    /// Clock target per kit, in ps, overriding its manifest's `clock_ps`.
     pub clock_ps: BTreeMap<String, f64>,
     /// Timing points: `clock` (the clock target, the area row) and `fast` (a tight constraint: the
     /// minimum delay and its area).
@@ -30,7 +33,7 @@ pub struct CharacterizeConfig {
     pub register_widths: Vec<u32>,
     /// `(w, n)`: a w-bit multiply from n-bit piece multipliers.
     pub split_multipliers: Vec<(u32, u32)>,
-    /// Cell driving every input, per kit.
+    /// Cell driving every input, per kit, overriding its manifest's `driving_cell`.
     pub driving_cell: BTreeMap<String, String>,
     /// Every output drives this many inputs of the driving cell.
     pub load_fanout: f64,
@@ -42,45 +45,19 @@ pub struct CharacterizeConfig {
     pub lec_strategies: Vec<String>,
     /// Designs per tool session.
     pub batch: usize,
-    /// Cores per DC / Genus session.
+    /// Cores per licensed tool session.
     pub cores: u32,
     /// Write `views/library.md`.
     pub views: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Tool {
-    Dc,
-    Genus,
-    Yosys,
-}
-
-impl Tool {
-    pub fn name(self) -> &'static str {
-        match self {
-            Tool::Dc => "dc",
-            Tool::Genus => "genus",
-            Tool::Yosys => "yosys",
-        }
-    }
-
-    /// The equivalence checker that goes with the synthesis tool.
-    pub fn lec(self) -> &'static str {
-        match self {
-            Tool::Dc => "formality",
-            Tool::Genus => "conformal",
-            Tool::Yosys => "yosys-equiv",
-        }
-    }
-}
-
 impl Default for CharacterizeConfig {
     fn default() -> Self {
         Self {
-            tool: Tool::Dc,
-            pdks: vec!["nangate45".into(), "asap7".into()],
-            clock_ps: [("nangate45".into(), 2000.0), ("asap7".into(), 1000.0)].into(),
+            tool: "dc".into(),
+            lec: false,
+            pdks: Vec::new(),
+            clock_ps: BTreeMap::new(),
             targets: vec!["clock".into(), "fast".into()],
             fast_fraction: 0.05,
             ops: Vec::new(),
@@ -90,11 +67,7 @@ impl Default for CharacterizeConfig {
             mux_widths: vec![1, 2, 4, 8, 16, 32],
             register_widths: vec![1, 2, 4, 8, 16, 32],
             split_multipliers: vec![(8, 4), (16, 8), (32, 8), (32, 16)],
-            driving_cell: [
-                ("nangate45".into(), "BUF_X1".into()),
-                ("asap7".into(), "BUFx2_ASAP7_75t_R".into()),
-            ]
-            .into(),
+            driving_cell: BTreeMap::new(),
             load_fanout: 4.0,
             lec_timeout_min: 2,
             lec_strategies: Vec::new(),
@@ -106,36 +79,41 @@ impl Default for CharacterizeConfig {
 }
 
 impl CharacterizeConfig {
-    /// The period of `target` on `kit`, in ps.
-    pub fn period_ps(&self, kit: &str, target: &str) -> Result<f64, String> {
-        let clock = *self
-            .clock_ps
-            .get(kit)
-            .ok_or_else(|| format!("clock_ps has no entry for {kit}"))?;
+    /// The period of `target` for a kit whose clock target is `clock_ps`, in ps.
+    pub fn period_ps(&self, clock_ps: f64, target: &str) -> Result<f64, String> {
         match target {
-            "clock" => Ok(clock),
-            "fast" => Ok(clock * self.fast_fraction),
+            "clock" => Ok(clock_ps),
+            "fast" => Ok(clock_ps * self.fast_fraction),
             t => Err(format!("unknown target {t} (clock | fast)")),
         }
     }
 
+    /// The selected flow.
+    pub fn flow(&self) -> Result<&'static dyn SynthFlow, String> {
+        crate::eda::FLOWS.by_name(&self.tool).map_err(|e| format!("tool: {e}"))
+    }
+
+    /// The equivalence check's options, when it is on.
+    pub fn lec_options(&self) -> Option<LecOptions> {
+        self.lec.then(|| LecOptions {
+            timeout_min: self.lec_timeout_min,
+            strategies: self.lec_strategies.clone(),
+        })
+    }
+
     pub fn check(&self) -> Result<(), String> {
-        for k in &self.pdks {
-            if !matches!(k.as_str(), "nangate45" | "asap7") {
-                return Err(format!("pdks: unknown kit {k} (nangate45 | asap7)"));
-            }
-            for t in &self.targets {
-                self.period_ps(k, t)?;
-            }
-            if !self.driving_cell.contains_key(k) {
-                return Err(format!("driving_cell has no entry for {k}"));
-            }
+        self.flow()?;
+        for t in &self.targets {
+            self.period_ps(1.0, t)?;
         }
         if !(self.fast_fraction > 0.0 && self.fast_fraction < 1.0) {
             return Err("fast_fraction must be in (0, 1)".into());
         }
         if self.batch == 0 || self.cores == 0 {
             return Err("batch and cores must be positive".into());
+        }
+        if let Some((k, _)) = self.clock_ps.iter().find(|(_, c)| !(**c > 0.0)) {
+            return Err(format!("clock_ps.{k} must be positive"));
         }
         Ok(())
     }

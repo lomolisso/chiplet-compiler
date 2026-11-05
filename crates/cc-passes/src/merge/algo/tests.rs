@@ -12,7 +12,7 @@ use super::rebuild::rebuild;
 use super::unit::{UNode, Unit};
 use crate::characterize::catalog::Kind;
 use crate::characterize::json::{Library, Row, TargetInfo};
-use crate::eda::parse::{Lec, Measured};
+use crate::eda::parse::Measured;
 use crate::merge::config::{CliqueAlgorithm, MergeConfig};
 use crate::merge::json::BlockKind;
 use crate::mine::json::Family;
@@ -40,8 +40,8 @@ fn row(key: &str, target: &str, area: f64, delay: f64) -> Row {
             children: BTreeMap::new(),
         },
         estimator: String::new(),
-        lec_tool: String::new(),
-        lec: Lec::default(),
+        lec_tool: None,
+        lec: None,
         inconclusive: false,
         designware: false,
         provisional: false,
@@ -78,7 +78,7 @@ pub fn lib() -> Lib {
     let l = Library {
         schema: String::new(),
         tool: String::new(),
-        lec_tool: String::new(),
+        lec_tool: None,
         tool_versions: BTreeMap::new(),
         kits: Vec::new(),
         targets: vec![TargetInfo {
@@ -248,6 +248,49 @@ fn exact_strategies_agree_and_greedy_is_feasible() {
     );
     assert!(feasible(&m, &g.chosen, &[]));
     assert!(g.objective <= x.objective + 1e-6);
+}
+
+/// Conformance of every registered clique solver (design §3.7): on the same compatibility graphs, each
+/// returns a feasible clique; the exact ones the same optimum, claimed optimal; a heuristic at most it.
+#[test]
+fn every_registered_clique_solver_conforms() {
+    use super::clique::SOLVERS;
+    use cc_core::adapters::Limits;
+    assert_eq!(
+        SOLVERS.names(),
+        [CliqueAlgorithm::ExactIlp, CliqueAlgorithm::Ostergard, CliqueAlgorithm::Greedy].map(CliqueAlgorithm::name)
+    );
+    let lib = lib();
+    let pairs = [
+        (mac("z0", "i32"), mac("z1", "i32")),
+        (mac("z0", "i32"), add_mul("z1", "i32")),
+        (add_mul("z0", "i8"), add_mul("z1", "i32")),
+        (mac("z0", "i32"), mac("z1", "i8")),
+        (add_mul("z0", "i8"), mac("z1", "i8")),
+    ];
+    let limits = Limits {
+        node_budget: 1_000_000,
+        timeout: Some(Duration::from_secs(60)),
+    };
+    for (k, (u0, u1)) in pairs.into_iter().enumerate() {
+        let us = vec![u0, u1];
+        let a = Fu::single(&us[0], 0).expect("unit");
+        let b = Fu::single(&us[1], 1).expect("unit");
+        let (ca, cb) = (cost(&a, &us, &lib), cost(&b, &us, &lib));
+        let m = model(&a, &ca, &b, &cb, &lib, &mut HashMap::new());
+        let mut best: Option<f64> = None;
+        for s in SOLVERS.iter().filter(|s| s.capabilities().exact) {
+            let r = s.solve(&m, &[], &limits).expect("an answer");
+            assert!(r.optimal && feasible(&m, &r.chosen, &[]), "{} pair {k}", s.name());
+            let o = *best.get_or_insert(r.objective);
+            assert!((o - r.objective).abs() < 1e-6, "{} pair {k}: {} vs {o}", s.name(), r.objective);
+        }
+        let best = best.expect("an exact solver");
+        for s in SOLVERS.iter().filter(|s| !s.capabilities().exact) {
+            let r = s.solve(&m, &[], &limits).expect("an answer");
+            assert!(feasible(&m, &r.chosen, &[]) && r.objective <= best + 1e-6, "{} pair {k}", s.name());
+        }
+    }
 }
 
 #[test]

@@ -211,6 +211,119 @@ pub fn parse(text: &str) -> Netlist {
     n
 }
 
+/// The output bits of `module` that nothing in its body connects: a bit is driven when the output (or that
+/// bit, or a range holding it) appears in an `assign` or an instance's port connection. Empty when the
+/// module is not in the text (the port check reports that).
+pub fn undriven_outputs(text: &str, module: &str) -> Vec<String> {
+    let Some(ports) = ports(text, module) else {
+        return Vec::new();
+    };
+    let text = strip(text);
+    let mut stmts = text.split(';').map(str::trim);
+    // Skip to the module's header.
+    let found = stmts.any(|st| {
+        let st = st.trim_start_matches("endmodule").trim();
+        st.strip_prefix("module").is_some_and(|r| {
+            let name: String = r
+                .trim_start()
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '\\')
+                .collect();
+            name.trim_start_matches('\\') == module
+        })
+    });
+    if !found {
+        return Vec::new();
+    }
+    let mut whole: BTreeSet<String> = BTreeSet::new();
+    let mut bits: BTreeMap<String, BTreeSet<i64>> = BTreeMap::new();
+    for st in stmts {
+        let (body, last) = match st.find("endmodule") {
+            Some(k) => (&st[..k], true),
+            None => (st, false),
+        };
+        let first = body.split_whitespace().next().unwrap_or("");
+        if !KEYWORDS.contains(&first) || first == "assign" {
+            references(body, &mut whole, &mut bits);
+        }
+        if last {
+            break;
+        }
+    }
+    let mut out = Vec::new();
+    for (name, (dir, width)) in &ports {
+        if *dir != Dir::Output || whole.contains(name) {
+            continue;
+        }
+        let have = bits.get(name).map_or(0, BTreeSet::len) as u32;
+        if have < *width {
+            out.push(if *width == 1 {
+                name.clone()
+            } else {
+                format!("{name} ({have} of {width} bits)")
+            });
+        }
+    }
+    out
+}
+
+/// The identifiers a statement references: whole (`y`) or by bit (`y[3]`, `y[3:1]`).
+fn references(s: &str, whole: &mut BTreeSet<String>, bits: &mut BTreeMap<String, BTreeSet<i64>>) {
+    let b = s.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        let c = b[i] as char;
+        let start = i;
+        let name = if c == '\\' {
+            while i < b.len() && !b[i].is_ascii_whitespace() {
+                i += 1;
+            }
+            s[start + 1..i].to_string()
+        } else if c.is_ascii_alphabetic() || c == '_' {
+            while i < b.len() && (b[i].is_ascii_alphanumeric() || b[i] == b'_' || b[i] == b'$') {
+                i += 1;
+            }
+            s[start..i].to_string()
+        } else {
+            // Skip numbers with their base and digits (`8'b0`, `3'h7`) whole.
+            if c.is_ascii_digit() || c == '\'' {
+                while i < b.len() && (b[i].is_ascii_alphanumeric() || b[i] == b'\'' || b[i] == b'_') {
+                    i += 1;
+                }
+            } else {
+                i += 1;
+            }
+            continue;
+        };
+        let mut j = i;
+        while j < b.len() && b[j].is_ascii_whitespace() {
+            j += 1;
+        }
+        if j < b.len()
+            && b[j] == b'['
+            && let Some(close) = s[j..].find(']')
+        {
+            let range = &s[j + 1..j + close];
+            let set = bits.entry(name).or_default();
+            match range.split_once(':') {
+                Some((h, l)) => {
+                    if let (Ok(h), Ok(l)) = (h.trim().parse::<i64>(), l.trim().parse::<i64>()) {
+                        set.extend(h.min(l)..=h.max(l));
+                    }
+                }
+                None => {
+                    if let Ok(k) = range.trim().parse::<i64>() {
+                        set.insert(k);
+                    }
+                }
+            }
+            i = j + close + 1;
+        } else {
+            whole.insert(name);
+        }
+    }
+}
+
 /// The text without comments. An escaped identifier (`\\u_div/*Logic0*`, from `\\` to the next
 /// whitespace) is kept whole: comment markers inside it are part of the name.
 fn strip(text: &str) -> String {
@@ -278,6 +391,20 @@ mod tests {
         assert!(ports(body, "other").is_none());
         let wrong = body.replace("output [7:0] out", "output [6:0] out");
         assert_ne!(ports(&wrong, "add_i8").unwrap(), pa);
+    }
+
+    #[test]
+    fn outputs_driven_whole_by_bit_or_by_range() {
+        // `p` of `piece`: bit 0 by a cell, bits 3..1 by an assign; `p` of `top` whole by a submodule.
+        assert!(undriven_outputs(NET, "piece").is_empty());
+        assert!(undriven_outputs(NET, "top").is_empty());
+        let open = NET.replace("  assign p[3:1] = 3'b0;\n", "  assign p[2:1] = 2'b0;\n");
+        assert_eq!(undriven_outputs(&open, "piece"), ["p (3 of 4 bits)"]);
+        let one = "module m ( a, y, z );\n  input a;\n  output y;\n  output z;\n  INV_X1 U1 ( .A(a), .ZN(y) );\nendmodule\n";
+        assert_eq!(undriven_outputs(one, "m"), ["z"]);
+        let esc = "module m ( a, y );\n  input a;\n  output y;\n  INV_X1 \\U1/x ( .A(a), .ZN(y) );\nendmodule\n";
+        assert!(undriven_outputs(esc, "m").is_empty());
+        assert!(undriven_outputs(one, "other").is_empty());
     }
 
     #[test]
