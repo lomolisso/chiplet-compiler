@@ -7,7 +7,7 @@ use cc_core::CancelToken;
 use cc_core::runner::{BoundRunner, Caps, Runners, ToolLog};
 use cc_smt::float::{self, Format};
 use cc_smt::ops::{self, Attrs, Ty, Val};
-use cc_smt::term::{Ctx, Sort, T};
+use cc_smt::term::{Ctx, Op, Rm, Sort, T};
 use cc_smt::{Location, Script, Solver, Verdict};
 use tests::{Env, repo_root};
 
@@ -18,6 +18,7 @@ const I32: Ty = Ty::Int { signed: true, w: 32 };
 const TF32: Ty = Ty::Float(Format::F32);
 const TBF16: Ty = Ty::Float(Format::BF16);
 const TF8: Ty = Ty::Float(Format::E4M3FN);
+const TF8E5: Ty = Ty::Float(Format::E5M2);
 
 fn int(c: &mut Ctx, ty: Ty, v: i128) -> Val {
     let Ty::Int { w, .. } = ty else { unreachable!() };
@@ -253,7 +254,8 @@ fn cases() -> (Queries, Queries) {
             let (a, w) = (bits(c, TBF16, 0x3f80), bits(c, TBF16, 0xbf80));
             (ap(c, "negate", &none, &[a], TBF16), w)
         }),
-        // OCP OFP8 E4M3FN: max 448, the tie at 464 goes to 448, beyond is the NaN pattern, subnormals.
+        // OCP OFP8 E4M3FN: max 448, the tie at 464 goes to 448; a conversion saturates beyond it and
+        // at infinity (design §6.4), NaN stays NaN; subnormals.
         differs("f32_to_e4m3fn_max", |c| {
             let (a, w) = (f32v(c, 448.0), bits(c, TF8, 0x7e));
             (ops::convert(c, a, TF8).unwrap(), w)
@@ -262,13 +264,123 @@ fn cases() -> (Queries, Queries) {
             let (a, w) = (f32v(c, 464.0), bits(c, TF8, 0x7e));
             (ops::convert(c, a, TF8).unwrap(), w)
         }),
-        differs("f32_to_e4m3fn_overflow_is_nan", |c| {
-            let (a, w) = (f32v(c, 470.0), bits(c, TF8, 0x7f));
+        differs("f32_to_e4m3fn_overflow_saturates", |c| {
+            let (a, w) = (f32v(c, 470.0), bits(c, TF8, 0x7e));
             (ops::convert(c, a, TF8).unwrap(), w)
         }),
-        differs("f32_to_e4m3fn_inf_is_nan", |c| {
-            let (a, w) = (f32v(c, f32::NEG_INFINITY), bits(c, TF8, 0xff));
+        differs("f32_to_e4m3fn_inf_saturates", |c| {
+            let (a, w) = (f32v(c, f32::NEG_INFINITY), bits(c, TF8, 0xfe));
             (ops::convert(c, a, TF8).unwrap(), w)
+        }),
+        differs("f32_to_e4m3fn_nan_stays_nan", |c| {
+            let (a, w) = (f32v(c, f32::NAN), bits(c, TF8, 0x7f));
+            (ops::convert(c, a, TF8).unwrap(), w)
+        }),
+        differs("f32_to_e5m2_overflow_saturates", |c| {
+            let (a, w) = (f32v(c, 1e6), bits(c, TF8E5, 0x7b));
+            (ops::convert(c, a, TF8E5).unwrap(), w)
+        }),
+        differs("f32_to_e5m2_inf_saturates", |c| {
+            let (a, w) = (f32v(c, f32::INFINITY), bits(c, TF8E5, 0x7b));
+            (ops::convert(c, a, TF8E5).unwrap(), w)
+        }),
+        // f32 and bf16 flush (design §6.4): subnormal operands read as zero of their sign, results
+        // below 2^-126 after rounding to the format's precision become zero of their sign.
+        differs("f32_multiply_flushes", |c| {
+            let (a, b, w) = (f32v(c, 2f32.powi(-63)), f32v(c, 2f32.powi(-64)), f32v(c, 0.0));
+            (ap(c, "multiply", &none, &[a, b], TF32), w)
+        }),
+        differs("f32_multiply_flush_keeps_sign", |c| {
+            let (a, b, w) = (f32v(c, -(2f32.powi(-63))), f32v(c, 2f32.powi(-64)), f32v(c, -0.0));
+            (ap(c, "multiply", &none, &[a, b], TF32), w)
+        }),
+        differs("f32_multiply_flushes_before_the_ieee_round_up", |c| {
+            // (1 - 2^-24) · 2^-126: 24 bits with an unbounded exponent, below 2^-126, so flushed;
+            // IEEE gradual underflow would round this tie up to 2^-126.
+            let (a, b, w) = (
+                f32v(c, f32::from_bits(0x3f7f_ffff)),
+                f32v(c, f32::from_bits(0x0080_0000)),
+                f32v(c, 0.0),
+            );
+            (ap(c, "multiply", &none, &[a, b], TF32), w)
+        }),
+        differs("f32_divide_flushes", |c| {
+            let (a, b, w) = (f32v(c, 2f32.powi(-100)), f32v(c, 2f32.powi(30)), f32v(c, 0.0));
+            (ap(c, "divide", &none, &[a, b], TF32), w)
+        }),
+        differs("f32_subtract_flushes", |c| {
+            let (a, b, w) = (
+                f32v(c, f32::from_bits(0x00c0_0000)),
+                f32v(c, f32::from_bits(0x0080_0000)),
+                f32v(c, 0.0),
+            );
+            (ap(c, "subtract", &none, &[a, b], TF32), w)
+        }),
+        differs("f32_add_reads_subnormal_as_zero", |c| {
+            let (a, b, w) = (f32v(c, f32::from_bits(1)), f32v(c, 0.0), f32v(c, 0.0));
+            (ap(c, "add", &none, &[a, b], TF32), w)
+        }),
+        differs("f32_negate_reads_subnormal_as_zero", |c| {
+            let (a, w) = (f32v(c, f32::from_bits(1)), f32v(c, -0.0));
+            (ap(c, "negate", &none, &[a], TF32), w)
+        }),
+        differs("f32_compare_subnormal_equals_zero", |c| {
+            let (a, b) = (f32v(c, f32::from_bits(1)), f32v(c, -0.0));
+            (
+                ap(c, "compare", &cmp("EQ", Some("FLOAT")), &[a, b], Ty::Bool),
+                Val::new(Ty::Bool, c.bool(true)),
+            )
+        }),
+        differs("f32_multiply_min_normal_is_kept", |c| {
+            let (a, b, w) = (
+                f32v(c, 2f32.powi(-63)),
+                f32v(c, 2f32.powi(-63)),
+                f32v(c, 2f32.powi(-126)),
+            );
+            (ap(c, "multiply", &none, &[a, b], TF32), w)
+        }),
+        differs("bf16_multiply_flushes", |c| {
+            let (a, b, w) = (
+                bits(c, TBF16, 0x2000),
+                bits(c, TBF16, 0x1f80),
+                bits(c, TBF16, 0x0000),
+            );
+            (ap(c, "multiply", &none, &[a, b], TBF16), w)
+        }),
+        differs("bf16_add_reads_subnormal_as_zero", |c| {
+            let (a, b, w) = (
+                bits(c, TBF16, 0x8001),
+                bits(c, TBF16, 0x0000),
+                bits(c, TBF16, 0x0000),
+            );
+            (ap(c, "add", &none, &[a, b], TBF16), w)
+        }),
+        differs("bf16_multiply_flushes_before_the_ieee_round_up", |c| {
+            // (2 - 2^-7) · 2^-63 · 2^-64 = 2^-126 - 2^-134: 8 bits, below 2^-126, so flushed (IEEE
+            // gradual underflow: a tie, rounded up to 2^-126).
+            let (a, b, w) = (
+                bits(c, TBF16, 0x207f),
+                bits(c, TBF16, 0x1f80),
+                bits(c, TBF16, 0x0000),
+            );
+            (ap(c, "multiply", &none, &[a, b], TBF16), w)
+        }),
+        differs("bf16_multiply_rounds_up_to_min_normal", |c| {
+            // (2 - 2^-7)(1 + 2^-7) · 2^-127 = 2^-126 - 2^-141 rounds to 2^-126 at 8 bits: kept.
+            let (a, b, w) = (
+                bits(c, TBF16, 0x207f),
+                bits(c, TBF16, 0x1f81),
+                bits(c, TBF16, 0x0080),
+            );
+            (ap(c, "multiply", &none, &[a, b], TBF16), w)
+        }),
+        differs("f32_to_bf16_reads_subnormal_as_zero", |c| {
+            let (a, w) = (f32v(c, f32::from_bits(0x007f_e000)), bits(c, TBF16, 0x0000));
+            (ops::convert(c, a, TBF16).unwrap(), w)
+        }),
+        differs("bf16_to_f32_reads_subnormal_as_zero", |c| {
+            let (a, w) = (bits(c, TBF16, 0x8001), f32v(c, -0.0));
+            (ops::convert(c, a, TF32).unwrap(), w)
         }),
         differs("f32_to_e4m3fn_min_subnormal", |c| {
             let (a, w) = (f32v(c, 2f32.powi(-9)), bits(c, TF8, 0x01));
@@ -338,6 +450,35 @@ fn cases() -> (Queries, Queries) {
             let x = ap(c, "subtract", &none, &[a, b], I32);
             let y = ap(c, "subtract", &none, &[b, a], I32);
             let e = ops::same(c, x, y).unwrap();
+            c.not(e).unwrap()
+        }),
+        // An IEEE multiplier (gradual underflow) does not meet the flushing spec, in f32 nor as a bf16
+        // multiply on an f32 unit.
+        bool_query("control_ieee_f32_multiply_is_not_ftz", |c| {
+            let x = c.var("x", F32).unwrap();
+            let y = c.var("y", F32).unwrap();
+            let ieee = c.op2(Op::FpMul(Rm::Rne), x, y).unwrap();
+            let spec = ap(
+                c,
+                "multiply",
+                &none,
+                &[Val::new(TF32, x), Val::new(TF32, y)],
+                TF32,
+            );
+            let e = ops::same(c, spec, Val::new(TF32, ieee)).unwrap();
+            c.not(e).unwrap()
+        }),
+        bool_query("control_ieee_f32_unit_is_not_ftz_bf16", |c| {
+            let a = Val::new(TBF16, c.var("a", Sort::Bv(16)).unwrap());
+            let b = Val::new(TBF16, c.var("b", Sort::Bv(16)).unwrap());
+            let (x, y) = (
+                float::to_f32(c, Format::BF16, a.t).unwrap(),
+                float::to_f32(c, Format::BF16, b.t).unwrap(),
+            );
+            let p = c.op2(Op::FpMul(Rm::Rne), x, y).unwrap();
+            let ieee = float::from_f32(c, Format::BF16, p).unwrap();
+            let spec = ap(c, "multiply", &none, &[a, b], TBF16);
+            let e = ops::same(c, spec, Val::new(TBF16, ieee)).unwrap();
             c.not(e).unwrap()
         }),
         bool_query("control_truncation_is_not_rounding", |c| {
@@ -462,5 +603,72 @@ fn rescale_lemma_holds_and_its_controls_fail() {
                 assert!(matches!(v, Some(Verdict::Sat { .. })), "{solver:?} {f}: {v:?}");
             }
         }
+    }
+}
+
+/// The encoding lemmas that Z3 decides in seconds (every one except the bf16 multiply and divide and
+/// the f32 add and subtract, which take about 45 s each and run in `datapaths` when a model uses them)
+/// hold, including those of formats no model uses.
+#[test]
+fn quick_encoding_lemmas_hold() {
+    let env = Env::new();
+    let cfg: toml::Value =
+        toml::from_str(&std::fs::read_to_string(repo_root().join("config.toml")).unwrap()).unwrap();
+    let tag = cfg["tools"]["docker"]["tag"].as_str().unwrap().to_string();
+    let host = std::env::var("CC_SMT_RUNNER").as_deref() == Ok("host");
+    let mut sets = vec![format!("tools.docker.tag={tag}")];
+    if host {
+        sets.push("tools.smt.runner=host".into());
+    }
+    let sets: Vec<&str> = sets.iter().map(String::as_str).collect();
+    let lc = env.config("[models]\nkeys = []\n", &sets);
+    let dir = env.root().join("lemmas");
+    std::fs::create_dir_all(&dir).unwrap();
+    let used: std::collections::BTreeSet<String> = [
+        "bf16.decode",
+        "bf16.round",
+        "bf16.add",
+        "bf16.sub",
+        "bf16.sqrt",
+        "bf16.from_f64",
+        "f32.sqrt",
+        "f32.from_f64",
+        "f8e4m3fn.decode",
+        "f8e4m3fn.round",
+        "f8e4m3fn.saturate",
+        "f8e5m2.decode",
+        "f8e5m2.round",
+        "f8e5m2.saturate",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+    let lemmas = float::lemmas(&used).unwrap();
+    let mut files = Vec::new();
+    for (f, t) in &lemmas {
+        std::fs::write(dir.join(f), t).unwrap();
+        files.push(f.clone());
+    }
+    let runners = Runners::from_config(&lc);
+    let c = &lc.config.tools.smt;
+    let (r, loc) = if host {
+        (runners.host, cc_smt::host_paths(&c.z3, &c.bitwuzla))
+    } else {
+        (runners.docker, Location::Image)
+    };
+    let runner = BoundRunner::new(
+        r,
+        Caps {
+            memory_gb: 2.0,
+            cpus: 1.0,
+            timeout_s: 300.0,
+            pids_limit: 64,
+        },
+        ToolLog::new("lemmas", dir.join("logs")),
+        CancelToken::new(),
+    );
+    let b = cc_smt::run_batch(&runner, &loc, Solver::Z3, &dir, &files, 60).unwrap();
+    for f in &files {
+        assert_eq!(b.verdicts.get(f), Some(&Verdict::Unsat), "{f}");
     }
 }

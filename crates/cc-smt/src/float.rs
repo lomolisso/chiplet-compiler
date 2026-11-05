@@ -92,6 +92,31 @@ impl Format {
         self.flavour == Flavour::Ieee && matches!((self.e, self.m), (5, 10) | (8, 23) | (11, 52))
     }
 
+    /// The subnormal rule of design §6.4: f32 and bf16 flush (DAZ and FTZ), every other format keeps
+    /// gradual underflow.
+    pub fn flushes(self) -> bool {
+        self == Format::F32 || self == Format::BF16
+    }
+
+    /// Conversions into the format saturate (design §6.4: the 8-bit formats, as OCP OFP8's saturating
+    /// mode).
+    pub fn saturates(self) -> bool {
+        self.bits() == 8
+    }
+
+    /// The smallest normal exponent.
+    pub fn emin(self) -> i64 {
+        1 - self.bias()
+    }
+
+    /// The flush threshold of a flushing format, as an `f64`: `2^emin - 2^(emin - m - 2)`. A value
+    /// rounded to `m + 1` significand bits with an unbounded exponent is below `2^emin` exactly when its
+    /// magnitude is below this (the midpoint under `2^emin` rounds up to it, its even neighbour).
+    pub fn flush_threshold(self) -> f64 {
+        let e = self.emin() as i32;
+        2f64.powi(e) - 2f64.powi(e - self.m as i32 - 2)
+    }
+
     /// Fits the Float32 carrier exactly (every value, its subnormals included, is a Float32).
     pub fn fits_f32(self) -> bool {
         self.e <= 8 && self.m <= 23
@@ -153,6 +178,7 @@ impl Format {
 }
 
 const F32: Sort = Sort::Fp { e: 8, s: 24 };
+const F64: Sort = Sort::Fp { e: 11, s: 53 };
 
 /// An FP literal from its bit pattern.
 pub fn lit(c: &mut Ctx, s: Sort, bits: u128) -> R {
@@ -183,6 +209,177 @@ pub fn nan(c: &mut Ctx, s: Sort) -> R {
 
 fn ext32(c: &mut Ctx, x: T) -> R {
     c.resize(x, 32, false)
+}
+
+/// Zero of the sort and sign of the FP term `x`.
+fn signed_zero(c: &mut Ctx, x: T) -> R {
+    let s = c.sort(x);
+    let pz = lit(c, s, 0)?;
+    let nz = c.op1(Op::FpNeg, pz)?;
+    let neg = c.op1(Op::FpIsNegative, x)?;
+    c.ite(neg, nz, pz)
+}
+
+/// `ite(fp.isSubnormal x, ±0, x)` on an FP term (DAZ, the sign kept).
+fn daz_fp(c: &mut Ctx, x: T) -> R {
+    let sub = c.op1(Op::FpIsSubnormal, x)?;
+    let z = signed_zero(c, x)?;
+    c.ite(sub, z, x)
+}
+
+/// A value of `f` (its FP term or bit pattern) as the format's operators read it: a subnormal reads as
+/// zero of its sign in a flushing format (DAZ, design §6.4), unchanged otherwise.
+pub fn daz(c: &mut Ctx, f: Format, t: T) -> R {
+    if !f.flushes() {
+        return Ok(t);
+    }
+    if f.native() {
+        return daz_fp(c, t);
+    }
+    let w = f.bits();
+    let ex = c.extract(t, f.e + f.m - 1, f.m)?;
+    let z = c.bv(0, f.e);
+    let ez = c.eq(ex, z)?;
+    let s = c.extract(t, w - 1, w - 1)?;
+    let zeros = c.bv(0, w - 1);
+    let sz = c.op2(Op::Concat, s, zeros)?;
+    c.ite(ez, sz, t)
+}
+
+/// FTZ of a native result that is exact whenever it is below `2^emin` (a sum or difference of two
+/// values of the format, a remainder): such a result is flushed exactly when it is subnormal.
+pub fn flush_exact(c: &mut Ctx, f: Format, r: T) -> R {
+    if f.flushes() { daz_fp(c, r) } else { Ok(r) }
+}
+
+/// Round a Float64 to the native format `f` (round to nearest even, overflow to infinity), flushing
+/// below `2^emin` when `f` flushes: zero of its sign when `|x|` is below [`Format::flush_threshold`].
+pub fn native_from_f64(c: &mut Ctx, f: Format, x: T) -> R {
+    if !f.native() {
+        return Err(SortError(format!("{} is not native", f.name())));
+    }
+    if f == Format::F64 {
+        return Ok(x);
+    }
+    let (e, s) = (f.e, f.m + 1);
+    let r = c.app(Op::FpToFp { e, s, rm: Rm::Rne }, &[x])?;
+    if !f.flushes() {
+        return Ok(r);
+    }
+    c.note(format!("{}.from_f64", f.name()));
+    let thr = lit(c, F64, u128::from(f.flush_threshold().to_bits()))?;
+    let ax = c.op1(Op::FpAbs, x)?;
+    let tiny = c.op2(Op::FpLt, ax, thr)?;
+    let z = signed_zero(c, r)?;
+    c.ite(tiny, z, r)
+}
+
+/// The correctly rounded arithmetic operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Arith {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Sqrt,
+}
+
+impl Arith {
+    pub fn name(self) -> &'static str {
+        match self {
+            Arith::Add => "add",
+            Arith::Sub => "sub",
+            Arith::Mul => "mul",
+            Arith::Div => "div",
+            Arith::Sqrt => "sqrt",
+        }
+    }
+
+    pub fn by_name(n: &str) -> Option<Arith> {
+        [Arith::Add, Arith::Sub, Arith::Mul, Arith::Div, Arith::Sqrt]
+            .into_iter()
+            .find(|a| a.name() == n)
+    }
+
+    pub fn arity(self) -> usize {
+        if self == Arith::Sqrt { 1 } else { 2 }
+    }
+
+    /// The theory's operation (round to nearest even) on FP terms of one sort.
+    fn apply(self, c: &mut Ctx, xs: &[T]) -> R {
+        let rm = Rm::Rne;
+        match (self, xs) {
+            (Arith::Add, [x, y]) => c.op2(Op::FpAdd(rm), *x, *y),
+            (Arith::Sub, [x, y]) => c.op2(Op::FpSub(rm), *x, *y),
+            (Arith::Mul, [x, y]) => c.op2(Op::FpMul(rm), *x, *y),
+            (Arith::Div, [x, y]) => c.op2(Op::FpDiv(rm), *x, *y),
+            (Arith::Sqrt, [x]) => c.op1(Op::FpSqrt(rm), *x),
+            _ => Err(SortError(format!("{}: wrong arity", self.name()))),
+        }
+    }
+}
+
+/// An arithmetic operation of format `f` on values of `f` (FP terms or bit patterns), as design §6.4
+/// specifies it: the IEEE operation, rounded to nearest even; in a flushing format on DAZ operands,
+/// computed with two more exponent bits (rounding with an unbounded exponent) and flushed to zero of its
+/// sign below `2^emin`. Bitwuzla has no such sort, so the encodings below compute in interchange sorts
+/// and the lemmas ([`lemmas`], Z3) prove each equal to that statement:
+///
+/// - gradual native formats: the theory's operation;
+/// - f32 add, subtract: in Float32, flushed when subnormal (an underflowing sum is exact: Hauser, "Handling
+///   floating-point exceptions in numeric programs", ACM TOPLAS 18(2), 1996);
+/// - f32 multiply, divide: in Float64 on the exact widenings, then [`native_from_f64`] (its lemma proves
+///   that rounding for every Float64); the product is exact in Float64 (48 significand bits, exponents
+///   within range) and rounding the rounded quotient again equals rounding the exact one (53 >= 2 · 24 + 2
+///   bits: Figueroa, "When is double rounding innocuous?", ACM SIGNUM Newsletter 30(3), 1995), so the
+///   flush decision and the result are those of the exact value;
+/// - f32 square root: in Float32 (the root of a normal f32 is normal: the lemma proves it is never
+///   subnormal);
+/// - carrier formats: in the Float32 carrier, then [`from_f32`] with the format's rule.
+pub fn arith(c: &mut Ctx, f: Format, op: Arith, args: &[T]) -> R {
+    let mut xs = Vec::with_capacity(args.len());
+    for &a in args {
+        xs.push(daz(c, f, a)?);
+    }
+    if f.native() {
+        if !f.flushes() {
+            return op.apply(c, &xs);
+        }
+        return match op {
+            Arith::Add | Arith::Sub => {
+                c.note(format!("{}.{}", f.name(), op.name()));
+                let r = op.apply(c, &xs)?;
+                flush_exact(c, f, r)
+            }
+            Arith::Sqrt => {
+                c.note(format!("{}.{}", f.name(), op.name()));
+                op.apply(c, &xs)
+            }
+            // The rounding is `native_from_f64`'s, whose lemma covers it.
+            Arith::Mul | Arith::Div => {
+                let mut ws = Vec::with_capacity(xs.len());
+                for x in xs {
+                    ws.push(c.app(
+                        Op::FpToFp {
+                            e: 11,
+                            s: 53,
+                            rm: Rm::Rne,
+                        },
+                        &[x],
+                    )?);
+                }
+                let r = op.apply(c, &ws)?;
+                native_from_f64(c, f, r)
+            }
+        };
+    }
+    let mut ws = Vec::with_capacity(xs.len());
+    for x in xs {
+        ws.push(to_f32(c, f, x)?);
+    }
+    let r = op.apply(c, &ws)?;
+    c.note(format!("{}.{}", f.name(), op.name()));
+    from_f32(c, f, r)
 }
 
 /// Whether a bit pattern of `f` is a NaN.
@@ -259,12 +456,28 @@ pub fn to_f32(c: &mut Ctx, f: Format, b: T) -> R {
     c.ite(isnan, qnan, v)
 }
 
-/// Round a Float32 to `f` (round to nearest, ties to even), as `f`'s bit pattern.
+/// Round a Float32 to `f` (round to nearest, ties to even), as `f`'s bit pattern: the rounding of an
+/// arithmetic result. Overflow gives infinity (IEEE formats) or the NaN pattern (finite-NaN formats:
+/// design §6.4, an E4M3FN result beyond 448 is NaN); a flushing format flushes below `2^emin`.
 pub fn from_f32(c: &mut Ctx, f: Format, x: T) -> R {
+    c.note(format!("{}.round", f.name()));
+    round_f32(c, f, x, false)
+}
+
+/// Convert a Float32 to `f`: [`from_f32`], except that a saturating format (FP8) maps overflow and
+/// infinities to its largest finite value of the same sign (design §6.4; OCP OFP8's saturating mode).
+pub fn convert_from_f32(c: &mut Ctx, f: Format, x: T) -> R {
+    if !f.saturates() {
+        return from_f32(c, f, x);
+    }
+    c.note(format!("{}.saturate", f.name()));
+    round_f32(c, f, x, true)
+}
+
+fn round_f32(c: &mut Ctx, f: Format, x: T, saturate: bool) -> R {
     if !f.fits_f32() || f.m >= 23 {
         return Err(SortError(format!("{} is not narrower than Float32", f.name())));
     }
-    c.note(format!("{}.round", f.name()));
     let b = c.bits_of(x)?;
     let s = c.extract(b, 31, 31)?;
     let e8 = c.extract(b, 30, 23)?;
@@ -317,9 +530,10 @@ pub fn from_f32(c: &mut Ctx, f: Format, x: T) -> R {
     let maxf = c.bv(f.max_finite(), 32);
     let over = c.op2(Op::BvUlt, maxf, packed)?;
     let nanp = c.bv(f.nan_pattern(), 32);
-    let big = match f.inf_pattern() {
-        Some(i) => c.bv(i, 32),
-        None => nanp,
+    let big = match (saturate, f.inf_pattern()) {
+        (true, _) => maxf,
+        (false, Some(i)) => c.bv(i, 32),
+        (false, None) => nanp,
     };
     let isinf = c.op1(Op::FpIsInfinite, x)?;
     let isnan = c.op1(Op::FpIsNaN, x)?;
@@ -327,13 +541,24 @@ pub fn from_f32(c: &mut Ctx, f: Format, x: T) -> R {
     let mag0 = c.ite(ovf, big, packed)?;
     let mag = c.ite(isnan, nanp, mag0)?;
     let mag = c.extract(mag, f.e + f.m - 1, 0)?;
-    c.op2(Op::Concat, s, mag)
+    let r = c.op2(Op::Concat, s, mag)?;
+    if !f.flushes() {
+        return Ok(r);
+    }
+    // FTZ: below the threshold the value rounded with an unbounded exponent is below 2^emin.
+    let thr = lit(c, F32, u128::from((f.flush_threshold() as f32).to_bits()))?;
+    let ax = c.op1(Op::FpAbs, x)?;
+    let tiny = c.op2(Op::FpLt, ax, thr)?;
+    let zeros = c.bv(0, f.e + f.m);
+    let z = c.op2(Op::Concat, s, zeros)?;
+    c.ite(tiny, z, r)
 }
 
 /// Round a Float64 to `f` (round to nearest, ties to even), through Float32 rounded to odd: truncate,
 /// and set the last bit when inexact. With 24 >= m + 3 significand bits, rounding to odd first and to
 /// nearest second equals one rounding to nearest (Boldo, Melquiond, "Emulation of FMA and correctly
 /// rounded sums: proved algorithms using rounding to odd", IEEE TC 57(4), 2008); the lemma checks it.
+/// Saturating formats saturate ([`convert_from_f32`]).
 pub fn from_f64(c: &mut Ctx, f: Format, x: T) -> R {
     c.note(format!("{}.from_f64", f.name()));
     let y = c.app(
@@ -360,7 +585,7 @@ pub fn from_f64(c: &mut Ctx, f: Format, x: T) -> R {
     let keep = c.or(&[exact, isnan])?;
     let rb = c.ite(keep, b, odd)?;
     let y2 = c.app(Op::FpFromBits { e: 8, s: 24 }, &[rb])?;
-    from_f32(c, f, y2)
+    convert_from_f32(c, f, y2)
 }
 
 /// Bit-pattern equality of two values of `f`, all NaNs equal.
@@ -376,21 +601,28 @@ pub fn same_bits(c: &mut Ctx, f: Format, a: T, b: T) -> R {
 }
 
 /// The encoding lemmas for the encodings a set of queries used (`Ctx::used`): `(file name, query)`.
-/// Each must be `unsat` (in Z3: they state the native sorts Bitwuzla does not have).
+/// Each must be `unsat` (in Z3: they state sorts Bitwuzla does not have). Each compares an encoding with
+/// design §6.4 stated directly in SMT-LIB ([`reference`]): the rounding in the format's own sort, for a
+/// flushing format with two more exponent bits, flushed below `2^emin` and narrowed.
 pub fn lemmas(used: &std::collections::BTreeSet<String>) -> Result<Vec<(String, String)>, SortError> {
     let mut out = Vec::new();
     for u in used {
         let Some((fmt, what)) = u.split_once('.') else {
             continue;
         };
-        let f = by_name(fmt).ok_or_else(|| SortError(format!("{u}: no carrier format {fmt}")))?;
+        let f = by_name(fmt).ok_or_else(|| SortError(format!("{u}: no encoded format {fmt}")))?;
         let text = match (f.flavour, what) {
-            (Flavour::Ieee, "decode") => ieee_decode(f)?,
-            (Flavour::Ieee, "round") => ieee_round(f)?,
-            (Flavour::Ieee, op @ ("add" | "sub" | "mul" | "div" | "sqrt")) => ieee_op(f, op)?,
+            (Flavour::Ieee, "decode") if !f.native() => ieee_decode(f)?,
+            (Flavour::Ieee, "round") if !f.native() => ieee_round(f, false)?,
+            (Flavour::Ieee, "saturate") if !f.native() => ieee_round(f, true)?,
             (Flavour::Ieee, "from_f64") => ieee_from_f64(f)?,
+            (Flavour::Ieee, "sqrt") if f.native() => native_sqrt(f)?,
+            (Flavour::Ieee, op) if Arith::by_name(op).is_some() => {
+                ieee_op(f, Arith::by_name(op).unwrap_or(Arith::Add))?
+            }
             (Flavour::FiniteNan, "decode") => fn_decode(f)?,
-            (Flavour::FiniteNan, "round") => fn_round(f)?,
+            (Flavour::FiniteNan, "round") => fn_round(f, false)?,
+            (Flavour::FiniteNan, "saturate") => fn_round(f, true)?,
             // An encoding without a lemma is never trusted.
             _ => return Err(SortError(format!("{u}: no encoding lemma"))),
         };
@@ -399,9 +631,9 @@ pub fn lemmas(used: &std::collections::BTreeSet<String>) -> Result<Vec<(String, 
     Ok(out)
 }
 
-/// The formats with carrier encodings, by [`Format::name`].
+/// The formats with encodings that need lemmas (the carriers and flushing f32), by [`Format::name`].
 pub fn by_name(n: &str) -> Option<Format> {
-    [Format::BF16, Format::E4M3FN, Format::E5M2]
+    [Format::BF16, Format::E4M3FN, Format::E5M2, Format::F32]
         .into_iter()
         .find(|f| f.name() == n)
 }
@@ -411,6 +643,85 @@ fn finish(c: &Ctx, comment: &str, goal: T) -> Result<String, SortError> {
     s.comment(comment);
     c.render(&mut s, &[goal]);
     Ok(s.render())
+}
+
+/// `x · 2^k` as a literal of an FP sort (a normal value).
+fn pow2_in(c: &mut Ctx, s: Sort, k: i64) -> R {
+    let Sort::Fp { e, s: sb } = s else {
+        return Err(SortError("a power of two of a non-FP sort".into()));
+    };
+    let bias = (1i64 << (e - 1)) - 1;
+    lit(c, s, ((k + bias) as u128) << (sb - 1))
+}
+
+/// The sort of format `f` with two more exponent bits: no add, subtract, multiply, divide or square root
+/// of its values underflows or overflows there, so rounding in it is rounding with an unbounded exponent.
+fn wide_sort(f: Format) -> Sort {
+    Sort::Fp {
+        e: f.e + 2,
+        s: f.m + 1,
+    }
+}
+
+/// Design §6.4's result for a value `y` of [`wide_sort`] (already rounded to `f`'s precision): in a
+/// flushing format zero of its sign below `2^emin`; then narrowed to `f`'s sort (exact, or overflow to
+/// infinity).
+fn flush_narrow(c: &mut Ctx, f: Format, y: T) -> R {
+    let ws = c.sort(y);
+    let y = if f.flushes() {
+        let min = pow2_in(c, ws, f.emin())?;
+        let ay = c.op1(Op::FpAbs, y)?;
+        let tiny = c.op2(Op::FpLt, ay, min)?;
+        let z = signed_zero(c, y)?;
+        c.ite(tiny, z, y)?
+    } else {
+        y
+    };
+    let (e, s) = (f.e, f.m + 1);
+    c.app(Op::FpToFp { e, s, rm: Rm::Rne }, &[y])
+}
+
+/// Design §6.4's rounding of an FP term `x` to the IEEE format `f`, in `f`'s sort: round to nearest even
+/// with an unbounded exponent, flush, narrow; a saturating conversion maps infinities to the largest
+/// finite value of their sign (NaN stays NaN).
+fn reference(c: &mut Ctx, f: Format, x: T, saturate: bool) -> R {
+    let r = if f.flushes() {
+        let Sort::Fp { e, s } = wide_sort(f) else {
+            return Err(SortError("wide sort".into()));
+        };
+        let y = c.app(Op::FpToFp { e, s, rm: Rm::Rne }, &[x])?;
+        flush_narrow(c, f, y)?
+    } else {
+        let (e, s) = (f.e, f.m + 1);
+        c.app(Op::FpToFp { e, s, rm: Rm::Rne }, &[x])?
+    };
+    if !saturate {
+        return Ok(r);
+    }
+    let max = lit(c, f.fp_sort(), f.max_finite())?;
+    let nmax = c.op1(Op::FpNeg, max)?;
+    let neg = c.op1(Op::FpIsNegative, r)?;
+    let m = c.ite(neg, nmax, max)?;
+    let inf = c.op1(Op::FpIsInfinite, r)?;
+    c.ite(inf, m, r)
+}
+
+/// A value of `f` from its encoding (FP term or bit pattern) in `f`'s sort.
+fn as_fp(c: &mut Ctx, f: Format, t: T) -> R {
+    if f.native() {
+        Ok(t)
+    } else {
+        c.app(Op::FpFromBits { e: f.e, s: f.m + 1 }, &[t])
+    }
+}
+
+/// The policy a lemma states, for its comment.
+fn policy(f: Format) -> &'static str {
+    if f.flushes() {
+        "with DAZ, two more exponent bits and FTZ below 2^emin"
+    } else {
+        "with gradual underflow"
+    }
 }
 
 /// `to_f32` is the exact widening of the native sort.
@@ -440,85 +751,126 @@ fn ieee_decode(f: Format) -> Result<String, SortError> {
     )
 }
 
-/// `from_f32` is the theory's rounding to the native sort.
-fn ieee_round(f: Format) -> Result<String, SortError> {
+/// `from_f32` (or the saturating conversion) is the specified rounding.
+fn ieee_round(f: Format, saturate: bool) -> Result<String, SortError> {
     let mut c = Ctx::new();
     let x = c.var("x", F32)?;
-    let b = from_f32(&mut c, f, x)?;
-    let (e, s) = (f.e, f.m + 1);
-    let got = c.app(Op::FpFromBits { e, s }, &[b])?;
-    let want = c.app(Op::FpToFp { e, s, rm: Rm::Rne }, &[x])?;
+    let b = if saturate {
+        convert_from_f32(&mut c, f, x)?
+    } else {
+        from_f32(&mut c, f, x)?
+    };
+    let got = as_fp(&mut c, f, b)?;
+    let want = reference(&mut c, f, x, saturate)?;
     let eq = c.eq(got, want)?;
     let goal = c.not(eq)?;
     finish(
         &c,
         &format!(
-            "{}: rounding from Float32 equals to_fp RNE (expect unsat)",
-            f.name()
+            "{}: {} from Float32 equals round to nearest even {}{} (expect unsat)",
+            f.name(),
+            if saturate { "converting" } else { "rounding" },
+            policy(f),
+            if saturate {
+                ", saturating at the largest finite value"
+            } else {
+                ""
+            }
         ),
         goal,
     )
 }
 
-/// An arithmetic operation computed in Float32 and rounded equals the native one (double rounding is
-/// harmless here; the lemma decides it).
-fn ieee_op(f: Format, op: &str) -> Result<String, SortError> {
+/// An arithmetic operation's encoding ([`arith`]) equals the operation stated in the format's own sort.
+fn ieee_op(f: Format, op: Arith) -> Result<String, SortError> {
     let mut c = Ctx::new();
-    let (e, s) = (f.e, f.m + 1);
-    let a = c.var("a", Sort::Bv(f.bits()))?;
-    let b = c.var("b", Sort::Bv(f.bits()))?;
-    let da = to_f32(&mut c, f, a)?;
-    let db = to_f32(&mut c, f, b)?;
-    let na = c.app(Op::FpFromBits { e, s }, &[a])?;
-    let nb = c.app(Op::FpFromBits { e, s }, &[b])?;
-    let (wide, native) = match op {
-        "add" => (
-            c.op2(Op::FpAdd(Rm::Rne), da, db)?,
-            c.op2(Op::FpAdd(Rm::Rne), na, nb)?,
-        ),
-        "sub" => (
-            c.op2(Op::FpSub(Rm::Rne), da, db)?,
-            c.op2(Op::FpSub(Rm::Rne), na, nb)?,
-        ),
-        "mul" => (
-            c.op2(Op::FpMul(Rm::Rne), da, db)?,
-            c.op2(Op::FpMul(Rm::Rne), na, nb)?,
-        ),
-        "div" => (
-            c.op2(Op::FpDiv(Rm::Rne), da, db)?,
-            c.op2(Op::FpDiv(Rm::Rne), na, nb)?,
-        ),
-        _ => (c.op1(Op::FpSqrt(Rm::Rne), da)?, c.op1(Op::FpSqrt(Rm::Rne), na)?),
+    let mut xs = Vec::new();
+    for v in ["a", "b"].into_iter().take(op.arity()) {
+        xs.push(c.var(v, f.sort())?);
+    }
+    let got = arith(&mut c, f, op, &xs)?;
+    let got = as_fp(&mut c, f, got)?;
+    // Z3 has no addition in sorts with more exponent than significand bits (bf16 with two more is
+    // (10, 8)); an underflowing sum is exact (Hauser, ACM TOPLAS 18(2), 1996), so for a sum the native
+    // sort's operation flushed when subnormal states the same.
+    let direct = matches!(op, Arith::Add | Arith::Sub) && f.e + 2 > f.m + 1;
+    let want = if f.flushes() && direct {
+        let mut ns = Vec::new();
+        for &x in &xs {
+            let v = as_fp(&mut c, f, x)?;
+            ns.push(daz_fp(&mut c, v)?);
+        }
+        let r = op.apply(&mut c, &ns)?;
+        daz_fp(&mut c, r)?
+    } else if f.flushes() {
+        let Sort::Fp { e, s } = wide_sort(f) else {
+            return Err(SortError("wide sort".into()));
+        };
+        let mut ws = Vec::new();
+        for &x in &xs {
+            let v = as_fp(&mut c, f, x)?;
+            let v = daz_fp(&mut c, v)?;
+            ws.push(c.app(Op::FpToFp { e, s, rm: Rm::Rne }, &[v])?);
+        }
+        let r = op.apply(&mut c, &ws)?;
+        flush_narrow(&mut c, f, r)?
+    } else {
+        let mut ns = Vec::new();
+        for &x in &xs {
+            ns.push(as_fp(&mut c, f, x)?);
+        }
+        op.apply(&mut c, &ns)?
     };
-    let r = from_f32(&mut c, f, wide)?;
-    let got = c.app(Op::FpFromBits { e, s }, &[r])?;
-    let eq = c.eq(got, native)?;
+    let eq = c.eq(got, want)?;
     let goal = c.not(eq)?;
     finish(
         &c,
         &format!(
-            "{}: {op} in Float32 then rounded equals the native {op} (expect unsat)",
+            "{}: the encoding of {} equals the operation in its own sort {} (expect unsat)",
+            f.name(),
+            op.name(),
+            policy(f)
+        ),
+        goal,
+    )
+}
+
+/// The square root of a flushing native format on a DAZ operand is never subnormal (the root of a normal
+/// value is normal), so the theory's operation is the specified one: nothing is flushed.
+fn native_sqrt(f: Format) -> Result<String, SortError> {
+    let mut c = Ctx::new();
+    let x = c.var("a", f.sort())?;
+    let r = arith(&mut c, f, Arith::Sqrt, &[x])?;
+    let goal = c.op1(Op::FpIsSubnormal, r)?;
+    finish(
+        &c,
+        &format!(
+            "{}: the square root of a DAZ operand is subnormal (expect unsat)",
             f.name()
         ),
         goal,
     )
 }
 
-/// Rounding a Float64 through Float32 rounded to odd equals the native rounding.
+/// Rounding a Float64 (through Float32 rounded to odd for a carrier) equals the specified rounding.
 fn ieee_from_f64(f: Format) -> Result<String, SortError> {
     let mut c = Ctx::new();
-    let (e, s) = (f.e, f.m + 1);
-    let x = c.var("x", Sort::Fp { e: 11, s: 53 })?;
-    let r = from_f64(&mut c, f, x)?;
-    let got = c.app(Op::FpFromBits { e, s }, &[r])?;
-    let want = c.app(Op::FpToFp { e, s, rm: Rm::Rne }, &[x])?;
+    let x = c.var("x", F64)?;
+    let r = if f.native() {
+        native_from_f64(&mut c, f, x)?
+    } else {
+        from_f64(&mut c, f, x)?
+    };
+    let got = as_fp(&mut c, f, r)?;
+    let want = reference(&mut c, f, x, f.saturates())?;
     let eq = c.eq(got, want)?;
     let goal = c.not(eq)?;
     finish(
         &c,
         &format!(
-            "{}: rounding from Float64 through Float32 rounded to odd equals to_fp RNE (expect unsat)",
-            f.name()
+            "{}: rounding from Float64 equals round to nearest even {} (expect unsat)",
+            f.name(),
+            policy(f)
         ),
         goal,
     )
@@ -599,10 +951,17 @@ fn fn_decode(f: Format) -> Result<String, SortError> {
     )
 }
 
-fn fn_round(f: Format) -> Result<String, SortError> {
+/// `from_f32` of a finite-NaN format, piecewise against the two IEEE sorts whose grids it shares; past
+/// the largest finite value, and for infinities, the NaN pattern (arithmetic) or the largest finite
+/// pattern of the sign (`saturate`, a conversion).
+fn fn_round(f: Format, saturate: bool) -> Result<String, SortError> {
     let mut c = Ctx::new();
     let x = c.var("x", F32)?;
-    let b = from_f32(&mut c, f, x)?;
+    let b = if saturate {
+        convert_from_f32(&mut c, f, x)?
+    } else {
+        from_f32(&mut c, f, x)?
+    };
     let (e, s) = (f.e, f.m + 1);
     let ax = c.op1(Op::FpAbs, x)?;
     // Values up to the IEEE sort's largest finite value round alike in both.
@@ -633,22 +992,41 @@ fn fn_round(f: Format) -> Result<String, SortError> {
     let limit = lit(&mut c, ws, wider_bits_of_nan_value(f))?;
     let past = c.op2(Op::FpLeq, limit, ay)?;
     let isnan = is_nan_bits(&mut c, f, b)?;
+    // The overflow pattern: NaN, or the largest finite magnitude with x's sign.
+    let over = if saturate {
+        let w = f.bits();
+        let sx = c.op1(Op::FpIsNegative, x)?;
+        let one = c.bv(1, 1);
+        let zero = c.bv(0, 1);
+        let sb = c.ite(sx, one, zero)?;
+        let mag = c.bv(f.max_finite(), w - 1);
+        let maxp = c.op2(Op::Concat, sb, mag)?;
+        c.eq(b, maxp)?
+    } else {
+        isnan
+    };
     let wider = fn_as_wider(&mut c, f, b)?;
     let eqy = c.eq(wider, y)?;
-    let br = c.ite(past, isnan, eqy)?;
+    let br = c.ite(past, over, eqy)?;
     let c2 = c.app(Op::Implies, &[big, br])?;
-    // NaN and infinities give the NaN pattern.
+    // NaN gives the NaN pattern; infinities overflow.
     let xnan = c.op1(Op::FpIsNaN, x)?;
-    let special = c.or(&[xnan, isinf])?;
-    let c3 = c.app(Op::Implies, &[special, isnan])?;
-    let all = c.and(&[c1, c2, c3])?;
+    let c3 = c.app(Op::Implies, &[xnan, isnan])?;
+    let c4 = c.app(Op::Implies, &[isinf, over])?;
+    let all = c.and(&[c1, c2, c3, c4])?;
     let goal = c.not(all)?;
     finish(
         &c,
         &format!(
-            "{}: rounding from Float32 agrees with (_ FloatingPoint {e} {s}) up to its largest finite value, with (_ FloatingPoint {} {s}) from the smallest normal, and overflows to the NaN pattern (expect unsat)",
+            "{}: {} from Float32 agrees with (_ FloatingPoint {e} {s}) up to its largest finite value, with (_ FloatingPoint {} {s}) from the smallest normal, and overflows to {} (expect unsat)",
             f.name(),
-            e + 1
+            if saturate { "converting" } else { "rounding" },
+            e + 1,
+            if saturate {
+                "the largest finite pattern of its sign"
+            } else {
+                "the NaN pattern"
+            }
         ),
         goal,
     )
@@ -685,8 +1063,14 @@ mod tests {
             "bf16.div",
             "bf16.sqrt",
             "bf16.from_f64",
+            "f32.add",
+            "f32.sub",
+            "f32.sqrt",
+            "f32.from_f64",
             "f8e4m3fn.decode",
             "f8e4m3fn.round",
+            "f8e4m3fn.saturate",
+            "f8e5m2.saturate",
         ]
         .into_iter()
         .map(String::from)
