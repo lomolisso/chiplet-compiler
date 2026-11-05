@@ -1,6 +1,7 @@
 # EDA environment on this host (eda-toggle.sh, eda-run, memory limits)
 
-How chiplet-compiler's `EdaRunner` must launch the licensed Synopsys / Cadence tools.
+How chiplet-compiler's `EdaRunner` must launch the licensed Synopsys / Cadence tools (the flows use Design
+Compiler and, in later versions, Innovus; design §3.7).
 All facts below were checked on the host on 2026-10-30 by reading the scripts and running
 probes from a scratch directory (never from the repo).
 
@@ -11,7 +12,7 @@ probes from a scratch directory (never from the repo).
 | `~/bin/eda-toggle.sh` | Sourced from `~/.bashrc`. Defines `eda-on`, `eda-off`, `eda-status`, `eda-run`, `freepdk45-init`. |
 | `~/pdks/setup_env.sh` | Part 1 (always): exports PDK path vars (see `pdks.md`). Part 2 (only if `[[ $- == *i* ]]`): `module load Synopsys_x86-64/2024` + `module load cadence/2024-08`, tool homes, `LD_LIBRARY_PATH` shim. |
 | `/etc/modulefiles/software/Synopsys_x86-64/2024.lua` | Lmod module: prepends `27005@synopsys.webstore.illinois.edu` to `LM_LICENSE_FILE`; sets `VCS_HOME`, `VERDI_HOME`, `SYNOPSYS_LC_ROOT`; puts ~100 `…/W-2024.09/bin` dirs on `PATH`; does **not** set `SYNOPSYS`. |
-| `/etc/modulefiles/software/cadence/2024-08.lua` | Lmod module: prepends `5280@cadence.webstore.illinois.edu` to `LM_LICENSE_FILE`; sets `CADENCE_CURR`; prepends `bin`, `tools.lnx86/bin` and `tools.lnx86/lib` of every product (GENUS211, CONFRML241, XCELIUM2403, INNOVUS211, INCISIVE152, …) to `PATH`/`LD_LIBRARY_PATH`. |
+| `/etc/modulefiles/software/cadence/2024-08.lua` | Lmod module: prepends `5280@cadence.webstore.illinois.edu` to `LM_LICENSE_FILE`; sets `CADENCE_CURR`; prepends `bin`, `tools.lnx86/bin` and `tools.lnx86/lib` of every product (XCELIUM2403, INNOVUS211, INCISIVE152, …) to `PATH`/`LD_LIBRARY_PATH`. |
 
 ### What each function does (read from `~/bin/eda-toggle.sh`)
 
@@ -39,8 +40,8 @@ probe.sh: line 3: set: -i: invalid option
 ```
 
 So in `bash -c '. ~/bin/eda-toggle.sh && eda-run dc_shell …'` the `$- == *i*` guard in `setup_env.sh` stays
-false: only the PDK path vars are exported, **no modules are loaded, `dc_shell`/`genus` are not on `PATH`, and
-`LM_LICENSE_FILE` is unset** (probe: `command -v dc_shell genus xrun` printed nothing). The same applies to
+false: only the PDK path vars are exported, **no modules are loaded, `dc_shell`/`xrun` are not on `PATH`, and
+`LM_LICENSE_FILE` is unset** (probe: `command -v dc_shell xrun` printed nothing). The same applies to
 `eda-on` in a script. (Bash docs list `-i` as an invocation option only, not a `set` option:
 https://www.gnu.org/software/bash/manual/html_node/The-Set-Builtin.html.)
 
@@ -68,11 +69,11 @@ bash --norc -i -c '. "$HOME/bin/eda-toggle.sh"; eda-run "$@"' eda-run <tool> <ar
 | Concern | Rule |
 |---|---|
 | Launch | The `bash --norc -i -c … eda-run "$@"` form above, `stdin=/dev/null`, new process group (`setsid`). |
-| CWD | A per-job dir under `build/.<pass>/eda/<job>/`. Tools drop files in CWD: Genus `genus.log`/`genus.cmd`, DC `command.log`/`default.svf`, Formality `formality.log`/`fm_shell_command.log`/`FM_WORK/`, VCS `csrc/`, `simv`, `simv.daidir/`, Xcelium `xrun.log`/`xcelium.d/`, LEC `lec.log` (typical names; (unverified) per version). Never run from the repo root. |
-| Batch mode | Always a script + explicit exit: `dc_shell -f x.tcl` (ends with `quit`), `genus -batch -files x.tcl`, `lec -nogui -dofile x.do` (ends with `exit -force`), `fm_shell -f`, `pt_shell -f`, `sg_shell < x.tcl`. See `synopsys.md`, `cadence.md`. |
-| TMPDIR | `/tmp` is only 8 GB on this host (`df -h /tmp`); Genus creates `/tmp/genus_temp_<pid>_…` (observed). `EdaRunner` exports `TMPDIR=<scratch_dir>/tmp/eda/<pass>-<n>-<tool>` (removed after a successful call); Genus nests its temp dir under it (verified 2026-10-30). |
+| CWD | A per-job dir under `build/.<pass>/eda/<job>/`. Tools drop files in CWD: DC `command.log`/`default.svf`, Formality `formality.log`/`fm_shell_command.log`/`FM_WORK/`, VCS `csrc/`, `simv`, `simv.daidir/`, Xcelium `xrun.log`/`xcelium.d/` (typical names; (unverified) per version). Never run from the repo root. |
+| Batch mode | Always a script + explicit exit: `dc_shell -f x.tcl` (ends with `quit`), `fm_shell -f`, `pt_shell -f`, `sg_shell < x.tcl`. See `synopsys.md`. |
+| TMPDIR | `/tmp` is only 8 GB on this host (`df -h /tmp`); Cadence tools created `/tmp/<tool>_temp_<pid>_…` when run directly (observed 2026-10-30). `EdaRunner` exports `TMPDIR=<scratch_dir>/tmp/eda/<pass>-<n>-<tool>` (removed after a successful call); the tools nest their temp dirs under it (verified 2026-10-30). |
 | Timeouts | Wall-clock timeout per job; on expiry `kill -TERM -<pgid>`, wait, then `-KILL`. |
-| Threads | Pass explicit caps in every script: DC `set_host_options -max_cores N` (default 1, max 16), Genus `set_db / .max_cpus_per_server N` (**default 8**), Formality `set_host_options -max_cores N` (max 8; >4 cores takes a 2nd license), VCS `-jN`. |
+| Threads | Pass explicit caps in every script: DC `set_host_options -max_cores N` (default 1, max 16), Formality `set_host_options -max_cores N` (max 8; >4 cores takes a 2nd license), VCS `-jN`. |
 | Memory | Tool-native caps where they exist (Formality `set_host_options -max_memory <GB>`; DC `-minimize_peak_mem`), plus the RSS watchdog below. |
 | Exit status | Do not trust exit codes alone: grep the log for `Error`/`ERROR` and the tool's license-failure messages. |
 
@@ -80,7 +81,7 @@ bash --norc -i -c '. "$HOME/bin/eda-toggle.sh"; eda-run "$@"' eda-run <tool> <ar
 
 - Synopsys: `27005@synopsys.webstore.illinois.edu`; Cadence: `5280@cadence.webstore.illinois.edu`; both via
   `LM_LICENSE_FILE` set by the Lmod modules (§1).
-- Observed: `genus -help` printed `Error : Unable to complete periodic license check succesfully` (2026-10-30):
+- Observed: a Cadence tool printed `Error : Unable to complete periodic license check succesfully` (2026-10-30):
   Cadence license reachability may be flaky. `EdaRunner` should detect license errors and retry with backoff
   rather than mark the design as failed.
 - Observed: every Cadence tool prints `WARNING This OS does not appear to be a Cadence supported Linux
@@ -128,7 +129,7 @@ RSS watchdog design (what `EdaRunner` implements):
 - Probes `probe_seti.sh`, `probe_i.sh`, `probe_norc.sh`, `probe_final.sh` (run from a scratch dir, 2026-10-30).
 - DC man page `set_host_options(2)`: `/software/Synopsys-2024_x86_64/syn/W-2024.09/doc/syn/man/cat2/set_host_options.2`;
   Formality `set_host_options(2)`: `/software/Synopsys-2024_x86_64/fm/W-2024.09/doc/fm/man/cat2/set_host_options.2`;
-  DC `dc_shell(1)` (`-minimize_peak_mem`); Genus attribute ref `/software/cadence-2024-08/GENUS211/doc/genus_attref/synthesis.html` (`max_cpus_per_server`, default 8).
+  DC `dc_shell(1)` (`-minimize_peak_mem`).
 - setrlimit(2): https://man7.org/linux/man-pages/man2/setrlimit.2.html ; mallopt(3): https://man7.org/linux/man-pages/man3/mallopt.3.html ;
   proc(5): https://man7.org/linux/man-pages/man5/proc.5.html ;
   systemd.resource-control(5): https://www.freedesktop.org/software/systemd/man/latest/systemd.resource-control.html ;

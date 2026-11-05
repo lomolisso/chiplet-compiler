@@ -227,13 +227,16 @@
    - `requant_timeout_s` (1800): the limit of one `rescale` tolerance lemma.
    - `target_units` (0): stop a family at this many units; 0 stops when no merge saves area.
    - `max_logic_depth` (0): the critical-path bound in ps; 0 derives it per family (step 7).
-   - `kit` (`"asap7"`): the library kit that prices merges.
+   - `kit` (`"asap7"` in `config.toml`): the library kit that prices merges; empty is the library's
+     first kit.
    - `contract` (true): cover units with the mined patterns first (step 2).
    - `max_compat_nodes` (4000): larger compatibility graphs go to `greedy`.
    - `certify_max_nodes` (60): steps with at most this many nodes store their graph for `verify`.
-   - `compose_timeout_s` (600): Z3's limit per composed-step proof.
+   - `compose_timeout_s` (600): the lemma solver's (Z3's, `cc_smt::lemma_solver`) limit per composed-step
+     proof.
    - `views` (true): write `views/merge.md`.
-   - `[passes.merge.clique]`: `algorithm` (`"exact_ilp"` | `"ostergard"` | `"greedy"`), `rank`
+   - `[passes.merge.clique]`: `algorithm` (`"exact_ilp"` | `"ostergard"` | `"greedy"`, the
+     `CliqueSolver` registry `algo::clique::SOLVERS`, docs/framework/adapters.md), `rank`
      (`"greedy"` | `"algorithm"`: how candidate pairs are evaluated), `node_budget` (2000), `timeout_s`
      (30, one deadline per evaluation).
 

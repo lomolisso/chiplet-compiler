@@ -55,12 +55,12 @@ answer class.
 
 | Family | Test | What every implementation must do |
 |---|---|---|
-| `SynthFlow` | deep `characterize_reduced_catalog_on_every_flow`; smoke `characterize` (stand-in tools) | the reduced catalog on both kits and targets with every check of `verify` green (ports and widths, outputs driven, flops, library cells, area, delay, trends) |
+| `SynthFlow` | deep `characterize_reduced_catalog_on_every_flow`; smoke `adapters::every_synthesis_flow_writes_what_the_pass_reads`, `characterize` (stand-in tools) | the reduced catalog on both kits and targets with every check of `verify` green (ports and widths, outputs driven, flops, library cells, area, delay, trends) |
 | `SmtSolver` | smoke `adapters::smt_solvers_conform` (host or image solvers) | the same verdicts on bit-vector, float and uninterpreted-function queries; a non-interchange float sort answered exactly by the solvers that declare `any_float_sort` |
 | `CliqueSolver` | unit `merge::algo::tests::every_registered_clique_solver_conforms` | feasible cliques (closed under arc ends, no-goods respected); every exact one at the same optimum, a heuristic at most it |
 | `MisSolver` | unit `mine::algo::mis::tests::every_registered_solver_conforms` | independent sets; every exact one of maximum size, claimed optimal, a heuristic no larger, its bound no smaller |
-| `Miner` | deep `adapters::miners_conform` | GraMi's two-path fixture: the frequent patterns and their support |
-| `HlsFrontend`, `PnrFlow` | smoke `adapters::declared_families` | names unique, capabilities declared; the stub refuses to generate; no place-and-route flow is registered |
+| `Miner` | deep `adapters::miners_conform` | GraMi's two-path fixture at support 2: exactly the three frequent patterns; a second call reuses the run |
+| `HlsFrontend`, `PnrFlow` | smoke `adapters::declared_families_refuse_what_they_do_not_implement` | names unique, capabilities declared; the stub refuses to generate; no place-and-route flow is registered |
 
 ## PDK manifests (`cc_core::pdk`)
 
