@@ -99,11 +99,16 @@ pub fn load(cfg: &LoadedConfig, name: &str) -> Result<Pdk> {
         ));
     }
     let text = std::fs::read_to_string(&file).at(&file)?;
-    let manifest: PdkManifest = toml::from_str(&text).map_err(|e| err(name, format!("{}: {e}", file.display())))?;
+    let manifest: PdkManifest =
+        toml::from_str(&text).map_err(|e| err(name, format!("{}: {e}", file.display())))?;
     if manifest.name != name {
         return Err(err(
             name,
-            format!("{}: `name` is {:?}, the file stem {name:?}", file.display(), manifest.name),
+            format!(
+                "{}: `name` is {:?}, the file stem {name:?}",
+                file.display(),
+                manifest.name
+            ),
         ));
     }
     if !manifest.groups.is_empty() && manifest.merged.is_none() {

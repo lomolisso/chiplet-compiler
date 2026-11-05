@@ -53,7 +53,9 @@ impl HlsFrontend for Allo {
     fn generate(&self, _runner: &BoundRunner, _src: &Path, top: &str, _out: &Path) -> Result<Vec<String>> {
         Err(CoreError::Tool {
             tool: "allo".into(),
-            message: format!("{top}: the Allo front end is not implemented yet (the allo_emit and xls passes)"),
+            message: format!(
+                "{top}: the Allo front end is not implemented yet (the allo_emit and xls passes)"
+            ),
         })
     }
 }

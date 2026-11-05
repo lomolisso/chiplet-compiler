@@ -6,7 +6,7 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use cc_core::adapters::{Design, Kit, LecOptions, LibraryFormat, Named, SynthJob};
+use cc_core::adapters::{Design, Kit, LecOptions, LibraryFormat, SynthJob};
 use cc_core::runner::{BoundRunner, Caps, Runners, ToolLog};
 use cc_core::{CancelToken, CoreError};
 use cc_passes::adapters::{
@@ -37,10 +37,16 @@ fn every_family_has_unique_names_and_declared_capabilities() {
     assert!(dc.licensed && dc.library == LibraryFormat::Db && dc.equivalence == "formality");
     assert!(!yosys.licensed && yosys.library == LibraryFormat::Liberty && yosys.equivalence == "yosys-equiv");
     let e = SYNTH_FLOWS.by_name("genus").err().unwrap().to_string();
-    assert!(e.contains("synthesis flow `genus` is not available (available: dc, yosys)"), "{e}");
+    assert!(
+        e.contains("synthesis flow `genus` is not available (available: dc, yosys)"),
+        "{e}"
+    );
     // Exactly one way to answer each selection: at least one exact algorithm and one heuristic.
     for caps in [
-        CLIQUE_SOLVERS.iter().map(|s| s.capabilities()).collect::<Vec<_>>(),
+        CLIQUE_SOLVERS
+            .iter()
+            .map(|s| s.capabilities())
+            .collect::<Vec<_>>(),
         MIS_SOLVERS.iter().map(|s| s.capabilities()).collect(),
     ] {
         assert!(caps.iter().any(|c| c.exact) && caps.iter().any(|c| !c.exact));
@@ -70,7 +76,10 @@ fn declared_families_refuse_what_they_do_not_implement() {
         CancelToken::new(),
     );
     let e = allo.generate(&runner, env.root(), "fu0", env.root()).unwrap_err();
-    assert!(matches!(e, CoreError::Tool { .. }) && e.to_string().contains("not implemented yet"), "{e}");
+    assert!(
+        matches!(e, CoreError::Tool { .. }) && e.to_string().contains("not implemented yet"),
+        "{e}"
+    );
     assert!(PNR_FLOWS.names().is_empty());
     let e = PNR_FLOWS.by_name("innovus").err().unwrap().to_string();
     assert!(e.contains("none yet"), "{e}");
@@ -167,8 +176,12 @@ fn query(name: &str, decls: &[(&str, &str)], assertion: &str) -> (String, String
 #[test]
 fn smt_solvers_conform() {
     let bv = "(_ BitVec 8)";
-    let common = vec![
-        query("bv_comm", &[("a", bv), ("b", bv)], "(not (= (bvadd a b) (bvadd b a)))"),
+    let common = [
+        query(
+            "bv_comm",
+            &[("a", bv), ("b", bv)],
+            "(not (= (bvadd a b) (bvadd b a)))",
+        ),
         query("bv_sat", &[("a", bv)], "(= (bvadd a #x01) #x00)"),
         query(
             "fp_comm",
@@ -237,14 +250,23 @@ fn smt_solvers_conform() {
             assert_eq!(v(f), Some(Verdict::Unsat), "{} {f}", solver.name());
         }
         for f in ["bv_sat.smt2", "fp_sat.smt2"] {
-            assert!(matches!(v(f), Some(Verdict::Sat { .. })), "{} {f}: {:?}", solver.name(), v(f));
+            assert!(
+                matches!(v(f), Some(Verdict::Sat { .. })),
+                "{} {f}: {:?}",
+                solver.name(),
+                v(f)
+            );
         }
         let declared = solver.adapter().capabilities().any_float_sort;
         let got = v("any_sort.smt2");
         if declared {
             assert_eq!(got, Some(Verdict::Unsat), "{}", solver.name());
         } else {
-            assert!(matches!(got, Some(Verdict::Error { .. })), "{}: {got:?}", solver.name());
+            assert!(
+                matches!(got, Some(Verdict::Error { .. })),
+                "{}: {got:?}",
+                solver.name()
+            );
         }
     }
 }

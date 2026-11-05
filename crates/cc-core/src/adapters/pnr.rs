@@ -19,5 +19,12 @@ pub struct PnrCapabilities {
 /// A place-and-route flow: a gate netlist on a kit (with its LEF) to a placed and routed design in `dir`.
 pub trait PnrFlow: Named {
     fn capabilities(&self) -> PnrCapabilities;
-    fn place_and_route(&self, runner: &BoundRunner, kit: &Kit, netlist: &Path, top: &str, dir: &Path) -> Result<()>;
+    fn place_and_route(
+        &self,
+        runner: &BoundRunner,
+        kit: &Kit,
+        netlist: &Path,
+        top: &str,
+        dir: &Path,
+    ) -> Result<()>;
 }

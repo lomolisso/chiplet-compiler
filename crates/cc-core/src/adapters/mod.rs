@@ -16,8 +16,8 @@ pub use pnr::{PnrCapabilities, PnrFlow};
 pub use select::{CliqueSolver, Limits, MisSolver, SelectCapabilities};
 pub use smt::{SmtCapabilities, SmtSolver};
 pub use synth::{
-    Design, FlowRunners, Kit, Lec, LecOptions, LibraryFormat, Measured, ReportTexts, SynthCapabilities, SynthFlow,
-    SynthJob,
+    Design, FlowRunners, Kit, Lec, LecOptions, LibraryFormat, Measured, ReportTexts, SynthCapabilities,
+    SynthFlow, SynthJob,
 };
 
 use crate::error::CoreError;

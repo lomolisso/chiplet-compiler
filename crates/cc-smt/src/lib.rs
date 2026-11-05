@@ -196,7 +196,10 @@ pub fn run_batch(
     timeout_s: u64,
 ) -> Result<Batch, CoreError> {
     let (program, base) = match location {
-        Location::Image => (solver.adapter().program().to_string(), DIR_IN_CONTAINER.to_string()),
+        Location::Image => (
+            solver.adapter().program().to_string(),
+            DIR_IN_CONTAINER.to_string(),
+        ),
         Location::Host(p) => (
             p.get(&solver)
                 .cloned()

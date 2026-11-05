@@ -543,7 +543,11 @@ fn without_lec_no_equivalence_check_runs() {
     assert!(!s.tools.calls.lock().unwrap().iter().any(|c| c == "fm_shell"));
     let lib = s.library();
     assert!(lib.lec_tool.is_none());
-    assert!(lib.rows.iter().all(|r| r.lec.is_none() && r.lec_tool.is_none() && !r.inconclusive));
+    assert!(
+        lib.rows
+            .iter()
+            .all(|r| r.lec.is_none() && r.lec_tool.is_none() && !r.inconclusive)
+    );
     let checks = s.checks();
     assert!(checks.contains(&("mini:clock:lec".into(), CheckStatus::Skip)));
     assert!(s.failing().is_empty(), "{:?}", s.failing());
@@ -554,7 +558,10 @@ fn without_lec_no_equivalence_check_runs() {
     let sum = s.run();
     assert!(sum.ok, "{sum:?}");
     let new: Vec<String> = s.tools.calls.lock().unwrap()[calls..].to_vec();
-    assert!(new.iter().any(|c| c == "fm_shell") && !new.iter().any(|c| c == "dc_shell"), "{new:?}");
+    assert!(
+        new.iter().any(|c| c == "fm_shell") && !new.iter().any(|c| c == "dc_shell"),
+        "{new:?}"
+    );
 }
 
 #[test]
@@ -568,7 +575,10 @@ fn a_flow_that_does_not_exist_is_a_config_error() {
         Ok(p) => format!("{:?}", p.run(&RunOptions::default())),
         Err(e) => e.to_string(),
     };
-    assert!(e.contains("synthesis flow `genus` is not available") && e.contains("dc, yosys"), "{e}");
+    assert!(
+        e.contains("synthesis flow `genus` is not available") && e.contains("dc, yosys"),
+        "{e}"
+    );
 }
 
 fn datapath(dir: &Path, id: &str, op: &str, elem: &str) {
@@ -685,11 +695,7 @@ fn an_inconclusive_check_passes_only_with_every_sanity_check_and_a_failing_one_n
     let failing = s.failing();
     assert!(failing.is_empty(), "{failing:?}");
     let checks = s.pipeline().verify_pass("characterize").unwrap();
-    let lec = checks
-        .checks
-        .iter()
-        .find(|c| c.name == "mini:clock:lec")
-        .unwrap();
+    let lec = checks.checks.iter().find(|c| c.name == "mini:clock:lec").unwrap();
     assert_eq!(lec.evidence.counts["inconclusive"], 1);
     let summary: Summary =
         serde_json::from_str(&std::fs::read_to_string(s.out("summary.json")).unwrap()).unwrap();

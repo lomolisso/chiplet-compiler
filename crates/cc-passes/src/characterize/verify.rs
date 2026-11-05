@@ -220,7 +220,9 @@ fn per_target(
         let log = read(&format!("{base}.log"));
         let (seg, lseg) = log.split_once("@@lec\n").unwrap_or((log.as_str(), ""));
         let net = read(&r.netlist);
-        let lec = cfg.lec.then(|| flow.equivalence(&read(&format!("{base}.lec.rpt"))));
+        let lec = cfg
+            .lec
+            .then(|| flow.equivalence(&read(&format!("{base}.lec.rpt"))));
         if let Some(lec) = &lec {
             if lec.equivalent {
                 proven += 1;
@@ -240,7 +242,10 @@ fn per_target(
             val_bad.push(format!("{}: inconclusive flag", r.key));
         }
         if r.estimator != flow.name() || r.lec_tool.is_some() != cfg.lec {
-            val_bad.push(format!("{}: estimator or lec_tool differs from the config", r.key));
+            val_bad.push(format!(
+                "{}: estimator or lec_tool differs from the config",
+                r.key
+            ));
         }
         let measured = flow.measure(
             &ReportTexts {

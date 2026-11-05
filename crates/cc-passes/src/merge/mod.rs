@@ -311,7 +311,10 @@ impl Pass for Merge {
             &cache,
         )?;
         let mut bad = Vec::new();
-        for (set, by, s) in [(&files, &answers, solver), (&zfiles, &zanswers, cc_smt::lemma_solver())] {
+        for (set, by, s) in [
+            (&files, &answers, solver),
+            (&zfiles, &zanswers, cc_smt::lemma_solver()),
+        ] {
             for (f, text) in set {
                 let (version, verdict) = by.get(f).cloned().unwrap_or((
                     String::new(),

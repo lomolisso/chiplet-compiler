@@ -258,7 +258,12 @@ fn every_registered_clique_solver_conforms() {
     use cc_core::adapters::Limits;
     assert_eq!(
         SOLVERS.names(),
-        [CliqueAlgorithm::ExactIlp, CliqueAlgorithm::Ostergard, CliqueAlgorithm::Greedy].map(CliqueAlgorithm::name)
+        [
+            CliqueAlgorithm::ExactIlp,
+            CliqueAlgorithm::Ostergard,
+            CliqueAlgorithm::Greedy
+        ]
+        .map(CliqueAlgorithm::name)
     );
     let lib = lib();
     let pairs = [
@@ -283,12 +288,21 @@ fn every_registered_clique_solver_conforms() {
             let r = s.solve(&m, &[], &limits).expect("an answer");
             assert!(r.optimal && feasible(&m, &r.chosen, &[]), "{} pair {k}", s.name());
             let o = *best.get_or_insert(r.objective);
-            assert!((o - r.objective).abs() < 1e-6, "{} pair {k}: {} vs {o}", s.name(), r.objective);
+            assert!(
+                (o - r.objective).abs() < 1e-6,
+                "{} pair {k}: {} vs {o}",
+                s.name(),
+                r.objective
+            );
         }
         let best = best.expect("an exact solver");
         for s in SOLVERS.iter().filter(|s| !s.capabilities().exact) {
             let r = s.solve(&m, &[], &limits).expect("an answer");
-            assert!(feasible(&m, &r.chosen, &[]) && r.objective <= best + 1e-6, "{} pair {k}", s.name());
+            assert!(
+                feasible(&m, &r.chosen, &[]) && r.objective <= best + 1e-6,
+                "{} pair {k}",
+                s.name()
+            );
         }
     }
 }

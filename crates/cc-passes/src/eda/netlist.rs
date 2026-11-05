@@ -402,7 +402,8 @@ mod tests {
         assert_eq!(undriven_outputs(&open, "piece"), ["p (3 of 4 bits)"]);
         let one = "module m ( a, y, z );\n  input a;\n  output y;\n  output z;\n  INV_X1 U1 ( .A(a), .ZN(y) );\nendmodule\n";
         assert_eq!(undriven_outputs(one, "m"), ["z"]);
-        let esc = "module m ( a, y );\n  input a;\n  output y;\n  INV_X1 \\U1/x ( .A(a), .ZN(y) );\nendmodule\n";
+        let esc =
+            "module m ( a, y );\n  input a;\n  output y;\n  INV_X1 \\U1/x ( .A(a), .ZN(y) );\nendmodule\n";
         assert!(undriven_outputs(esc, "m").is_empty());
         assert!(undriven_outputs(one, "other").is_empty());
     }

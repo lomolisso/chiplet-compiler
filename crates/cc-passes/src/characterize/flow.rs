@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use cc_core::adapters::{FlowRunners, Lec, ReportTexts, SynthJob};
-use cc_core::runner::{Caps, Invocation, Mount};
 use cc_core::pdk::Pdk;
+use cc_core::runner::{Caps, Invocation, Mount};
 use cc_core::{ArtifactStore, PassDir, PassResources, canon};
 use cc_pipeline::env::doctor::ENV_DIR;
 use cc_pipeline::env::pdk_db;
@@ -306,7 +306,8 @@ pub fn job_list(
                 }
                 for d in chunk {
                     for f in &d.files {
-                        let text = std::fs::read_to_string(rtl_dir.join(f)).map_err(|e| format!("{f}: {e}"))?;
+                        let text =
+                            std::fs::read_to_string(rtl_dir.join(f)).map_err(|e| format!("{f}: {e}"))?;
                         key.push_str(&format!("{f}\n{text}\n"));
                     }
                 }
@@ -501,9 +502,7 @@ pub fn rows(
             j.period_ps,
             kit.time_unit_ps,
         );
-        let lec = cfg
-            .lec
-            .then(|| flow.equivalence(&read(&format!("{id}.lec.rpt"))));
+        let lec = cfg.lec.then(|| flow.equivalence(&read(&format!("{id}.lec.rpt"))));
         let net_text = read(&format!("{id}.net.v"));
         let rtl_text = read(&format!("rtl/{id}.v"));
         problems.extend(problems_of(

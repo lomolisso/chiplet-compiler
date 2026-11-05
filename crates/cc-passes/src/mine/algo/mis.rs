@@ -502,12 +502,21 @@ mod tests {
                 let r = s.solve(&g, &limits).unwrap();
                 assert!(independent(&g.adj, &r.chosen), "{} round {round}", s.name());
                 assert!(r.optimal && r.bound == r.chosen.len() as u64, "{}", s.name());
-                assert_eq!(*alpha.get_or_insert(r.chosen.len()), r.chosen.len(), "{} round {round}", s.name());
+                assert_eq!(
+                    *alpha.get_or_insert(r.chosen.len()),
+                    r.chosen.len(),
+                    "{} round {round}",
+                    s.name()
+                );
             }
             let alpha = alpha.expect("an exact solver");
             for s in SOLVERS.iter().filter(|s| !s.capabilities().exact) {
                 let r = s.solve(&g, &limits).unwrap();
-                assert!(independent(&g.adj, &r.chosen) && r.chosen.len() <= alpha, "{}", s.name());
+                assert!(
+                    independent(&g.adj, &r.chosen) && r.chosen.len() <= alpha,
+                    "{}",
+                    s.name()
+                );
                 assert!(r.bound >= alpha as u64, "{}", s.name());
             }
         }

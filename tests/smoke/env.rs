@@ -48,7 +48,10 @@ fn doctor_dry_prints_capped_commands_and_writes_nothing() {
     );
     assert!(out.contains("eda-run lc_shell -f make_db.tcl"), "{out}");
     assert!(out.contains("eda-run dc_shell -no_home_init -f syn.tcl"), "{out}");
-    assert!(!out.contains("eda-run genus") && !out.contains("eda-run lec "), "{out}");
+    assert!(
+        !out.contains("eda-run genus") && !out.contains("eda-run lec "),
+        "{out}"
+    );
     // Container calls carry hard caps and no network.
     let selftest = out
         .lines()

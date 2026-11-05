@@ -784,7 +784,9 @@ mod tests {
             e.contains("paths.nangate45_lib, paths.asap7_nldm_dir") && e.contains("pdks/<kit>.toml"),
             "{e}"
         );
-        let e = layers(&[("a", "[tools.pdk]\nasap7_vt = \"RVT\"")]).unwrap_err().to_string();
+        let e = layers(&[("a", "[tools.pdk]\nasap7_vt = \"RVT\"")])
+            .unwrap_err()
+            .to_string();
         assert!(e.contains("[tools.pdk]"), "{e}");
         let c = layers(&[("a", "[paths]\npdk_root = \"/p\"\npdks = { k = \"/k\" }")]).unwrap();
         assert_eq!(c.config.paths.pdks["k"], PathBuf::from("/k"));

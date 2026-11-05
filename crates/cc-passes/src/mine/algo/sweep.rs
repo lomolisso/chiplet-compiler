@@ -210,7 +210,9 @@ pub fn sweep(
         && let Some(&tau) = taus.last()
     {
         let limit = (cfg.budget_s as f64).min(cfg.run_timeout_s as f64);
-        if let Run::Done(text) = grami::run(ctx, miner, key, &fg.lg, tau, cfg.heap_gb, cfg.max_vertices, limit)? {
+        if let Run::Done(text) =
+            grami::run(ctx, miner, key, &fg.lg, tau, cfg.heap_gb, cfg.max_vertices, limit)?
+        {
             let fail = |e: String| PassError::failed(format!("{} at τ = {tau}: {e}", family.name()));
             let raw = parse_output(&text).map_err(fail)?;
             if raw.iter().all(|p| p.nodes.len() <= cfg.max_vertices) {

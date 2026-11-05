@@ -90,7 +90,9 @@ impl CharacterizeConfig {
 
     /// The selected flow.
     pub fn flow(&self) -> Result<&'static dyn SynthFlow, String> {
-        crate::eda::FLOWS.by_name(&self.tool).map_err(|e| format!("tool: {e}"))
+        crate::eda::FLOWS
+            .by_name(&self.tool)
+            .map_err(|e| format!("tool: {e}"))
     }
 
     /// The equivalence check's options, when it is on.
@@ -112,7 +114,7 @@ impl CharacterizeConfig {
         if self.batch == 0 || self.cores == 0 {
             return Err("batch and cores must be positive".into());
         }
-        if let Some((k, _)) = self.clock_ps.iter().find(|(_, c)| !(**c > 0.0)) {
+        if let Some((k, _)) = self.clock_ps.iter().find(|(_, c)| c.is_nan() || **c <= 0.0) {
             return Err(format!("clock_ps.{k} must be positive"));
         }
         Ok(())

@@ -598,7 +598,14 @@ impl Doctor<'_> {
                 }
             };
             let note = if pdk.manifest.groups.is_empty() {
-                format!("library {}", found.iter().map(|l| l.name.as_str()).collect::<Vec<_>>().join(", "))
+                format!(
+                    "library {}",
+                    found
+                        .iter()
+                        .map(|l| l.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
             } else {
                 format!(
                     "{} {}: {} libraries",
