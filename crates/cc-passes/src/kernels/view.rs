@@ -16,6 +16,7 @@ fn label(n: &NNode) -> String {
         Kind::Output => "output".into(),
         Kind::RegionArg { region, index } => format!("arg {region}.{index}"),
         Kind::SizeIn => "size_in".into(),
+        Kind::ConstIn => "const_in".into(),
         Kind::Op { name, target } => {
             let s = name.strip_prefix("stablehlo.").unwrap_or(name).to_string();
             match target {

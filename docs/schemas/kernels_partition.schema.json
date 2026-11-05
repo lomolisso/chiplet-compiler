@@ -56,7 +56,7 @@
       "oneOf": [
         {
           "const": "interface",
-          "description": "`input`, `output`, `size_in`.",
+          "description": "`input`, `output`, `size_in`, `const_in`.",
           "type": "string"
         },
         {

@@ -17,6 +17,9 @@
 //! - `coverage`: every op has a table entry and fits its arity.
 //! - `size_tag`: the size tags and `dim_as_data` ports equal an independent recomputation (work lists
 //!   over users, and an iterated greatest fixpoint instead of the builder's ordered passes).
+//! - `const_tag`: the constant tags equal an independent recomputation (data dependence by repeated
+//!   sweeps to the least fixpoint, instead of the tagger's work list); no tagged op depends on a data
+//!   argument; every size-computation op is tagged.
 //! - `summary`: `ir.postcard.summary.json` equals the summary recomputed from the module (its `ir_hash`
 //!   included).
 //!
@@ -172,11 +175,15 @@ fn verify_phase(
     out.push(guarded("census", &|a| check_census(&p, cfg, a)));
     out.push(guarded("coverage", &|a| check_coverage(&p.m, a)));
     out.push(guarded("size_tag", &|a| check_size_tag(&p.m, a)));
+    out.push(guarded("const_tag", &|a| check_const_tag(&p.m, a)));
     out.push(guarded("summary", &|a| {
         let mut s = summarize(&p.m, p.summary.ledger.clone());
         // JSON floats read back within an ulp.
         if (s.size_share - p.summary.size_share).abs() < 1e-9 {
             s.size_share = p.summary.size_share;
+        }
+        if (s.constant_share - p.summary.constant_share).abs() < 1e-9 {
+            s.constant_share = p.summary.constant_share;
         }
         if s != p.summary {
             let (x, y) = (
@@ -1025,20 +1032,23 @@ fn check_coverage(m: &Module, a: &mut Acc) {
 
 // ---------------------------------------------------------------- size_tag
 
+/// Whether port `p` of `op` carries a shape (this module's own reading of the table).
+fn shape_port(m: &Module, op: &Op, p: usize) -> bool {
+    match cc_ir::lookup(&op.name, op.target.as_deref()).map(|s| s.shape_operands) {
+        Some(ShapePorts::DimVarArgs) => op.callee.is_some_and(|f| {
+            m.region(m.func(f).body)
+                .args
+                .get(p)
+                .is_some_and(|&x| m.value(x).dim_var.is_some())
+        }),
+        Some(sp) => sp.contains(p, op.operands.len()),
+        None => false,
+    }
+}
+
 fn check_size_tag(m: &Module, a: &mut Acc) {
     let users = m.users();
-    let shape_port = |op: &Op, p: usize| -> bool {
-        match cc_ir::lookup(&op.name, op.target.as_deref()).map(|s| s.shape_operands) {
-            Some(ShapePorts::DimVarArgs) => op.callee.is_some_and(|f| {
-                m.region(m.func(f).body)
-                    .args
-                    .get(p)
-                    .is_some_and(|&x| m.value(x).dim_var.is_some())
-            }),
-            Some(sp) => sp.contains(p, op.operands.len()),
-            None => false,
-        }
-    };
+    let shape_port = |op: &Op, p: usize| shape_port(m, op, p);
     let size_class =
         |op: &Op| cc_ir::lookup(&op.name, op.target.as_deref()).is_some_and(|s| s.class == OpClass::Size);
     let small = |op: &Op| {
@@ -1129,6 +1139,161 @@ fn check_size_tag(m: &Module, a: &mut Acc) {
     }
     a.count("size_ops", tagged);
     a.count("dim_as_data", crossings);
+}
+
+// ---------------------------------------------------------------- const_tag
+
+/// The constant tags against an independent recomputation: data dependence as a least fixpoint of
+/// repeated sweeps that pull from operands, region ops and call sites (instead of the tagger's work
+/// list), literals and region closure as fixpoints of their own. A tagged op that depends on a data
+/// argument is reported as such.
+fn check_const_tag(m: &Module, a: &mut Acc) {
+    let class = |op: &Op| cc_ir::lookup(&op.name, op.target.as_deref()).map(|s| s.class);
+    let mut inner: Vec<Vec<usize>> = vec![Vec::new(); m.ops.len()];
+    for (i, op) in m.ops.iter().enumerate() {
+        if let Owner::Op(o) = m.region(op.parent).owner {
+            inner[o.index()].push(i);
+        }
+    }
+    // Call sites of every function: composites (operand k binds argument k) and custom calls.
+    let mut sites: Vec<Vec<usize>> = vec![Vec::new(); m.funcs.len()];
+    for (i, op) in m.ops.iter().enumerate() {
+        if let Some(f) = op.callee {
+            sites[f.index()].push(i);
+        }
+    }
+    let mut vdep = vec![false; m.values.len()];
+    for &x in &m.region(m.func(m.entry).body).args {
+        vdep[x.index()] = m.value(x).dim_var.is_none();
+    }
+    let mut dep = vec![false; m.ops.len()];
+    loop {
+        let mut changed = false;
+        // Arguments: a region's from its owner, a function's from its call sites.
+        for r in &m.regions {
+            for (k, &x) in r.args.iter().enumerate() {
+                if vdep[x.index()] {
+                    continue;
+                }
+                let d = match r.owner {
+                    Owner::Op(o) => dep[o.index()],
+                    Owner::Func(f) if f == m.entry => false,
+                    Owner::Func(f) => sites[f.index()].iter().any(|&s| {
+                        let site = &m.ops[s];
+                        if m.func(f).kind == FuncKind::Computation {
+                            dep[s]
+                        } else {
+                            site.operands
+                                .get(k)
+                                .is_some_and(|&v| vdep[v.index()] && !shape_port(m, site, k))
+                        }
+                    }),
+                };
+                if d {
+                    vdep[x.index()] = true;
+                    changed = true;
+                }
+            }
+        }
+        for (i, op) in m.ops.iter().enumerate() {
+            if dep[i] || op.size {
+                continue;
+            }
+            let d = (op.operands.is_empty()
+                && !matches!(class(op), Some(OpClass::Constant | OpClass::Control)))
+                || op
+                    .operands
+                    .iter()
+                    .enumerate()
+                    .any(|(p, &v)| vdep[v.index()] && !shape_port(m, op, p))
+                || inner[i].iter().any(|&j| dep[j]);
+            if d {
+                dep[i] = true;
+                for &r in &op.results {
+                    vdep[r.index()] = true;
+                }
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    // Literals: least fixpoint.
+    let mut lit = vec![false; m.ops.len()];
+    loop {
+        let mut changed = false;
+        for (i, op) in m.ops.iter().enumerate() {
+            if lit[i] || dep[i] {
+                continue;
+            }
+            let l = match class(op) {
+                Some(OpClass::Constant) => true,
+                Some(OpClass::Layout) => op.operands.iter().enumerate().all(|(p, &v)| {
+                    shape_port(m, op, p) || matches!(m.value(v).def, Def::Result { op: d, .. } if lit[d.index()])
+                }),
+                _ => false,
+            };
+            if l {
+                lit[i] = true;
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    // Tags, closed under region nesting.
+    let mut want: Vec<bool> = (0..m.ops.len())
+        .map(|i| !dep[i] && !lit[i] && class(&m.ops[i]) != Some(OpClass::Control))
+        .collect();
+    loop {
+        let mut changed = false;
+        for i in 0..m.ops.len() {
+            if want[i] {
+                for &j in &inner[i] {
+                    if !want[j] {
+                        want[j] = true;
+                        changed = true;
+                    }
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    let (mut tagged, mut crossings) = (0u64, 0u64);
+    for (oi, op) in m.ops.iter().enumerate() {
+        if op.constant && dep[oi] {
+            a.fail(format!(
+                "op {oi} `{}`: tagged constant, but a data argument reaches it",
+                op.name
+            ));
+        } else if op.constant != want[oi] {
+            a.fail(format!(
+                "op {oi} `{}`: constant tag {}, recomputed {}",
+                op.name, op.constant, want[oi]
+            ));
+        }
+        if op.size && !op.constant {
+            a.fail(format!("op {oi} `{}`: size computation not tagged constant", op.name));
+        }
+        tagged += u64::from(want[oi]);
+        if !want[oi] {
+            crossings += op
+                .operands
+                .iter()
+                .enumerate()
+                .filter(|&(p, &v)| {
+                    !shape_port(m, op, p)
+                        && matches!(m.value(v).def, Def::Result { op: d, .. } if want[d.index()] && !m.op(d).size)
+                })
+                .count() as u64;
+        }
+    }
+    a.count("constant_ops", tagged);
+    a.count("const_in", crossings);
 }
 
 // ---------------------------------------------------------------- inventory

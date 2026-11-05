@@ -35,8 +35,9 @@
    - `instances/<model>/<phase>.json` (`InstancesFile`): the module's op count, the entry's terminator
      (the one op in no instance), and per instance its id, kind (`composite`, `anon`), composite name,
      `composite_attributes` and `version`, position (call path, `cc_path`, parent and children), the
-     decomposition function, the owned op ids as ranges, counts (owned ops, of which left out of the
-     graph, graph nodes), its component and its bindings: one `Dim` per dim class (a constant or a
+     decomposition function, the owned op ids as ranges, counts (owned ops; of those left out of the
+     graph, `size` for size computation and shape-only constants and `constant` for the rest, constant
+     computation and the literals only it uses; graph nodes), its component and its bindings: one `Dim` per dim class (a constant or a
      symbolic expression), one element type (MLIR spelling) per element class, and per component node
      its parameters (size-attribute entries, a constant's value, a size value).
    - `components/<id>.postcard` (`StoredComponent`): the abstract graph, its height (0 without
@@ -45,7 +46,7 @@
      and phases, the instance list. `id` = `c` + the first 16 hex digits of the WL hash, with `-k` for
      the `k`-th isomorphism class of a hash bucket.
    - `certificates/<model>/<phase>.json` (`CertificatesFile`): per instance, the image of every
-     component node (an op, a value, a `size_in` port, an exported value). One file per phase rather
+     component node (an op, a value, a `size_in` port, a `const_in` value, an exported value). One file per phase rather
      than per instance: the model set has about 25 k instances, and the calls of a shared decomposition
      have equal maps.
    - `views/components.md`: components × models with instance counts, sorted by the number of models.
@@ -56,15 +57,18 @@
       call op (at the parent's path) and its decomposition's ops (nested regions included) except the
       nested calls. The entry's other ops, without the composite calls and the terminator, are grouped
       by union-find: compute ops joined by def-use at non-shape ports, ops of nested regions with their
-      owner. A group of size computation joins the region of its first compute consumer; a group with
-      none is an instance without a graph. These regions are not split further: layout and data
+      owner. A group left out of the graphs (size computation, constant computation) joins the region of
+      its first compute consumer; a group with none is an instance without a graph. These regions are not split further: layout and data
       movement boundaries belong to `kernels` (design §4.5). Anon ids are `anon:<hash of the op ids>`.
    2. *Graphs* (`algo/graph.rs`), once per decomposition (children first) and per anon region. Nodes:
       `input k` per argument that is not a dimension variable (anon: one unordered `input` per external
-      value and one `output` per value used outside), one node per op except size computation and ops
-      whose every use is a shape operand (constant shape vectors), one per region argument, and one
-      `size_in` per `dim_as_data` operand (the size value enters compute there; its symbolic value,
-      recomputed by import's size-value interpreter, is a parameter). A custom call's reducer
+      value and one `output` per value used outside), one node per op except the ops left out (size
+      computation, constant computation as import tags it, and ops whose every use is a shape operand
+      or a left-out op: constant shape vectors, literals used only by constant computation), one per
+      region argument, one `size_in` per `dim_as_data` operand (the size value enters compute there;
+      its symbolic value, recomputed by import's size-value interpreter, is a parameter), and one
+      `const_in` per value of constant computation read by a node (design §4.2: folded or precomputed,
+      it enters the graph as an input; no parameter, its value is not part of the instance). A custom call's reducer
       computation (`called_computations` of `dynamic_reduce_window`, which the spec defines with that
       body as a region, like `reduce_window`) is inlined as the call's region 0, one copy per call
       site: its arguments are region arguments, its `func.return` is the region terminator
@@ -119,6 +123,8 @@
      certificate: the certificate is a bijection onto the concrete nodes, every node's op, attributes,
      result types (dims compared exactly or provably equal), child component and size value are
      equal, every component edge maps to an edge with an equal label, and the edge counts are equal.
+     The rebuild leaves out its own greatest fixpoint of ops (size or constant tag, or every use a
+     shape operand or such an op) and makes one `const_in` per left-out value read at a compute port.
      O(V + E) per instance, no search.
    Once:
    - `complete`: every imported phase has its instances and certificates files.

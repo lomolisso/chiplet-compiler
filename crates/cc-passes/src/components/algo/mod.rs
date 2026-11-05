@@ -47,6 +47,8 @@ pub struct Draft {
     /// Owned ops at `path` (sorted); the call op itself is owned at the parent's path.
     pub ops: Vec<u32>,
     pub size_ops: u64,
+    /// Owned ops left out of the graph that are not `size_ops` (constant computation).
+    pub const_ops: u64,
     /// The graph in the phase (`None`: no compute op).
     pub graph: Option<u32>,
 }
@@ -210,6 +212,7 @@ pub fn phase(m: &Module, wl_rounds: u32) -> Result<PhaseOut, String> {
                 .map(|x| x.0)
                 .collect();
             let size_ops = own.iter().filter(|&&x| ph.f.shape_only[x as usize]).count() as u64;
+            let const_ops = own.iter().filter(|&&x| ph.f.left_out[x as usize]).count() as u64 - size_ops;
             let mut attrs = BTreeMap::new();
             for k in ["composite_attributes", "version"] {
                 if let Some(a) = op.attrs.get(k) {
@@ -229,6 +232,7 @@ pub fn phase(m: &Module, wl_rounds: u32) -> Result<PhaseOut, String> {
                 func: Some(callee.0),
                 ops: own,
                 size_ops,
+                const_ops,
                 graph: (!empty).then_some(g),
             });
             stack.push((callee, p, Some(id)));
@@ -274,7 +278,8 @@ pub fn phase(m: &Module, wl_rounds: u32) -> Result<PhaseOut, String> {
             }
         }
     }
-    // Shape-only groups join the region of their first compute consumer.
+    // Groups left out of the graphs (size and constant computation) join the region of their first
+    // compute consumer.
     let mut groups: BTreeMap<u32, Vec<OpId>> = BTreeMap::new();
     for &o in &cand {
         if !ph.f.in_graph(top(o)) {
@@ -305,6 +310,7 @@ pub fn phase(m: &Module, wl_rounds: u32) -> Result<PhaseOut, String> {
     for ops in regions {
         let own: Vec<u32> = ops.iter().map(|o| o.0).collect();
         let size_ops = own.iter().filter(|&&x| ph.f.shape_only[x as usize]).count() as u64;
+        let const_ops = own.iter().filter(|&&x| ph.f.left_out[x as usize]).count() as u64 - size_ops;
         let has_compute = ops.iter().any(|&o| ph.f.in_graph(o));
         let g = if has_compute {
             let b =
@@ -327,6 +333,7 @@ pub fn phase(m: &Module, wl_rounds: u32) -> Result<PhaseOut, String> {
             func: None,
             ops: own,
             size_ops,
+            const_ops,
             graph: g,
         });
     }

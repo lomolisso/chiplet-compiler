@@ -2,8 +2,8 @@
 
 1. **Purpose.** Each exported phase (`graph.json`) → a `cc_ir::Module` (docs/framework/ir.md), the IR every
    later analysis pass reads. Calls are inlined with provenance; every value gets a type whose dimensions
-   are constants or symbolic expressions over the phase's size symbols; size computation is tagged; every
-   op is classified by the op-semantics table. Position: `export → import → components`.
+   are constants or symbolic expressions over the phase's size symbols; size computation and constant
+   computation are tagged; every op is classified by the op-semantics table. Position: `export → import → components`.
 
 2. **Background.** Design §2, §4.2; `docs/tools/stablehlo.md`, `docs/tools/jax_export.md`.
    - StableHLO is SSA in single-block regions; `func.call` has no semantics of its own, so it is inlined;
@@ -29,7 +29,9 @@
    - `<model>/<phase>/ir.postcard.summary.json` (`Summary`): the structural hash, symbols and constraints,
      counts of functions, ops and values, ops per class and per name, size ops and their share of the
      non-structural ops, `dim_as_data` edges per consuming op, component composites by name, values with a
-     symbolic dim, and the inlining ledger (calls, inlined composites, returns removed, per executed call
+     symbolic dim, constant-computation ops (size computation included) with their share and, without
+     size computation, per name, the `const_in` edges (a constant-computation value entering an op that
+     is not one, at a non-shape port) per consuming op name, and the inlining ledger (calls, inlined composites, returns removed, per executed call
      site).
    - `op_inventory.json` (`Inventory`): every op (`name`, or `name@target` for custom calls) of every
      phase with its table entry (or `null`), its count and the models using it; `unknown` lists the ops
@@ -70,9 +72,28 @@
       fixpoint of that rule. A size value consumed at a non-shape port of any other op is a `dim_as_data`
       port: the dimension enters compute there as a run-time scalar (anchor grids, position ids, the mean
       over a symbolic axis). Such uses are allowed and recorded; the consuming op stays compute.
-   6. *Write* the module, its summary and the view; then the inventory over all phases.
+   6. *Constant tagging* (`algo/const_tag.rs`). An op computes a constant when no data argument of the
+      phase reaches it: data arguments are the entry's arguments except the dimension variables
+      (activations, weights and run-time inputs are all entry arguments of the abstract export). The
+      reachability is a forward work list over the inlined graph: a reached value reaches each user at
+      a port that is not a shape operand; a reached op reaches its results, its regions' arguments, the
+      arguments of its custom-call computation and its region's owner (a value captured from the
+      enclosing scope); a reached composite operand reaches the decomposition argument it binds. A
+      decomposition shared by several calls is reached from any of them, so its ops are constant only
+      when they are constant at every call. Size computation is never reached (its values are
+      dimensions, not data). Every unreached op is tagged `constant` except the literals (`constant`,
+      `iota`, and layout ops whose data operands are literals: `normalize` folds splat and broadcast
+      constants into ports, so they stay ops) and structure (returns, composite calls); the ops in the
+      regions of a tagged op are tagged with it. Size computation is therefore a part of constant
+      computation. Its typical members are position and rotary tables (`iota → convert → multiply →
+      sin/cos`), masks compared from two `iota`s, and the float form of a size (`convert` of a
+      dimension, the divisor of a mean over a symbolic axis). Later passes leave tagged ops out of their
+      graphs; a tagged value read by compute enters as an input (`const_in`, docs/passes/components.md).
+      Folding or precomputing the values is outside this pass: the tag marks what is not hardware.
+   7. *Write* the module, its summary and the view; then the inventory over all phases.
 
-   Cost: linear in the inlined op count (each op once; shape rules are O(rank)); a guarded value has at
+   Cost: linear in the inlined op count (each op once; shape rules are O(rank); the constant tag visits
+   every use once); a guarded value has at
    most 8 cases and a combination at most 64. The whole model set at `full` (78 phases, 2.03 million ops
    after inlining, half of them size computation, 7445 `dim_as_data` edges) takes about 22 s with 8
    threads (2026-11-01).
@@ -105,6 +126,11 @@
      a composite.
    - `size_tag`: the tags and `dim_as_data` ports equal an independent recomputation (work lists and an
      iterated greatest fixpoint instead of the builder's ordered passes).
+   - `const_tag`: the constant tags equal an independent recomputation: data dependence as the least
+     fixpoint of repeated sweeps that pull from operands, region ops and call sites (instead of the
+     tagger's work list), literals and the region closure as fixpoints of their own. A tagged op that a
+     data argument reaches is reported as such (no tagged op has a path from a data argument), and every
+     size-computation op must be tagged. Counts: tagged ops and `const_in` edges.
    - `summary`: the stored summary equals the one recomputed from the module, structural hash included.
 
    Once: `imported` (every exported phase has a module) and `inventory` (every op of every phase is listed

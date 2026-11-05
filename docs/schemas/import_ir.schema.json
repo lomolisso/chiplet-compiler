@@ -889,6 +889,10 @@
           ],
           "description": "The decomposition of a composite, or the computation of a custom call."
         },
+        "constant": {
+          "description": "Constant computation (design §4.2): no data argument of the phase reaches the op, and it does more\nthan materialize a literal. Every size-computation op is one.",
+          "type": "boolean"
+        },
         "dim_as_data": {
           "description": "Operand ports where a dimension value enters compute (a size value at a non-shape port of a\nnon-size op), ascending.",
           "items": {
@@ -947,6 +951,7 @@
         "regions",
         "parent",
         "size",
+        "constant",
         "dim_as_data",
         "prov"
       ],
