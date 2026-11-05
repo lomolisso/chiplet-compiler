@@ -19,9 +19,11 @@ All notable changes to this project are listed here. The format follows
 - `merge` pass: configurable functional units by datapath merging (compatibility graph and maximum-weight clique, agglomerated under a depth bound) and parameterized arrays for template classes, every configuration proven equal to its datapath.
 - `merge` fixed requantization (`requant_variant = "fixed"`): rescaling chains become one integer `rescale` block (exact multiply by the scale's significand, rounding shift), proven within 1 of fp32, with its RTL in the `characterize` library.
 - `iteration_space` pass and the op table's iteration semantics: per class its affine accesses proven against the spec, dependences, the embedding relation, and routing of uniform contractions to systolic templates by a proven space-time mapping.
+- `datapaths` records the hardware's order of every reduction whose order binds, and its `verify.json` states the error bound against any other order.
 
 ### Changed
 
+- `datapaths` and `merge` prove the design's numerics: f32 and bf16 flush subnormals to zero, conversions into FP8 saturate (NaN kept).
 - Solver answers are cached once for every pass and for `verify` (`paths.smt_cache`, shared by every build directory of a host): constant lemmas and rules are solved once per solver version, `verify` still regenerates and compares every query.
 - `mine` runs GraMi once, at the last threshold, and derives every step's pattern set by MNI (`grami_runs = "once"`, outputs unchanged; `"sweep"` restores one run per step).
 - Pass manifests and run summaries record the time spent in `verify`; `chipc run` prints it; `CC_PROFILE=release` runs the optimized `chipc` through `scripts/on-build-host`.

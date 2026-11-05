@@ -24,7 +24,11 @@
      2nd ed., SIAM 2002, ch. 4); two's-complement sums are. The StableHLO spec leaves the order of
      `reduce` open; ω (docs/passes/normalize.md) fixes it.
    - Float formats: IEEE 754-2019; OCP 8-bit Floating Point (OFP8) for E4M3FN (no infinities, one NaN
-     pattern, maximum 448); ml_dtypes' conversions (`float8.h`) for overflow to NaN.
+     pattern, maximum 448) and its saturating conversion mode; the numerics of design §6.4 (f32 and bf16
+     flush subnormals, FP8 conversions saturate, an E4M3FN arithmetic overflow is NaN), encoded as
+     docs/framework/smt.md describes.
+   - Summation error: Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed., SIAM 2002, §2.1
+     and §4.2 (the bound `verify.json` states for a bound order).
 
 3. **Inputs and outputs.**
    - Inputs: `kernel_classes` (classes, instance tables), `kernels` (the representative graphs),
@@ -46,7 +50,8 @@
      - `outputs`: `out<j>` (kernel outputs) and, for a template, the core inputs by port name (`lhs`,
        `rhs`): the ends of the prologue stages;
      - `accumulator` (datapath classes with a reduction): one entry per result (`width`, `init`, `next`),
-       the `combiner` vertices, ω, and per tuple `order` (`free`: every order gives the same bits);
+       the `combiner` vertices, ω, and per tuple `order` (`free`: every order gives the same bits; when ω
+       binds, `hardware`: the order the hardware computes, which is ω);
      - `tuples`: `name` (`t<k>`), `elems` (per element class), `consts` (per constant column, its
        element type), `attrs` (structural attributes), `rows`.
    - `out/datapaths/proofs/<z>/<t>.smt2` and `.result` (`ProofResult`): the equivalence query for tuple
@@ -132,6 +137,11 @@
      refuted); the order flags are the order verdicts.
    - `lemmas`: the lemma files are those the regenerated queries need, byte for byte; each stored and
      re-run result is `unsat` in Z3.
+   - `<z>:order` (classes with an accumulator): a tuple whose order binds records the hardware's order and
+     it is the accumulator's ω, a free one records none; the evidence states, per bound tuple and
+     accumulator, the error bound against any other order of the reduction for a float sum, or that the
+     combiner has none (a product, an arg-max): docs/framework/smt.md, "Reduction order and its error
+     bound". The bound is documentation; the equivalence proofs are bit-exact against ω.
    - `solver_sanity`: the first non-commutative binary vertex (`subtract`, `divide`, …) with distinct
      operands gets its operands exchanged; its obligation must be `sat` in both solvers.
    - `summary`: the summary recounts from the datapaths.
@@ -153,8 +163,12 @@
 8. **Limitations.**
    - Ops whose float result the spec leaves to an approximate function are uninterpreted: a proof
      holds for any implementation of them; the third-party float IP cores (design §4.12) implement them.
-   - Float semantics are IEEE with gradual underflow in every format; the planned numerics (design §6.4)
-     flush f32 and bf16 to zero, and the proofs will state that.
+   - Floats follow design §6.4: f32 and bf16 flush subnormals, f16 and FP8 keep them, conversions into
+     FP8 saturate. The f32 multiply and divide are encoded in Float64 and rest on an exactness argument
+     for that step (the product is exact, the quotient's double rounding harmless) plus a lemma for the
+     rounding; Z3 does not decide the whole operation (docs/framework/smt.md, "Floats").
+   - The bound of a bound order covers float sums; other combiners whose order binds (a float product,
+     an arg-max with float ties) get none.
    - Padding and window bounds are address logic: a datapath input reads the operand element (or the
      padding value) the address unit selects; `reduce_window` padding elements are init values in
      place.
