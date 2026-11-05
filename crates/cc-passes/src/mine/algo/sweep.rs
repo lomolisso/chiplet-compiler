@@ -16,7 +16,7 @@ use super::grami::{self, Run};
 use super::lg::{LgGraph, parse_output};
 use super::mis;
 use super::rematch::{UnitCtx, rematch};
-use crate::mine::config::MineConfig;
+use crate::mine::config::{GramiRuns, MineConfig};
 use crate::mine::json::{
     Family, GRAMI_SCHEMA, GramiFile, Labels, PATTERN_SCHEMA, PatternEdge, PatternFile, Reported,
     SELECTION_SCHEMA, SWEEP_SCHEMA, Selected, Selection, Step, Stop, Sweep, UnitMis,
@@ -195,51 +195,93 @@ pub fn sweep(
     type Last = (u64, u64, u64, Vec<Reported>, Vec<Selected>);
     let mut last: Option<Last> = None;
     let mut stop = Stop::TauMin;
+    let t0 = Instant::now();
+    // `once`: GraMi at τ_min, every pattern canonicalized and evaluated; a step's set is then the
+    // patterns whose MNI reaches its τ. GraMi enumerates every frequent pattern within the size bound
+    // and MNI is anti-monotone, so these are the sets one run per step reports (equal counts at every
+    // step of every family on the model set). A timeout or a pattern over the bound falls back to the
+    // sweep.
+    let mut once: Option<Vec<Canonical>> = None;
+    if cfg.grami_runs == GramiRuns::Once
+        && fg.map.edges != 0
+        && let Some(&tau) = taus.last()
+    {
+        let limit = (cfg.budget_s as f64).min(cfg.run_timeout_s as f64);
+        if let Run::Done(text) = grami::run(ctx, key, &fg.lg, tau, cfg.heap_gb, cfg.max_vertices, limit)? {
+            let fail = |e: String| PassError::failed(format!("{} at τ = {tau}: {e}", family.name()));
+            let raw = parse_output(&text).map_err(fail)?;
+            if raw.iter().all(|p| p.nodes.len() <= cfg.max_vertices) {
+                let canon: Vec<Canonical> = raw
+                    .par_iter()
+                    .map(|p| canonical(p, labels))
+                    .collect::<Result<_, _>>()
+                    .map_err(fail)?;
+                let done: Vec<PatternFile> = canon
+                    .par_iter()
+                    .map(|c| evaluate(family, c, units, cfg))
+                    .collect::<Result<_, _>>()
+                    .map_err(fail)?;
+                for p in done {
+                    evaluated.insert(p.id.clone(), p);
+                }
+                once = Some(canon);
+            }
+        }
+    }
     if fg.map.edges == 0 {
         stop = Stop::Empty;
     } else {
-        let t0 = Instant::now();
         for (i, &tau) in taus.iter().enumerate() {
             ctx.check_cancelled()?;
-            let left = cfg.budget_s as f64 - t0.elapsed().as_secs_f64();
-            let run = if left <= 0.0 {
-                Run::Timeout
-            } else {
-                grami::run(
-                    ctx,
-                    key,
-                    &fg.lg,
-                    tau,
-                    cfg.heap_gb,
-                    cfg.max_vertices,
-                    left.min(cfg.run_timeout_s as f64),
-                )?
-            };
-            let text = match run {
-                Run::Done(t) => t,
-                Run::Timeout => {
-                    steps.push(Step {
-                        tau,
-                        finished: false,
-                        reported: 0,
-                        kept: 0,
-                        selection: String::new(),
-                    });
-                    stop = Stop::Budget;
-                    break;
-                }
-            };
             let fail = |e: String| PassError::failed(format!("{} at τ = {tau}: {e}", family.name()));
-            let raw = parse_output(&text).map_err(fail)?;
-            // Only patterns within `max_vertices` are canonicalized (the code search is factorial in
-            // the size of a label class).
-            let small: Vec<&LgGraph> = raw.iter().filter(|p| p.nodes.len() <= cfg.max_vertices).collect();
-            let dropped = (raw.len() - small.len()) as u64;
-            let canon: Vec<Canonical> = small
-                .par_iter()
-                .map(|p| canonical(p, labels))
-                .collect::<Result<_, _>>()
-                .map_err(fail)?;
+            let (raw_len, dropped, canon) = if let Some(all) = &once {
+                let canon: Vec<Canonical> = all
+                    .iter()
+                    .filter(|c| evaluated.get(&c.id).is_some_and(|p| p.mni >= tau))
+                    .cloned()
+                    .collect();
+                (canon.len(), 0u64, canon)
+            } else {
+                let left = cfg.budget_s as f64 - t0.elapsed().as_secs_f64();
+                let run = if left <= 0.0 {
+                    Run::Timeout
+                } else {
+                    grami::run(
+                        ctx,
+                        key,
+                        &fg.lg,
+                        tau,
+                        cfg.heap_gb,
+                        cfg.max_vertices,
+                        left.min(cfg.run_timeout_s as f64),
+                    )?
+                };
+                let text = match run {
+                    Run::Done(t) => t,
+                    Run::Timeout => {
+                        steps.push(Step {
+                            tau,
+                            finished: false,
+                            reported: 0,
+                            kept: 0,
+                            selection: String::new(),
+                        });
+                        stop = Stop::Budget;
+                        break;
+                    }
+                };
+                let raw = parse_output(&text).map_err(fail)?;
+                // Only patterns within `max_vertices` are canonicalized (the code search is factorial in
+                // the size of a label class).
+                let small: Vec<&LgGraph> = raw.iter().filter(|p| p.nodes.len() <= cfg.max_vertices).collect();
+                let dropped = (raw.len() - small.len()) as u64;
+                let canon: Vec<Canonical> = small
+                    .par_iter()
+                    .map(|p| canonical(p, labels))
+                    .collect::<Result<_, _>>()
+                    .map_err(fail)?;
+                (raw.len(), dropped, canon)
+            };
             let mut reported: Vec<Reported> = canon
                 .iter()
                 .map(|c| Reported {
@@ -265,14 +307,14 @@ pub fn sweep(
             steps.push(Step {
                 tau,
                 finished: true,
-                reported: raw.len() as u64,
+                reported: raw_len as u64,
                 kept: kept.len() as u64,
                 selection: selection_hash(&sel),
             });
             let stable = last
                 .as_ref()
                 .is_some_and(|(_, _, _, _, prev)| !sel.is_empty() && *prev == sel);
-            last = Some((tau, raw.len() as u64, dropped, reported, sel));
+            last = Some((tau, raw_len as u64, dropped, reported, sel));
             if stable {
                 stop = Stop::Stable;
                 break;

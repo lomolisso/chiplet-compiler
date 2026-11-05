@@ -18,11 +18,22 @@ pub struct MineConfig {
     pub run_timeout_s: u64,
     /// Java heap of one GraMi run; the container gets 2 GB more.
     pub heap_gb: u64,
+    /// `once`: one GraMi run at `tau_min`, each step's set taken from it by MNI (the same sets as a
+    /// run per step, since MNI is anti-monotone); `sweep`: one GraMi run per step.
+    pub grami_runs: GramiRuns,
     /// Candidate pairs one VF2 search (one pattern in one datapath) may try.
     pub vf2_budget: u64,
     /// Write `views/mine.md`.
     pub views: bool,
     pub mis: MisConfig,
+}
+
+/// How many GraMi runs a family's sweep makes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GramiRuns {
+    Once,
+    Sweep,
 }
 
 /// `[passes.mine.mis]`.
@@ -63,6 +74,7 @@ impl Default for MineConfig {
             budget_s: 3600,
             run_timeout_s: 600,
             heap_gb: 6,
+            grami_runs: GramiRuns::Once,
             vf2_budget: 100_000_000,
             views: true,
             mis: MisConfig::default(),
