@@ -94,6 +94,7 @@ with other users, and iacoma227 is also a Condor execute node, so its load can r
 | `venv/` | persistent, rebuildable | the locked Python stack (`UV_PROJECT_ENVIRONMENT`) |
 | `build/` | persistent, rebuildable | `paths.build_dir` of the main checkout: the latest pass artifacts |
 | `logs/` | persistent (small) | `docker/build.sh` logs |
+| `smt-cache/` | persistent, rebuildable | solver answers shared by every build dir (`paths.smt_cache`, written by `scripts/build-area init`; docs/framework/smt.md) |
 | `runs/<name>/` | ephemeral | a worktree's build dir (`scripts/build-area init`), ad-hoc runs, deep-test build dirs |
 | `tmp/` | ephemeral | `TMPDIR`, per-call EDA temp (`tmp/eda/`) |
 | image `chiplet-compiler/toolchain:<tag>` | persistent, rebuildable | the current tag only, in Docker's `/srv/docker` |
@@ -104,6 +105,11 @@ with other users, and iacoma227 is also a Condor execute node, so its load can r
   (`docker system|image|builder prune`): the daemon is shared.
 - **Disk guard.** Keep at least 100 GB free on the build host's `/scratch` (`docker/build.sh` refuses below that);
   if a run would go lower, stop and ask.
+- **Release builds for full runs.** `on-build-host` puts the debug `chipc` on `PATH` (tests and quick runs);
+  `CC_PROFILE=release` puts `target/release/chipc` there instead, after `cargo build --release -p cc-cli`. The
+  Rust-heavy passes run 2.5 to 4.5 times faster (warm chain `import` to `merge` on the 25 models at `full`:
+  222 s against 823 s in debug, 2026-11-05) with byte-identical outputs. Rebuild the release binary after
+  every change: `CC_PROFILE` does not build it.
 - **Moving the image to another host:** `docker save <image> | ssh <host> docker load` (no temp file), not a rebuild.
 
 ## Tests

@@ -18,11 +18,14 @@
 #
 # Environment: CC_BUILD_HOST (default iacoma231), CC_BUILD_HOSTS (candidates for --status and --pick, default
 # "iacoma227 iacoma231 iacoma232"), CC_BUILD_AREA (default /scratch/$USER/chiplet-compiler), CC_PICK_THREADS and
-# CC_PICK_MEMORY_GB (what the run needs, for --pick: default 16 threads, 32 GB).
+# CC_PICK_MEMORY_GB (what the run needs, for --pick: default 16 threads, 32 GB), CC_PROFILE (`debug`, the default,
+# or `release`: which build's chipc is on PATH; build it first with `cargo build --release -p cc-cli`).
 set -euo pipefail
 
 host="${CC_BUILD_HOST:-iacoma231}"
 area="${CC_BUILD_AREA:-/scratch/$USER/chiplet-compiler}"
+profile="${CC_PROFILE:-debug}"
+[[ "$profile" == debug || "$profile" == release ]] || { echo "on-build-host: CC_PROFILE must be debug or release" >&2; exit 2; }
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 if [[ $# -eq 0 ]]; then
@@ -110,7 +113,7 @@ export HOME='$HOME' USER='$USER'
 # The host's system login setup (Lmod's MODULEPATH and module function, which eda-run needs), but none of the
 # user's dotfiles. Sourced before PATH is set, so PATH below stays exactly as written.
 if [[ -r /etc/profile ]]; then set +eu; . /etc/profile >/dev/null 2>&1; set -eu; fi
-export PATH='$area/target/debug:$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin'
+export PATH='$area/target/$profile:$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin'
 export CARGO_TARGET_DIR='$area/target'
 export UV_PROJECT_ENVIRONMENT='$area/venv'
 export TMPDIR='$area/tmp'
