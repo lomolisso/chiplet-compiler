@@ -367,9 +367,10 @@ impl Doctor<'_> {
             );
         }
 
-        // Every patch set `third_party/patches/<submodule>/` must apply to its submodule, in file order
-        // as the image build applies it: patch k is checked on top of patches 1..k-1 (`git apply` takes
-        // the series in one call).
+        // Every patch set `third_party/patches/<submodule>/` must apply to its submodule as the image build
+        // applies it: in file order, each patch on top of the ones before. `git apply --check` checks every
+        // patch against the unpatched tree, so the series is applied to a copy of the files it touches
+        // (`patches/<submodule>/` in doctor's directory; the submodule is never written).
         let patch_root = tp.join("patches");
         let sets = patch_sets(&patch_root);
         if sets.is_empty() {
@@ -386,17 +387,33 @@ impl Doctor<'_> {
                 );
                 continue;
             }
-            for k in 1..=patches.len() {
-                let mut args = vec!["apply".to_string(), "--check".to_string()];
-                args.extend(patches[..k].iter().map(|p| p.display().to_string()));
-                let args: Vec<&str> = args.iter().map(String::as_str).collect();
-                let inv = git(&tp.join(&name), &args);
-                if let Some(o) = self.exec(&check, Via::Host, &inv, HOST_CAPS) {
-                    let file = patches[k - 1]
-                        .file_name()
-                        .map(|n| n.to_string_lossy().into_owned())
-                        .unwrap_or_default();
-                    self.push(Check::new(check.clone(), o.success()).note(format!("{file} applies")));
+            let copy = self.dir.path().join("patches").join(&name);
+            if !self.opts.dry
+                && let Err(e) = copy_patched_files(&tp.join(&name), &patches, &copy)
+            {
+                self.push(Check::new(check, false).note(format!("cannot copy the patched files: {e}")));
+                continue;
+            }
+            for p in &patches {
+                // GIT_CEILING_DIRECTORIES: the copy is a plain directory, even inside a checkout.
+                let inv = Invocation::new("git", "git")
+                    .args(["apply".to_string(), p.display().to_string()])
+                    .cwd(&copy)
+                    .env(
+                        "GIT_CEILING_DIRECTORIES",
+                        copy.parent().unwrap_or(&copy).display().to_string(),
+                    );
+                let Some(o) = self.exec(&check, Via::Host, &inv, HOST_CAPS) else {
+                    continue;
+                };
+                let file = p
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let ok = o.success();
+                self.push(Check::new(check.clone(), ok).note(format!("{file} applies")));
+                if !ok {
+                    break; // the later patches build on this one
                 }
             }
         }
@@ -1035,6 +1052,37 @@ pub fn gitmodules_shallow(text: &str, path: &str) -> bool {
     false
 }
 
+/// Copy into `dst` (emptied first) every file of `src` that the patches modify, as `diff --git a/<path>`
+/// names it; files the patches create are left to them.
+fn copy_patched_files(src: &Path, patches: &[PathBuf], dst: &Path) -> std::io::Result<()> {
+    if dst.exists() {
+        std::fs::remove_dir_all(dst)?;
+    }
+    std::fs::create_dir_all(dst)?;
+    for p in patches {
+        for path in patched_paths(&std::fs::read_to_string(p)?) {
+            let from = src.join(&path);
+            if from.is_file() {
+                let to = dst.join(&path);
+                if let Some(parent) = to.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::copy(from, to)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The paths a patch reads (`--- a/<path>` lines; `/dev/null` for created files is skipped).
+fn patched_paths(patch: &str) -> BTreeSet<String> {
+    patch
+        .lines()
+        .filter_map(|l| l.strip_prefix("--- a/"))
+        .map(|p| p.split('\t').next().unwrap_or(p).trim_end().to_string())
+        .collect()
+}
+
 /// The patch sets under `third_party/patches/`: one directory per submodule, its `*.patch` files in
 /// name order (the order the image build applies them). Sorted by submodule name.
 fn patch_sets(root: &Path) -> Vec<(String, Vec<PathBuf>)> {
@@ -1158,6 +1206,15 @@ mod tests {
         assert!(gitmodules_shallow(gm, "third_party/a"));
         assert!(!gitmodules_shallow(gm, "third_party/b"));
         assert!(!gitmodules_shallow(gm, "third_party/c"));
+    }
+
+    #[test]
+    fn patched_paths_are_the_old_sides() {
+        let patch = "diff --git a/x/y.cc b/x/y.cc\n--- a/x/y.cc\n+++ b/x/y.cc\n@@ -1 +1 @@\n-a\n+b\n\
+                     diff --git a/new.py b/new.py\nnew file mode 100644\n--- /dev/null\n+++ b/new.py\n\
+                     --- a/z.h\t2026-01-01\n";
+        let got: Vec<String> = patched_paths(patch).into_iter().collect();
+        assert_eq!(got, vec!["x/y.cc".to_string(), "z.h".to_string()]);
     }
 
     #[test]

@@ -1,0 +1,250 @@
+diff --git a/mlir/lib/Translation/EmitXlsHLS.cpp b/mlir/lib/Translation/EmitXlsHLS.cpp
+index 4963018..0293945 100644
+--- a/mlir/lib/Translation/EmitXlsHLS.cpp
++++ b/mlir/lib/Translation/EmitXlsHLS.cpp
+@@ -19,6 +19,7 @@
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/Support/raw_ostream.h"
+ #include <algorithm>
++#include <optional>
+ 
+ #include "allo/Dialect/AlloDialect.h"
+ #include "allo/Dialect/AlloOps.h"
+@@ -37,6 +38,24 @@ static bool BIT_FLAG = false;
+ // or as plain C arrays int arr[size] (false - default for registers)
+ static bool USE_MEMORY_FLAG = false;
+ 
++/// The pipeline directive of a loop, if any: its initiation interval.
++static std::optional<int64_t> getPipelineII(Operation *op) {
++  if (auto ii = getLoopDirective(op, "pipeline_ii"))
++    if (auto intAttr = llvm::dyn_cast<IntegerAttr>(ii))
++      return std::max<int64_t>(intAttr.getInt(), 1);
++  if (op->hasAttr("allo.pipeline") || op->hasAttr("pipeline_ii"))
++    return 1;
++  return std::nullopt;
++}
++
++/// The unroll directive of a loop, if any: 0 means full unrolling.
++static std::optional<int64_t> getUnrollFactor(Operation *op) {
++  if (auto factor = getLoopDirective(op, "unroll"))
++    if (auto intAttr = llvm::dyn_cast<IntegerAttr>(factor))
++      return intAttr.getInt();
++  return std::nullopt;
++}
++
+ static SmallString<16> getXLSTypeName(Type valType) {
+   // Extract element type if valType is a ShapedType
+   if (auto arrayType = llvm::dyn_cast<ShapedType>(valType))
+@@ -440,59 +459,56 @@ static bool containsChannelOperations(Region &region) {
+ }
+ 
+ void allo::hls::XlsModuleEmitter::emitLoopDirectives(Operation *op) {
+-  // Check for pipeline attributes first - if pipeline is present, don't unroll
+-  // Check for pipeline attributes (could be "allo.pipeline" unit attr or
+-  // "pipeline_ii" with value)
+-  if (op->hasAttr("allo.pipeline")) {
++  // Every loop gets exactly one xlscc directive, chosen in this order:
++  // 1. the schedule's own directive: `pipeline` passes its initiation interval
++  //    through (xlscc implements 1; a longer interval comes from codegen's
++  //    worst-case throughput), `unroll` passes its factor through (0: full);
++  // 2. loops that use channels are pipelined (unrolled iterations would all
++  //    access the same channel at once);
++  // 3. loops inside a pipelined or fully unrolled loop are unrolled, as in
++  //    Vitis HLS where pipelining a loop unrolls its body;
++  // 4. any other loop of a block (a function with array arguments) runs
++  //    sequentially, one iteration per cycle: a pipelined loop with interval
++  //    1. Loops are never unrolled unless the schedule says so;
++  // 5. a loop in a combinational function (scalar arguments only) is
++  //    unrolled: xlscc cannot pipeline a loop outside a block.
++  auto emitPipeline = [&](int64_t ii) {
+     indent();
+-    os << "#pragma hls_pipeline_init_interval 1\n";
+-    return; // Pipeline takes precedence, don't unroll
+-  } else if (auto ii = getLoopDirective(op, "pipeline_ii")) {
++    os << "#pragma hls_pipeline_init_interval " << ii << "\n";
++  };
++  auto emitUnroll = [&](int64_t factor) {
+     indent();
+-    os << "#pragma hls_pipeline_init_interval 1\n";
+-    return; // Pipeline takes precedence, don't unroll
+-  }
+-
+-  // Check if loop body contains channel operations.
+-  // If it does, we cannot unroll because multiple unrolled iterations
+-  // would all read/write from the same channel simultaneously, which is not
+-  // allowed. In this case, use pipelining with init interval 1 instead.
+-  bool hasChannelOps = false;
+-  if (auto affineFor = dyn_cast<AffineForOp>(op)) {
+-    hasChannelOps = containsChannelOperations(affineFor.getRegion());
+-  } else if (auto scfFor = dyn_cast<scf::ForOp>(op)) {
+-    hasChannelOps = containsChannelOperations(scfFor.getRegion());
+-  }
+-
+-  if (hasChannelOps) {
+-    // Cannot unroll loops with channel operations - use pipelining instead
+-    indent();
+-    os << "#pragma hls_pipeline_init_interval 1\n";
+-    return;
+-  }
+-
+-  // In memory mode, use pipelining instead of unrolling by default
+-  if (USE_MEMORY_FLAG) {
+-    indent();
+-    os << "#pragma hls_pipeline_init_interval 1\n";
+-    return;
++    if (factor == 0)
++      os << "#pragma hls_unroll yes\n";
++    else
++      os << "#pragma hls_unroll " << factor << "\n";
++  };
++
++  if (auto ii = getPipelineII(op))
++    return emitPipeline(*ii);
++  if (auto factor = getUnrollFactor(op))
++    return emitUnroll(*factor);
++
++  Region *body = nullptr;
++  if (auto affineFor = dyn_cast<AffineForOp>(op))
++    body = &affineFor.getRegion();
++  else if (auto scfFor = dyn_cast<scf::ForOp>(op))
++    body = &scfFor.getRegion();
++  if (body && containsChannelOperations(*body))
++    return emitPipeline(1);
++
++  for (Operation *parent = op->getParentOp(); parent;
++       parent = parent->getParentOp()) {
++    if (!isa<AffineForOp, scf::ForOp>(parent))
++      continue;
++    auto factor = getUnrollFactor(parent);
++    if (getPipelineII(parent) || (factor && *factor == 0))
++      return emitUnroll(0);
+   }
+ 
+-  // By default, unroll all loops unless they have a pipeline pragma
+-  // Check if explicit unroll directive is present (with optional factor)
+-  if (auto factor = getLoopDirective(op, "unroll")) {
+-    indent();
+-    os << "#pragma hls_unroll yes";
+-    auto val = llvm::cast<IntegerAttr>(factor).getValue();
+-    if (val != 0) {
+-      os << " factor=" << val;
+-    }
+-    os << "\n";
+-  } else {
+-    // Default: fully unroll the loop
+-    indent();
+-    os << "#pragma hls_unroll yes\n";
+-  }
++  if (inArrayFunction)
++    return emitPipeline(1);
++  return emitUnroll(0);
+ }
+ 
+ void allo::hls::XlsModuleEmitter::emitAffineFor(AffineForOp op) {
+diff --git a/tests/test_xls_extensions.py b/tests/test_xls_extensions.py
+index 0058ef1..b2e6581 100644
+--- a/tests/test_xls_extensions.py
++++ b/tests/test_xls_extensions.py
+@@ -1,7 +1,8 @@
+ # Copyright Allo authors. All Rights Reserved.
+ # SPDX-License-Identifier: Apache-2.0
+ # pylint: disable=invalid-name,unsupported-assignment-operation
+-"""XLS backend: function calls and external Verilog modules. When xlscc, opt_main and codegen_main are on PATH, the
++"""XLS backend: function calls, external Verilog modules and schedule
++directives. When xlscc, opt_main and codegen_main are on PATH, the
+ emitted C++ is also translated to check that XLS accepts it."""
+ 
+ import os
+@@ -267,3 +268,92 @@ def test_extern_module_instantiated_by_codegen():
+     assert "endmodule" in verilog
+     latency = int(re.search(r"latency: (\d+)", sig).group(1))
+     assert latency >= 2  # 800 ps of the 1000 ps clock: the xor goes in a later stage
++
++
++# ---------------------------------------------------------------------------
++# Schedule directives
++# ---------------------------------------------------------------------------
++def vadd(a: int32[8], b: int32[8]) -> int32[8]:
++    c: int32[8] = 0
++    for i in allo.grid(8, name="add"):
++        c[i] = a[i] + b[i]
++    return c
++
++
++def gemm(A: int32[4, 4], B: int32[4, 4]) -> int32[4, 4]:
++    C: int32[4, 4] = 0
++    for i, j in allo.grid(4, 4, name="C"):
++        for k in allo.reduction(4):
++            C[i, j] += A[i, k] * B[k, j]
++    return C
++
++
++def directive_lines(cpp, keyword):
++    return [l.strip() for l in cpp.splitlines() if keyword in l]
++
++
++def loop_pragmas(cpp):
++    """The pragma in front of each compute loop over i, j or k."""
++    lines = cpp.splitlines()
++    out = {}
++    for n, line in enumerate(lines):
++        m = re.match(r"\s*for \(int (\w+) = ", line)
++        if m and not m.group(1).startswith("_"):
++            out[m.group(1)] = lines[n - 1].strip()
++    return out
++
++
++def test_no_full_unroll_by_default():
++    with tempfile.TemporaryDirectory() as tmp:
++        cpp = allo.customize(vadd).build(target="xls", project=tmp).final_cpp
++    assert loop_pragmas(cpp)["i"] == "#pragma hls_pipeline_init_interval 1"
++
++
++def test_unroll_factor_passed_through():
++    s = allo.customize(vadd)
++    s.unroll("i", factor=2)
++    with tempfile.TemporaryDirectory() as tmp:
++        cpp = s.build(target="xls", project=tmp).final_cpp
++    assert loop_pragmas(cpp)["i"] == "#pragma hls_unroll 2"
++    s = allo.customize(vadd)
++    s.unroll("i")
++    with tempfile.TemporaryDirectory() as tmp:
++        cpp = s.build(target="xls", project=tmp).final_cpp
++    assert loop_pragmas(cpp)["i"] == "#pragma hls_unroll yes"
++
++
++def test_pipeline_interval_passed_through():
++    s = allo.customize(vadd)
++    s.pipeline("i", initiation_interval=2)
++    with tempfile.TemporaryDirectory() as tmp:
++        cpp = s.build(target="xls", project=tmp).final_cpp
++    assert loop_pragmas(cpp)["i"] == "#pragma hls_pipeline_init_interval 2"
++
++
++def test_pipelined_loop_unrolls_inner_loops():
++    s = allo.customize(gemm)
++    s.pipeline("j")
++    with tempfile.TemporaryDirectory() as tmp:
++        cpp = s.build(target="xls", project=tmp).final_cpp
++        pragmas = loop_pragmas(cpp)
++        assert pragmas["i"] == "#pragma hls_pipeline_init_interval 1"
++        assert pragmas["j"] == "#pragma hls_pipeline_init_interval 1"
++        assert pragmas["k"] == "#pragma hls_unroll yes"
++        if HAS_XLS:
++            xlscc(tmp, "--block_from_class=TestBlock", "--block_pb=block.pb")
++
++
++def bitcount(x: uint32) -> uint32:
++    n: uint32 = 0
++    for i in range(32):
++        n += (x >> i) & 1
++    return n
++
++
++def test_combinational_function_loops_unroll():
++    with tempfile.TemporaryDirectory() as tmp:
++        cpp = allo.customize(bitcount).build(target="xls", project=tmp).final_cpp
++        assert directive_lines(cpp, "#pragma hls_unroll") == ["#pragma hls_unroll yes"]
++        assert not directive_lines(cpp, "hls_pipeline_init_interval")
++        if HAS_XLS:
++            xlscc(tmp, "--top=bitcount")

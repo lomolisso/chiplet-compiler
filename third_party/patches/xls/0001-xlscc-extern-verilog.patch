@@ -1,0 +1,428 @@
+diff --git a/xls/contrib/xlscc/BUILD b/xls/contrib/xlscc/BUILD
+index 7ef5a20..50c1433 100644
+--- a/xls/contrib/xlscc/BUILD
++++ b/xls/contrib/xlscc/BUILD
+@@ -246,6 +246,8 @@ cc_library(
+         "//xls/ir:channel",
+         "//xls/ir:channel_cc_proto",
+         "//xls/ir:channel_ops",
++        "//xls/ir:foreign_function",
++        "//xls/ir:foreign_function_data_cc_proto",
+         "//xls/ir:function_builder",
+         "//xls/ir:ir_parser",
+         "//xls/ir:op",
+diff --git a/xls/contrib/xlscc/cc_parser.cc b/xls/contrib/xlscc/cc_parser.cc
+index a144234..fe39b55 100644
+--- a/xls/contrib/xlscc/cc_parser.cc
++++ b/xls/contrib/xlscc/cc_parser.cc
+@@ -1112,6 +1112,79 @@ static clang::ParsedAttrInfoRegistry::Add<XlsPropagateBarrierScopesAttrInfo>
+         "Marks a function as propagating the scopes of any barriers in its "
+         "outer scope to the caller.");
+ 
++struct XlsExternVerilogAttrInfo : public clang::ParsedAttrInfo {
++  XlsExternVerilogAttrInfo() {
++    // GNU-style __attribute__((hls_extern_verilog("..."))) and C++/C23-style
++    // [[hls_extern_verilog("...")]], [[xlscc::hls_extern_verilog("...")]] and
++    // [[xlscc::extern_verilog("...")]] supported.
++    static constexpr Spelling S[] = {
++        {clang::ParsedAttr::AS_GNU, "hls_extern_verilog"},
++        {clang::ParsedAttr::AS_C23, "hls_extern_verilog"},
++        {clang::ParsedAttr::AS_CXX11, "hls_extern_verilog"},
++        {clang::ParsedAttr::AS_CXX11, "xlscc::hls_extern_verilog"},
++        {clang::ParsedAttr::AS_CXX11, "xlscc::extern_verilog"}};
++    Spellings = S;
++    // The instantiation template, then optionally the delay in picoseconds.
++    NumArgs = 1;
++    OptArgs = 1;
++  }
++
++  bool diagAppertainsToDecl(clang::Sema& S, const clang::ParsedAttr& Attr,
++                            const clang::Decl* D) const override {
++    // This attribute appertains to functions only.
++    if (!isa<clang::FunctionDecl>(D)) {
++      S.Diag(Attr.getLoc(), clang::diag::warn_attribute_wrong_decl_type_str)
++          << Attr << Attr.isRegularKeywordAttribute() << "functions";
++      return false;
++    }
++    return true;
++  }
++
++  AttrHandling handleDeclAttribute(
++      clang::Sema& S, clang::Decl* D,
++      const clang::ParsedAttr& Attr) const override {
++    auto invalid_argument = [&](const char* message) {
++      unsigned ID = S.getDiagnostics().getCustomDiagID(
++          clang::DiagnosticsEngine::Error, "%0");
++      S.Diag(Attr.getLoc(), ID) << message;
++      return AttributeNotApplied;
++    };
++    if (Attr.getNumArgs() < 1 || Attr.getNumArgs() > 2) {
++      return invalid_argument(
++          "'hls_extern_verilog' takes a template string and an optional delay "
++          "in picoseconds");
++    }
++    if (!Attr.isArgExpr(0) ||
++        !clang::isa<clang::StringLiteral>(
++            Attr.getArgAsExpr(0)->IgnoreParenCasts())) {
++      return invalid_argument(
++          "the first argument to 'hls_extern_verilog' must be a string "
++          "literal (the Verilog instantiation template)");
++    }
++    clang::Expr* args[2] = {Attr.getArgAsExpr(0), nullptr};
++    if (Attr.getNumArgs() == 2) {
++      args[1] = Attr.isArgExpr(1) ? Attr.getArgAsExpr(1) : nullptr;
++      if (args[1] == nullptr || !args[1]->isIntegerConstantExpr(S.Context) ||
++          args[1]->EvaluateKnownConstInt(S.Context).isNegative() ||
++          !args[1]->EvaluateKnownConstInt(S.Context).isSignedIntN(32)) {
++        return invalid_argument(
++            "the second argument to 'hls_extern_verilog' must be an integer "
++            ">= 0 (the delay in picoseconds)");
++      }
++    }
++    D->addAttr(clang::AnnotateAttr::Create(S.Context, "hls_extern_verilog",
++                                           args, Attr.getNumArgs(),
++                                           Attr.getRange()));
++    return AttributeApplied;
++  }
++};
++
++static clang::ParsedAttrInfoRegistry::Add<XlsExternVerilogAttrInfo>
++    hls_extern_verilog(
++        "hls_extern_verilog",
++        "Marks a function as implemented by an external Verilog module, "
++        "instantiated from a template; the C++ body is its simulation model.");
++
+ class LibToolASTConsumer : public clang::ASTConsumer {
+  public:
+   explicit LibToolASTConsumer(clang::CompilerInstance& CI, CCParser& parser)
+diff --git a/xls/contrib/xlscc/translator.cc b/xls/contrib/xlscc/translator.cc
+index ac79867..cabe953 100644
+--- a/xls/contrib/xlscc/translator.cc
++++ b/xls/contrib/xlscc/translator.cc
+@@ -90,6 +90,8 @@
+ #include "xls/ir/channel.h"
+ #include "xls/ir/channel_ops.h"
+ #include "xls/ir/fileno.h"
++#include "xls/ir/foreign_function.h"
++#include "xls/ir/foreign_function_data.pb.h"
+ #include "xls/ir/function.h"
+ #include "xls/ir/function_builder.h"
+ #include "xls/ir/ir_parser.h"
+@@ -1742,6 +1744,10 @@ absl::Status Translator::GenerateIR_Function_Body(
+ 
+   XLS_RETURN_IF_ERROR(FinishLastSlice(return_bval, body_loc));
+ 
++  if (DeclHasAnnotation(*funcdecl, "hls_extern_verilog")) {
++    XLS_RETURN_IF_ERROR(SetExternVerilog(sf, funcdecl, header, body_loc));
++  }
++
+   // Old FSM needs a wrapper function for the top function
+   if (!generate_new_fsm_ && funcdecl == currently_generating_top_function_) {
+     XLS_RETURN_IF_ERROR(GenerateFunctionSliceWrapper(sf, body_loc));
+@@ -1751,6 +1757,78 @@ absl::Status Translator::GenerateIR_Function_Body(
+   return absl::OkStatus();
+ }
+ 
++absl::Status Translator::SetExternVerilog(GeneratedFunction& sf,
++                                          const clang::FunctionDecl* funcdecl,
++                                          const FunctionInProgress& header,
++                                          const xls::SourceInfo& loc) {
++  const clang::AnnotateAttr* annotation = nullptr;
++  for (const clang::AnnotateAttr* attr : GetClangAnnotations(*funcdecl)) {
++    if (attr->getAnnotation() == "hls_extern_verilog") {
++      annotation = attr;
++      break;
++    }
++  }
++  XLSCC_CHECK_NE(annotation, nullptr, loc);
++
++  // The external module replaces exactly one IR function whose parameters
++  // and return value are the module's ports: a plain function of its
++  // arguments, computing one value, with no side effects.
++  auto unsupported = [&](std::string_view why) {
++    return absl::UnimplementedError(
++        ErrorMessage(loc, "Function %s marked hls_extern_verilog %s",
++                     funcdecl->getQualifiedNameAsString(), why));
++  };
++  if (funcdecl == currently_generating_top_function_) {
++    return unsupported("cannot be the top function");
++  }
++  if (header.has_this_param) {
++    return unsupported("must be a free function or a static method");
++  }
++  if (sf.slices.size() != 1 || !sf.io_ops.empty()) {
++    return unsupported("must not use channels or other IO");
++  }
++  if (!header.ref_returns.empty() || !sf.static_values.empty()) {
++    return unsupported(
++        "must not have non-const reference parameters or static variables");
++  }
++  if (funcdecl->getReturnType()->isVoidType() || sf.return_value_count != 1) {
++    return unsupported("must return exactly one value");
++  }
++  for (const GeneratedParamInfo& param_info : sf.param_infos) {
++    if (!param_info.has_func_param) {
++      return unsupported("must take only value parameters");
++    }
++  }
++
++  const auto* code_template = clang::dyn_cast<clang::StringLiteral>(
++      (*annotation->args_begin())->IgnoreParenCasts());
++  XLSCC_CHECK_NE(code_template, nullptr, loc);
++  absl::StatusOr<xls::ForeignFunctionData> ffi =
++      xls::ForeignFunctionDataCreateFromTemplate(code_template->getString());
++  if (!ffi.ok()) {
++    return absl::InvalidArgumentError(ErrorMessage(
++        loc, "Invalid hls_extern_verilog template for %s: %s",
++        funcdecl->getQualifiedNameAsString(), ffi.status().message()));
++  }
++  if (annotation->args_size() == 2) {
++    clang::Expr::EvalResult delay;
++    const clang::Expr* delay_expr = *(annotation->args_begin() + 1);
++    if (!delay_expr->EvaluateAsInt(delay, funcdecl->getASTContext()) ||
++        delay.Val.getInt().isNegative() ||
++        !delay.Val.getInt().isSignedIntN(32)) {
++      return absl::InvalidArgumentError(ErrorMessage(
++          loc, "hls_extern_verilog delay for %s must be an integer >= 0",
++          funcdecl->getQualifiedNameAsString()));
++    }
++    ffi->set_delay_ps(static_cast<int32_t>(delay.Val.getInt().getExtValue()));
++  }
++
++  xls::Function* function = sf.slices.front().function;
++  XLSCC_CHECK_NE(function, nullptr, loc);
++  function->SetForeignFunctionData(*ffi);
++  return absl::OkStatus();
++}
++
+ absl::StatusOr<std::shared_ptr<CType>> Translator::InterceptBuiltInStruct(
+     const clang::RecordDecl* sd) {
+   // "__xls_bits" is a special built-in type: CBitsType
+diff --git a/xls/contrib/xlscc/translator.h b/xls/contrib/xlscc/translator.h
+index a7bf077..73b30d5 100644
+--- a/xls/contrib/xlscc/translator.h
++++ b/xls/contrib/xlscc/translator.h
+@@ -1432,6 +1432,12 @@ class Translator final : public GeneratorBase,
+   absl::Status GenerateIR_Function_Body(GeneratedFunction& sf,
+                                         const clang::FunctionDecl* funcdecl,
+                                         const FunctionInProgress& header);
++  // Attaches the hls_extern_verilog template (foreign function data) of
++  // funcdecl to its generated IR function.
++  absl::Status SetExternVerilog(GeneratedFunction& sf,
++                                const clang::FunctionDecl* funcdecl,
++                                const FunctionInProgress& header,
++                                const xls::SourceInfo& loc);
+ 
+   absl::Status GenerateIR_Ctor_Initializers(
+       const clang::CXXConstructorDecl* constructor);
+diff --git a/xls/contrib/xlscc/unit_tests/BUILD b/xls/contrib/xlscc/unit_tests/BUILD
+index f7bea14..0791ad0 100644
+--- a/xls/contrib/xlscc/unit_tests/BUILD
++++ b/xls/contrib/xlscc/unit_tests/BUILD
+@@ -294,6 +294,22 @@ cc_test(
+     ],
+ )
+ 
++cc_test(
++    name = "translator_extern_verilog_test",
++    srcs = ["translator_extern_verilog_test.cc"],
++    deps = [
++        ":unit_test",
++        "//xls/common:xls_gunit_main",
++        "//xls/common/status:matchers",
++        "//xls/ir",
++        "//xls/ir:op",
++        "@abseil-cpp//absl/status",
++        "@abseil-cpp//absl/status:status_matchers",
++        "@abseil-cpp//absl/strings",
++        "@googletest//:gtest",
++    ],
++)
++
+ cc_test(
+     name = "translator_metadata_test",
+     srcs = ["translator_metadata_test.cc"],
+diff --git a/xls/contrib/xlscc/unit_tests/translator_extern_verilog_test.cc b/xls/contrib/xlscc/unit_tests/translator_extern_verilog_test.cc
+new file mode 100644
+index 0000000..b0f38e7
+--- /dev/null
++++ b/xls/contrib/xlscc/unit_tests/translator_extern_verilog_test.cc
+@@ -0,0 +1,178 @@
++// SPDX-License-Identifier: Apache-2.0
++//
++// Tests of the hls_extern_verilog attribute (external Verilog modules).
++
++#include <cstdint>
++#include <string>
++#include <string_view>
++
++#include "gmock/gmock.h"
++#include "gtest/gtest.h"
++#include "absl/status/status.h"
++#include "absl/status/status_matchers.h"
++#include "absl/strings/match.h"
++#include "xls/common/status/matchers.h"
++#include "xls/contrib/xlscc/unit_tests/unit_test.h"
++#include "xls/ir/function.h"
++#include "xls/ir/function_base.h"
++#include "xls/ir/node.h"
++#include "xls/ir/nodes.h"
++#include "xls/ir/op.h"
++
++namespace xlscc {
++namespace {
++
++using ::absl_testing::StatusIs;
++using ::testing::HasSubstr;
++
++class TranslatorExternVerilogTest : public XlsccTestBase {
++ public:
++  // The IR function generated for the C++ function `name`.
++  const xls::Function* FindFunction(std::string_view name) {
++    for (const xls::FunctionBase* f : package_->GetFunctionBases()) {
++      if (f->IsFunction() && absl::StrContains(f->name(), name)) {
++        return f->AsFunctionOrDie();
++      }
++    }
++    return nullptr;
++  }
++
++  int64_t CountInvokesOf(std::string_view caller, const xls::Function* callee) {
++    const xls::Function* f = FindFunction(caller);
++    int64_t n = 0;
++    for (const xls::Node* node : f->nodes()) {
++      if (node->op() == xls::Op::kInvoke &&
++          node->As<xls::Invoke>()->to_apply() == callee) {
++        ++n;
++      }
++    }
++    return n;
++  }
++};
++
++TEST_F(TranslatorExternVerilogTest, AttachesTemplateAndDelay) {
++  const std::string content = R"(
++    [[xlscc::extern_verilog(
++        "fmul_core {fn} (.a({a}), .b({b}), .z({return}))", 800)]]
++    unsigned fmul(unsigned a, unsigned b) { return a ^ b; }
++
++    #pragma hls_top
++    unsigned my_package(unsigned x, unsigned y, unsigned z) {
++      return fmul(x, y) + fmul(y, z);
++    })";
++  XLS_ASSERT_OK(SourceToIr(content).status());
++
++  const xls::Function* fmul = FindFunction("fmul");
++  ASSERT_NE(fmul, nullptr);
++  ASSERT_TRUE(fmul->ForeignFunctionData().has_value());
++  EXPECT_EQ(fmul->ForeignFunctionData()->code_template(),
++            "fmul_core {fn} (.a({a}), .b({b}), .z({return}))");
++  EXPECT_TRUE(fmul->ForeignFunctionData()->has_delay_ps());
++  EXPECT_EQ(fmul->ForeignFunctionData()->delay_ps(), 800);
++  // The parameters keep their C++ names, so the template can refer to them.
++  ASSERT_EQ(fmul->params().size(), 2);
++  EXPECT_EQ(fmul->params()[0]->name(), "a");
++  EXPECT_EQ(fmul->params()[1]->name(), "b");
++  // Each call stays an invoke of the external function.
++  EXPECT_EQ(CountInvokesOf("my_package", fmul), 2);
++}
++
++TEST_F(TranslatorExternVerilogTest, DelayIsOptional) {
++  const std::string content = R"(
++    [[hls_extern_verilog("neg_core {fn} (.a({a}), .z({return}))")]]
++    int neg(int a) { return -a; }
++
++    #pragma hls_top
++    int my_package(int x) { return neg(x) + 1; })";
++  XLS_ASSERT_OK(SourceToIr(content).status());
++
++  const xls::Function* neg = FindFunction("neg");
++  ASSERT_NE(neg, nullptr);
++  ASSERT_TRUE(neg->ForeignFunctionData().has_value());
++  EXPECT_FALSE(neg->ForeignFunctionData()->has_delay_ps());
++}
++
++TEST_F(TranslatorExternVerilogTest, BodyIsTheSimulationModel) {
++  const std::string content = R"(
++    [[xlscc::extern_verilog("add_core {fn} (.a({a}), .b({b}), .z({return}))")]]
++    int add(int a, int b) { return a + b; }
++
++    #pragma hls_top
++    int my_package(int x, int y) { return add(x, y) * 2; })";
++  Run({{"x", 3}, {"y", 4}}, 14, content);
++}
++
++TEST_F(TranslatorExternVerilogTest, UnmarkedFunctionsHaveNoTemplate) {
++  const std::string content = R"(
++    int add(int a, int b) { return a + b; }
++
++    #pragma hls_top
++    int my_package(int x, int y) { return add(x, y); })";
++  XLS_ASSERT_OK(SourceToIr(content).status());
++  const xls::Function* add = FindFunction("add");
++  if (add != nullptr) {
++    EXPECT_FALSE(add->ForeignFunctionData().has_value());
++  }
++}
++
++TEST_F(TranslatorExternVerilogTest, RejectsTopFunction) {
++  const std::string content = R"(
++    #pragma hls_top
++    [[xlscc::extern_verilog("core {fn} (.a({a}), .z({return}))")]]
++    int my_package(int a) { return a; })";
++  EXPECT_THAT(SourceToIr(content).status(),
++              StatusIs(absl::StatusCode::kUnimplemented,
++                       HasSubstr("cannot be the top function")));
++}
++
++TEST_F(TranslatorExternVerilogTest, RejectsVoidFunction) {
++  const std::string content = R"(
++    [[xlscc::extern_verilog("core {fn} (.a({a}))")]]
++    void sink(int a) { (void)a; }
++
++    #pragma hls_top
++    int my_package(int x) {
++      sink(x);
++      return x;
++    })";
++  EXPECT_THAT(SourceToIr(content).status(),
++              StatusIs(absl::StatusCode::kUnimplemented,
++                       HasSubstr("must return exactly one value")));
++}
++
++TEST_F(TranslatorExternVerilogTest, RejectsReferenceOutputs) {
++  const std::string content = R"(
++    [[xlscc::extern_verilog("core {fn} (.a({a}), .z({return}))")]]
++    int twice(int& a) { a = a + 1; return a; }
++
++    #pragma hls_top
++    int my_package(int x) { return twice(x) + x; })";
++  EXPECT_THAT(SourceToIr(content).status(),
++              StatusIs(absl::StatusCode::kUnimplemented,
++                       HasSubstr("non-const reference parameters")));
++}
++
++TEST_F(TranslatorExternVerilogTest, RejectsMalformedTemplate) {
++  const std::string content = R"(
++    [[xlscc::extern_verilog("core {fn (.a({a}), .z({return}))")]]
++    int id(int a) { return a; }
++
++    #pragma hls_top
++    int my_package(int x) { return id(x); })";
++  EXPECT_THAT(SourceToIr(content).status(),
++              StatusIs(absl::StatusCode::kInvalidArgument,
++                       HasSubstr("Invalid hls_extern_verilog template")));
++}
++
++TEST_F(TranslatorExternVerilogTest, RejectsNonStringTemplate) {
++  const std::string content = R"(
++    [[xlscc::extern_verilog(42)]]
++    int id(int a) { return a; }
++
++    #pragma hls_top
++    int my_package(int x) { return id(x); })";
++  EXPECT_FALSE(SourceToIr(content).ok());
++}
++
++}  // namespace
++}  // namespace xlscc
