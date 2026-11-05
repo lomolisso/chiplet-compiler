@@ -3,19 +3,18 @@ source: tests/deep/normalize.rs
 expression: digest
 ---
 {
-  "checks": 822,
-  "components": 203,
-  "nodes": 26898,
-  "nodes_in": 29060,
+  "checks": 838,
+  "components": 207,
+  "nodes": 23918,
+  "nodes_in": 25141,
   "omega": {
-    "seq": 415
+    "seq": 414
   },
   "rules": {
     "broadcast_identity": 2,
-    "convert_identity": 6,
-    "cse": 82,
-    "dce": 2072,
+    "cse": 72,
+    "dce": 1149,
     "reshape_collapse": 2,
-    "splat_fold": 2035
+    "splat_fold": 724
   }
 }
