@@ -664,13 +664,15 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
         }
     }
     let (solver, runner, location) = smt(ctx)?;
-    let other = cc_smt::run_batch(
+    let other = cc_smt::run_cached(
         &runner,
         &location,
         solver.other(),
         &out.path("smt")?,
         &files,
         ctx.smt().timeout_s,
+        1,
+        &cc_smt::Cache::new(ctx.smt_cache_dir()),
     );
     let proof_notes = |file: &str, text: &str| -> Vec<String> {
         let mut n = Vec::new();

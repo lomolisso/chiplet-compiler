@@ -128,13 +128,15 @@ impl Pass for IterationSpace {
         }
         let (solver, runner, location) = smt(ctx)?;
         let names: Vec<String> = files.iter().map(|(f, _)| f.clone()).collect();
-        let batch = cc_smt::run_batch(
+        let batch = cc_smt::run_cached(
             &runner,
             &location,
             solver,
             &out.path("smt")?,
             &names,
             ctx.smt().timeout_s,
+            1,
+            &cc_smt::Cache::new(ctx.smt_cache_dir()),
         )?;
         let mut bad = Vec::new();
         for (f, text) in &files {

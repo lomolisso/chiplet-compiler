@@ -459,7 +459,7 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
         files.extend(o.queries.iter().map(|q| q.file.clone()));
         used.extend(o.used.iter().cloned());
     }
-    let other = cc_smt::run_sharded(
+    let other = cc_smt::run_cached(
         &runner,
         &location,
         solver.other(),
@@ -467,6 +467,7 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
         &files,
         ctx.smt().timeout_s,
         threads,
+        &cc_smt::Cache::new(ctx.smt_cache_dir()),
     );
     let allowed: HashMap<&str, &str> = cfg
         .allow_unknown
@@ -582,7 +583,7 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
         }
     }
     let names: Vec<String> = lemmas.iter().map(|(f, _)| f.clone()).collect();
-    match cc_smt::run_sharded(
+    match cc_smt::run_cached(
         &runner,
         &location,
         Solver::Z3,
@@ -590,6 +591,7 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
         &names,
         cfg.lemma_timeout_s,
         threads,
+        &cc_smt::Cache::new(ctx.smt_cache_dir()),
     ) {
         Ok(b) => {
             for f in &names {
@@ -689,13 +691,15 @@ fn sanity(
     std::fs::write(dir.join(&file), &q.text).map_err(|e| PassError::failed(format!("sanity: {e}")))?;
     let mut n = Vec::new();
     for s in [solver, solver.other()] {
-        let b = cc_smt::run_batch(
+        let b = cc_smt::run_cached(
             runner,
             location,
             s,
             &dir,
             std::slice::from_ref(&file),
             ctx.smt().timeout_s,
+            1,
+            &cc_smt::Cache::new(ctx.smt_cache_dir()),
         )?;
         match b.verdicts.get(&file) {
             Some(Verdict::Sat { .. }) => {}
