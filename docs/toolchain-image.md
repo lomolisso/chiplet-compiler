@@ -87,7 +87,7 @@ Image 0.5.0 (iacoma227, 2026-11-05, same caps): the stages up to the unpatched X
 empty cache on a loaded host (Bazel `Elapsed time` 1358 s); on top of them, `docker/build.sh` took 12 min:
 FloPoCo about 2 min, Allo with its patches about 2 min, the patched `xlscc` with its unit test 346 s (5,300
 more actions, mostly the test's dependencies), the JAX venv, the final stage with the Allo patches' tests (8 s)
-and `cc-selftest` (the three new steps add about 25 s). Peak resident memory of those steps 9.1 GiB (10.1 GiB
+and `cc-selftest` (10 s on 2 CPUs, 7.7 s of it the three new steps). Peak resident memory of those steps 9.1 GiB (10.1 GiB
 with page cache). Final image 3.72 GB.
 
 The image was first built across several invocations of `docker/build.sh` on 2026-10-31. Each invocation fixed one step and resumed from the layer cache, so every layer above was built by this command from an empty cache. The time above is the sum of the runs.
