@@ -9,7 +9,6 @@ pub mod float;
 pub mod ops;
 pub mod run;
 pub mod term;
-pub mod xls;
 
 pub use run::{Cache, query_hash, run_sharded, solver_version};
 

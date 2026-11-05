@@ -15,7 +15,6 @@ mod kernels;
 mod merge;
 mod mine;
 mod normalize;
-mod softfloat;
 
 use std::time::Duration;
 

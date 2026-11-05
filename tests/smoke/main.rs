@@ -23,5 +23,4 @@ mod pipeline;
 mod runners;
 mod schemas;
 mod smt;
-mod softfloat;
 mod verify;

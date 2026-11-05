@@ -370,16 +370,16 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
 
 ### 4.12 `softfloat` (parallel branch)
 
-- **Purpose.** An Allo library of float formats implemented with integer bit operations (`python/cc_softfloat`):
+- **Purpose.** An Allo library of float formats implemented with integer bit operations:
   - the formats the recipes use: FP8 E4M3FN, bf16, fp16, fp32 (E5M2 is optional; no port uses it today);
-  - every float op of the primitive catalog: the exactly specified ones (arithmetic, divide, sqrt, remainder, compare, min/max, rounding to integral, `reduce_precision`, conversions) bit-exact with IEEE subnormals and round to nearest even; the ops the spec leaves to an approximate function (exp, log, tanh, rsqrt, sin, cos, power, ...) within 1 ulp;
-  - no FMA (the order contract never fuses).
+  - add, mul, FMA-or-not per contract, compare, convert, round-to-nearest-even;
+  - FTZ / DAZ as configured.
 
-  It makes every FU integer to Allo, so the Allo `llvm` simulator and the Allo XLS backend accept it, and its Verilog (Allo's XLS C++, xlscc, `opt_main`, `codegen_main`) is what `characterize` prices.
+  It makes every FU integer to Allo, so the Allo `llvm` simulator and the Allo XLS backend accept it.
 - **Verification.**
-  - Every input combination for operands of at most 16 bits in total (FP8 binary ops, 16-bit unary ops), otherwise edge cases and seeded random operands, against a bit-exact reference (NumPy/`ml_dtypes` through float64), on Allo's `llvm` target and on the optimized XLS IR.
-  - The optimized XLS IR translated to SMT and proven equal to the op's semantics in `cc_smt::ops` (the semantics of the datapath proofs) where the solver finishes; multiplies with the significand product abstracted (docs/passes/softfloat.md §4).
-  - Approximate ops: 8-bit formats as tables of correctly rounded results, `rsqrt` correctly rounded by exact integer division and square root, the others by Tang's table-driven reductions (exp, log), Payne-Hanek reduction (sin, cos) and `exp(y ln|x|)` with a wider log (power), Taylor polynomials in fixed point, each design with an error bound below 0.6 ulp; checked against NumPy's float64 functions with an allowance for their own error, every input at 16 bits and below, and once over every f32 input of the unary ops and every 16-bit operand pair of power.
+  - Exhaustive tests for 8-bit formats (every operand pair).
+  - Randomized and edge-case tests for wider formats against a bit-exact reference (`ml_dtypes`/NumPy with explicit rounding).
+  - SMT QF_FP equivalence of the integer circuit vs the FP theory for small formats.
 
 ### 4.13 `allo_emit`
 
@@ -532,14 +532,6 @@ build/         (ignored) build/.<pass>/ artifacts
 | Template eligibility by space-time mapping proof | Name-based mapping of GEMM/conv | No hard-coded mappings |
 | Configuration by construction + ∀-only SMT | ∃∀ synthesis per (FU, kernel) | The clique already gives the mapping |
 | Soft-float in plain Allo | Fork Allo / DSLX for floats | One RTL route; FP8 bit-exact; no fork to maintain |
-| Soft-float ops are generated flat Allo functions; Allo's front-end gaps are kept by the generator (shifts and masks for bits, inlining before the XLS backend, literals below 2^31, XOR for NOT, a spare bit on compared variables) | Patch Allo | The pinned Allo stays unmodified; every gap is checked by simulating `llvm` against the XLS IR on every vector |
-| Subnormals IEEE in every format, no flush mode | FTZ/DAZ as configured | The datapath semantics and every proof assume gradual underflow; FP8 needs its subnormals |
-| A soft-float primitive is proven by translating its optimized XLS IR to SMT against `cc_smt::ops`; multiplies with the significand product as an uninterpreted function and IEEE's exact-then-round definition as the spec | Tests only; direct multiplier equivalence | Ties the RTL source to the semantics the datapath proofs use; direct multiply queries did not finish in 25 minutes even at f16, the abstracted f32 one takes seconds |
-| Approximate ops within 1 ulp in every format; 8-bit formats as tables of correctly rounded results; `rsqrt` correctly rounded | Per-format accuracy; correctly rounded everywhere | One accuracy contract for every unit; correct rounding where it costs nothing extra (a 256-entry table, rsqrt's exact division and square root), not where it needs the table maker's extra precision |
-| Approximate ops checked against NumPy's float64 functions with an allowance of 2^-48 of the value for their error | A correctly rounded reference (mpmath) in the image | No new dependency or image; the allowance is below 2^-24 ulp in every format here |
-| Approximate ops by table-driven reduction and Taylor polynomials with closed-form error bounds | Minimax polynomials (Remez), CORDIC | A bound anyone can recompute from the design; minimax would save a degree in some designs and remains an option once areas are measured |
-| Sine and cosine reduce every input exactly enough (Payne-Hanek: a window of 2/pi per exponent), sized by each format's worst case found by enumerating every input | Cody-Waite with a range limit; a fixed generous width | Correct for every finite input, as the semantics have no range limit; the enumeration gives the least width that is still safe (f32: 16367173 * 2^72, within 2^-29.86 of a multiple of pi/2, as in Muller's tables) |
-| `power` as `exp(y ln|x|)` with the log at `ib + 3` extra bits; FP8 computed too | log2/exp2 in double-word arithmetic; a 64K-entry FP8 table | Reuses the exp and log cores with one bound; a 2^16-entry table would be a large circuit for an op no unit uses in FP8, and every FP8 pair is checked anyway |
 | Host driver + capped Docker + `eda-run` | Single container | glibc 2.28 host, cgroups v1, host-only licensed EDA |
 | Parallel pass execution with memory admission | Sequential only | Independent branches exist; about 100 lines; shared machine |
 | Requantization has two verified variants | Integer only | The ports rescale in fp32 as deployed; fixed point is the integer-only form (TFLite). It is not smaller by itself: at ASAP7 (DC) `rescale@i32` is 636 µm² against 331 µm² for the fp32 chain, whose multiply works on 24-bit significands after the convert, while `rescale` forms the exact 32×24 product |
@@ -604,7 +596,7 @@ build/         (ignored) build/.<pass>/ artifacts
 | Window and padding values from shape operands are run-time parameters of the maps | Lift them into attributes upstream | The proofs are parametric anyway; the affected classes are reductions or keep their template eligibility |
 | Access proofs over variables in {0, …, 7} in 32-bit vectors | Integer arithmetic (QF_NIA) | Both sides are polynomials of low degree, so the grid proves the identity (Alon 1999, Lemma 2.1); Bitwuzla has no integer theory and both solvers must answer |
 | Datapath float encoding: f16/f32 in the FP theory; bf16 and FP8 as bit patterns computed in a Float32 carrier and rounded back explicitly, each encoding proven once by Z3 against a native sort | Bit-precise soft-float now; Z3-only proofs for bf16/FP8 | Bitwuzla has only the IEEE interchange sorts and both solvers must answer; soft-float circuits are `softfloat`'s; the lemmas make the carrier exact (an i32 → bf16 lemma failed through Float32 and now rounds to odd) |
-| Ops whose float result the spec leaves to an approximate function (`exponential`, `tanh`, `rsqrt`, …) are uninterpreted functions per op and format | Pick one approximation | The proof then holds for any implementation; `softfloat` implements them within 1 ulp |
+| Ops whose float result the spec leaves to an approximate function (`exponential`, `tanh`, `rsqrt`, …) are uninterpreted functions per op and format | Pick one approximation | The proof then holds for any implementation; `softfloat` implements and proves them |
 | Integer accumulators wrap; order freedom is proven per class and tuple | Saturating option; freedom stated by family | Two's-complement add is what the spec computes; the proof states it for every combiner (variadic bodies included) |
 | One datapath file per class, template stages included (vertices tagged by stage) | Separate files per stage | One proof per class and tuple covers every stage; mining sees one graph per class |
 | Width tuples: distinct element types (and constant types, structural attributes) over T_z; constants free | One proof per (tuple, constant values) | Fewer obligations, and the proof covers every constant value |
