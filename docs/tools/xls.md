@@ -101,6 +101,13 @@ works generically, e.g. E4M3 = `APFloat<4,3>`, but E4M3FN's no-inf/NaN encoding 
 has `activation.x`, `ws_matmul.x`. These are references and test oracles; our FUs
 come from Allo, not DSLX.
 
+`third_party/xls_go_math/` (not in the release tarball) has f32 `fp_sincos_32` (sine and cosine, full-range
+Payne-Hanek reduction in `fp_trig_reduce.x`), `fpexp_32` (imports `third_party/xls_berkeley_softfloat/
+fpdiv_2x32.x`) and `fpsqrt_32`. The image copies them from the pinned commit to `/opt/xls/share/third_party/`;
+convert with `ir_converter_main --dslx_path=$XLS_DSLX_PATH` (`docs/toolchain-image.md`). Measured 2026-11-05 with
+the pinned tools, 2 CPUs: `fp_sincos_32` to combinational Verilog in about 7.5 s (IR conversion 3.7 s, `opt_main`
+3.5 s, codegen 0.3 s), 191 kB of Verilog that Yosys reads in 0.4 s; `fpexp_32` about 8.3 s.
+
 ## 7. xlscc (C++ front end)
 
 - **Invocation outside Bazel (verified 2026-10-30).** XLS's `xls_cc_ir` rule (`xls/contrib/xlscc/build_rules/xlscc_rules.bzl`) always adds the defines `__SYNTHESIS__,__xlscc__,__AC_OVERRIDE_OVF_UPDATE_BODY=,__AC_OVERRIDE_OVF_UPDATE2_BODY=`. Without `__SYNTHESIS__`, `xls_int.h` hits `static_assert(false, "This header is only for synthesis")` and `ac_int.h` pulls in `std::ios` code.
