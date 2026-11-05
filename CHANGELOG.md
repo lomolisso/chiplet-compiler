@@ -33,6 +33,7 @@ All notable changes to this project are listed here. The format follows
 
 ### Fixed
 
+- `merge` resolves gain bounds in batches of a fixed size: the merge order no longer depends on the thread count (outputs at the default 16 threads unchanged).
 - `config.local.toml.example` no longer lowers the run memory budget to 32 GB, which held back the raised pass resources.
 - Containers get `--cpus` rounded down to hundredths: a fractional share such as 16 CPUs over 6 solver jobs was rejected by Docker.
 - JSON floats are parsed exactly (`serde_json` `float_roundtrip`); `import` read some float attributes one ulp off.
