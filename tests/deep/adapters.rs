@@ -9,6 +9,9 @@ use cc_passes::adapters::MINERS;
 use cc_passes::mine::algo::lg::parse_output;
 use tests::repo_root;
 
+/// A pattern: its vertex labels and its edges `(from, to, label)`.
+type Pattern = (Vec<u32>, Vec<(u32, u32, u32)>);
+
 #[test]
 fn miners_conform() {
     let cfg = LoadedConfig::load(&repo_root().join("config.toml"), &[]).unwrap();
@@ -37,7 +40,7 @@ fn miners_conform() {
         let MineRun::Done(text) = miner.mine(&runner, &job).unwrap() else {
             panic!("{}: timeout", miner.name());
         };
-        let mut found: Vec<(Vec<u32>, Vec<(u32, u32, u32)>)> = parse_output(&text)
+        let mut found: Vec<Pattern> = parse_output(&text)
             .unwrap()
             .into_iter()
             .map(|p| (p.nodes, p.edges))
@@ -54,6 +57,11 @@ fn miners_conform() {
             miner.name()
         );
         // A finished run is cached in its directory.
-        assert_eq!(miner.mine(&runner, &job).unwrap(), MineRun::Done(text), "{}", miner.name());
+        assert_eq!(
+            miner.mine(&runner, &job).unwrap(),
+            MineRun::Done(text),
+            "{}",
+            miner.name()
+        );
     }
 }
