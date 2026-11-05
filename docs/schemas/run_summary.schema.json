@@ -86,6 +86,16 @@
         },
         "status": {
           "$ref": "#/$defs/RunStatus"
+        },
+        "verify_ms": {
+          "default": null,
+          "description": "The part of `duration_ms` spent in `verify`.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
         }
       },
       "required": [

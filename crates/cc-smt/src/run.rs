@@ -122,10 +122,104 @@ impl Cache {
         if let Some(d) = p.parent() {
             std::fs::create_dir_all(d)?;
         }
-        let tmp = p.with_extension("tmp");
+        // The cache is shared by build directories and processes: a unique temporary name, then an
+        // atomic rename (two writers of one answer write the same text).
+        let tmp = p.with_extension(format!(
+            "{}.{:?}.tmp",
+            std::process::id(),
+            std::thread::current().id()
+        ));
         std::fs::write(&tmp, text)?;
         std::fs::rename(tmp, p)
     }
+}
+
+/// Answers for `files` (relative to `dir`, with their texts): cached ones, then one sharded run for the
+/// rest, whose `unsat` and `sat` answers are stored. Each answer comes with the solver version.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_cached(
+    runner: &BoundRunner,
+    location: &Location,
+    solver: Solver,
+    dir: &Path,
+    files: &[(String, String)],
+    timeout_s: u64,
+    shards: usize,
+    cache: &Cache,
+) -> Result<std::collections::HashMap<String, (String, Verdict)>, CoreError> {
+    let mut out = std::collections::HashMap::new();
+    if files.is_empty() {
+        return Ok(out);
+    }
+    let version = solver_version(runner, location, solver)?;
+    let mut todo = Vec::new();
+    for (f, text) in files {
+        match cache.get(solver, &version, &query_hash(text)) {
+            Some(v) => {
+                out.insert(f.clone(), (version.clone(), v));
+            }
+            None => todo.push(f.clone()),
+        }
+    }
+    if !todo.is_empty() {
+        let batch = run_sharded(runner, location, solver, dir, &todo, timeout_s, shards)?;
+        if batch.version != version {
+            return Err(CoreError::Tool {
+                tool: format!("smt-{}", solver.name()),
+                message: format!("reported {} and then {}", version, batch.version),
+            });
+        }
+        let text: std::collections::HashMap<&str, &str> =
+            files.iter().map(|(f, t)| (f.as_str(), t.as_str())).collect();
+        for f in todo {
+            let v = batch.verdicts.get(&f).cloned().unwrap_or(Verdict::Error {
+                message: "no answer".into(),
+            });
+            if let Some(t) = text.get(f.as_str()) {
+                let _ = cache.put(solver, &version, &query_hash(t), &v);
+            }
+            out.insert(f, (version.clone(), v));
+        }
+    }
+    Ok(out)
+}
+
+/// `run_sharded` through the cache: the files' texts are read from `dir`, cached answers are reused and
+/// only the rest run. Same result shape as `run_sharded`.
+#[allow(clippy::too_many_arguments)]
+pub fn run_cached(
+    runner: &BoundRunner,
+    location: &Location,
+    solver: Solver,
+    dir: &Path,
+    files: &[String],
+    timeout_s: u64,
+    shards: usize,
+    cache: &Cache,
+) -> Result<Batch, CoreError> {
+    let texts = files
+        .iter()
+        .map(|f| {
+            let p = dir.join(f);
+            std::fs::read_to_string(&p)
+                .map(|t| (f.clone(), t))
+                .map_err(|e| CoreError::Tool {
+                    tool: format!("smt-{}", solver.name()),
+                    message: format!("reading {}: {e}", p.display()),
+                })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let answers = solve_cached(runner, location, solver, dir, &texts, timeout_s, shards, cache)?;
+    let version = answers
+        .values()
+        .next()
+        .map(|(v, _)| v.clone())
+        .unwrap_or_default();
+    Ok(Batch {
+        solver,
+        version,
+        verdicts: answers.into_iter().map(|(f, (_, v))| (f, v)).collect(),
+    })
 }
 
 #[cfg(test)]

@@ -232,7 +232,8 @@
 7. **Resources.** Linear in classes and rows, plus the embedding search (quadratic in the classes of
    one kind). At `full` (2026-11-02, debug build, 8 threads, iacoma227): 37 s for pass and verification
    together, solver batches included, 0.5 GB peak RSS; outputs 30 MB (skeletons 15 MB, `embedding.json`
-   12 MB, obligations 8 MB).
+   12 MB, obligations 8 MB). With the shared solver-answer cache holding the queries (2026-11-05): 7 s in a
+   debug build, 3.5 s in a release build.
 
 8. **Limitations.**
    - Only uniform recurrences are mapped. Diagonal sliding-window reuse (a convolution's input along

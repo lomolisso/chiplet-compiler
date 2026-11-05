@@ -288,9 +288,9 @@ impl Pass for Merge {
             write_file(&out.path(&format!("proofs/{f}"))?, text)?;
         }
         let (solver, runner, location) = crate::normalize::smt(ctx)?;
-        let cache = cc_smt::Cache::new(ctx.dir().path().join("cache"));
+        let cache = cc_smt::Cache::new(ctx.smt_cache_dir());
         let threads = ctx.resources().threads.max(1);
-        let answers = crate::datapaths::solve(
+        let answers = cc_smt::solve_cached(
             &runner,
             &location,
             solver,
@@ -300,7 +300,7 @@ impl Pass for Merge {
             threads,
             &cache,
         )?;
-        let zanswers = crate::datapaths::solve(
+        let zanswers = cc_smt::solve_cached(
             &runner,
             &location,
             Solver::Z3,
@@ -431,8 +431,8 @@ fn decide_requant(
         files.push((f, text));
     }
     let (solver, runner, location) = crate::normalize::smt(ctx)?;
-    let cache = cc_smt::Cache::new(ctx.dir().path().join("cache"));
-    let answers = crate::datapaths::solve(
+    let cache = cc_smt::Cache::new(ctx.smt_cache_dir());
+    let answers = cc_smt::solve_cached(
         &runner,
         &location,
         solver,

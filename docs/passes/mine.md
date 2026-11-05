@@ -74,8 +74,15 @@
 4. **Algorithm.**
    1. *Units and labels* (`algo/family.rs`): units, their graphs and workloads, the label tables, one
       `.lg` per family.
-   2. *Sweep* (`algo/sweep.rs`), per family, families in parallel as memory admits containers: GraMi at
-      τ = `tau_start`, then τ halved (rounded down, at least `tau_min`) until `tau_min`.
+   2. *Sweep* (`algo/sweep.rs`), per family, families in parallel as memory admits containers: τ =
+      `tau_start`, then τ halved (rounded down, at least `tau_min`) until `tau_min`.
+      - *GraMi runs* (`grami_runs`): with `once` (default) GraMi runs a single time, at `tau_min`, and
+        each step's set is the patterns of that run whose MNI (re-match below) reaches the step's τ. MNI
+        is anti-monotone and GraMi reports every frequent pattern within the bound, so these are the sets
+        a run per step reports: on the model set the counts agree at every step of every family and the
+        pass's outputs are byte-identical. It saves the runs at the larger thresholds (map: 412 of 914 s
+        of GraMi). A run that times out or reports a pattern over the bound falls back to `sweep`, one
+        GraMi run per step as below.
       - *GraMi* (`algo/grami.rs`): the directed subgraph build of the image, `limitedtime=false` (its
         default `true` adds a candidate to a domain when a 5 s timer fires, so it can report infrequent
         patterns), `maxNodes = max_vertices` (our patch `third_party/patches/grami/0002`: a larger pattern
@@ -115,6 +122,7 @@
 
 5. **Config** (`[passes.mine]`): `tau_start = 40`, `tau_min = 2`, `max_vertices = 6`, `top_k = 32`,
    `budget_s = 3600` (GraMi wall clock per family), `run_timeout_s = 600`, `heap_gb = 6`,
+   `grami_runs = "once" | "sweep"`,
    `vf2_budget = 100000000` (candidate pairs of one re-match; over it the pass fails), `views = true`;
    `[passes.mine.mis]`: `algorithm = "exact_ilp" | "branch_and_bound" | "greedy_min_degree"`,
    `node_budget = 1000000`. The image tag and the GraMi commit enter the cache key, and Java's version
@@ -163,6 +171,7 @@
    |---|---|---|---|---|---|---|
    | 5 | 4.6 min | 225 s | 2 932 (2 674) | map 3, contraction 6 | 0.29 GB | 26 MB |
    | 6 (default) | 12.9 min | 610 s | 7 077 (6 788) | map 2, contraction 5 | 0.31 GB | 58 MB |
+   | 6, `grami_runs = "once"` (2026-11-05, release) | 7.8 min | 455 s (one run at τ = 2) | 6 788 | as above | | |
    | 8 | estimated 2 h or more | 13 + 468 + 628 s to τ = 10; τ = 5 over 16 min | 13 855 at τ = 10 | | | |
 
    The other families take under 4 s per GraMi run at any bound. Without the node bound (upstream

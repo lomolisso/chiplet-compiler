@@ -120,8 +120,8 @@ impl Pass for Datapaths {
         // Solvers: the configured one proves the obligations, Z3 the encoding lemmas.
         let (solver, runner, location) = smt(ctx)?;
         let threads = ctx.resources().threads.max(1);
-        let cache = cc_smt::Cache::new(ctx.dir().path().join("cache"));
-        let answers = solve(
+        let cache = cc_smt::Cache::new(ctx.smt_cache_dir());
+        let answers = cc_smt::solve_cached(
             &runner,
             &location,
             solver,
@@ -131,7 +131,7 @@ impl Pass for Datapaths {
             threads,
             &cache,
         )?;
-        let lemma_answers = solve(
+        let lemma_answers = cc_smt::solve_cached(
             &runner,
             &location,
             Solver::Z3,
@@ -295,56 +295,6 @@ pub fn build(inputs: &Inputs, i: usize, max_tuples: usize) -> Result<(Datapath, 
     }
     let ob = proofs::obligations(class, skel, routed, g, &dp)?;
     Ok((dp, ob))
-}
-
-/// Answers for `files` (relative to `dir`): cached ones, then one sharded run for the rest.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn solve(
-    runner: &cc_core::runner::BoundRunner,
-    location: &cc_smt::Location,
-    solver: Solver,
-    dir: &std::path::Path,
-    files: &[(String, String)],
-    timeout_s: u64,
-    threads: usize,
-    cache: &cc_smt::Cache,
-) -> Result<HashMap<String, (String, Verdict)>, PassError> {
-    let mut out = HashMap::new();
-    if files.is_empty() {
-        return Ok(out);
-    }
-    let version = cc_smt::solver_version(runner, location, solver)?;
-    let mut todo = Vec::new();
-    for (f, text) in files {
-        match cache.get(solver, &version, &cc_smt::query_hash(text)) {
-            Some(v) => {
-                out.insert(f.clone(), (version.clone(), v));
-            }
-            None => todo.push(f.clone()),
-        }
-    }
-    if !todo.is_empty() {
-        let batch = cc_smt::run_sharded(runner, location, solver, dir, &todo, timeout_s, threads)?;
-        if batch.version != version {
-            return Err(PassError::failed(format!(
-                "{} reported {} and then {}",
-                solver.name(),
-                version,
-                batch.version
-            )));
-        }
-        let text: HashMap<&str, &str> = files.iter().map(|(f, t)| (f.as_str(), t.as_str())).collect();
-        for f in todo {
-            let v = batch.verdicts.get(&f).cloned().unwrap_or(Verdict::Error {
-                message: "no answer".into(),
-            });
-            if let Some(t) = text.get(f.as_str()) {
-                let _ = cache.put(solver, &version, &cc_smt::query_hash(t), &v);
-            }
-            out.insert(f, (version.clone(), v));
-        }
-    }
-    Ok(out)
 }
 
 fn summarize(

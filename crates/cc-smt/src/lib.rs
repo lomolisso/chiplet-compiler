@@ -10,7 +10,7 @@ pub mod ops;
 pub mod run;
 pub mod term;
 
-pub use run::{Cache, query_hash, run_sharded, solver_version};
+pub use run::{Cache, query_hash, run_cached, run_sharded, solve_cached, solver_version};
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;

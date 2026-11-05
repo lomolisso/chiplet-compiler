@@ -142,9 +142,17 @@ of a rounding) that must be `sat`.
   declaration), and merges the answers; every batch must report the same version.
 - `solver_version` runs `<solver> --version`.
 - `Cache` stores verdicts by (solver, version, query hash) in a directory, one file per query; only
-  `unsat` and `sat` are stored. `datapaths` keeps it under `build/.datapaths/cache/` (outside `out/`, so
-  a rerun keeps it and `chipc clean` removes it) and uses it in the pass only; its verify always asks
-  the solver.
+  `unsat` and `sat` are stored, so a timeout or an error is always asked again. Writes go to a unique
+  temporary file and are renamed, so processes may share the directory.
+- `solve_cached` (files with their texts) and `run_cached` (files read from `dir`; the result shape of
+  `run_sharded`) answer what the cache holds and run the rest sharded, storing the new answers.
+- **One cache for every pass and both sides.** `normalize`, `iteration_space`, `datapaths` and `merge`
+  use it in `run` and in `verify`, in the directory `paths.smt_cache` (default `<build_dir>/.smt-cache`;
+  `scripts/build-area` points every worktree of a build host at `/scratch/$USER/chiplet-compiler/
+  smt-cache`). `verify` still writes every query from its own inputs and compares it byte for byte with
+  the stored one; only an identical query already answered by the same solver and version is not run
+  again. Constant queries (rewrite rules, encoding lemmas, the `rescale` lemmas) are therefore solved once
+  per solver version.
 - `query_hash` is the blake3 hex of a query's text.
 
 The result of one query is a `Verdict`:

@@ -12,6 +12,10 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet};
 use std::time::Duration;
 
+/// Bounds resolved per round. Fixed, so ties between equal gains resolve the same way at every thread count
+/// (it was twice the thread count, which made the merge order depend on it); 32 is what 16 threads gave.
+const BATCH: usize = 32;
+
 use rayon::prelude::*;
 
 use super::clique::{Solved, solve};
@@ -351,7 +355,7 @@ pub fn agglomerate(cx: &Ctx, units_idx: &[u32]) -> Result<Agglomerated, String> 
     let mut evaluated = 0u64;
     let mut area = initial_area;
     let mut count = n0;
-    let batch = rayon::current_num_threads().max(1) * 2;
+    let batch = BATCH;
     let rank = match cx.cfg.clique.rank {
         crate::merge::config::Rank::Greedy => CliqueAlgorithm::Greedy,
         crate::merge::config::Rank::Algorithm => cx.cfg.clique.algorithm,

@@ -179,9 +179,7 @@ pub(crate) fn smt(ctx: &PassContext) -> Result<(Solver, BoundRunner, Location), 
     }
 }
 
-pub(crate) fn query_hash(text: &str) -> String {
-    blake3::hash(text.as_bytes()).to_hex().to_string()
-}
+pub(crate) use cc_smt::query_hash;
 
 /// Write every obligation, run the solver on them, write the results; fail unless each answer is the
 /// expected one (`unsat` for rules and the positive control, `sat` for the negative control).
@@ -200,7 +198,16 @@ fn prove(
         files.push(format!("{rule}.smt2"));
     }
     let dir = out.path("rules")?;
-    let batch = cc_smt::run_batch(runner, location, solver, &dir, &files, ctx.smt().timeout_s)?;
+    let batch = cc_smt::run_cached(
+        runner,
+        location,
+        solver,
+        &dir,
+        &files,
+        ctx.smt().timeout_s,
+        1,
+        &cc_smt::Cache::new(ctx.smt_cache_dir()),
+    )?;
     let mut bad = Vec::new();
     for (rule, expect, text) in &obligations {
         let verdict =

@@ -146,6 +146,9 @@
    proofs, 155 order queries (57 free, 98 bound), 8 encoding lemmas. The pass takes about 106 s and pass
    plus verify 228 s, both dominated by the two bf16 lemmas that bit-blast a multiplier and a divider
    (66 s and 98 s in Z3); every equivalence proof takes milliseconds. Peak RSS 0.32 GB; outputs 15 MB.
+   With the shared solver-answer cache (2026-11-05, iacoma227): 185 s before it, 95 s on an empty cache
+   (`verify` reuses the lemma answers `run` just stored) and 5 s once the cache holds the model set's
+   queries (debug or release build).
 
 8. **Limitations.**
    - Ops whose float result the spec leaves to an approximate function are uninterpreted: a proof

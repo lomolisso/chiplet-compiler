@@ -75,6 +75,11 @@ impl PassContext {
         &self.config.config.paths
     }
 
+    /// The shared solver-answer cache directory (docs/framework/smt.md, "Running").
+    pub fn smt_cache_dir(&self) -> PathBuf {
+        self.config.smt_cache_dir()
+    }
+
     /// `[tools.smt]`: which solver proves, where the binaries are, the per-query timeout.
     /// `[tools]`: the image, the PDK selection and the tool settings.
     pub fn tools(&self) -> &cc_core::config::ToolsConfig {

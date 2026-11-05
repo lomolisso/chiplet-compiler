@@ -44,6 +44,10 @@ case "${1:-}" in
       sed "s|^\[paths\]$|[paths]\nbuild_dir = \"$run\"  # this worktree's build dir (scripts/build-area)|" \
         "$main/config.local.toml" > "$wt/config.local.toml"
     fi
+    if ! grep -q '^smt_cache *=' "$wt/config.local.toml"; then
+      sed -i "s|^\[paths\]$|[paths]\nsmt_cache = \"$area/smt-cache\"  # solver answers shared by every build dir|" \
+        "$wt/config.local.toml"
+    fi
     echo "build-area: $wt/config.local.toml -> build_dir = $run"
     ;;
   clean)

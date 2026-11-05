@@ -793,7 +793,7 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
     }
     // Composed steps: Z3 again (as the datapaths' encoding lemmas).
     if !zfiles.is_empty() {
-        match cc_smt::run_sharded(
+        match cc_smt::run_cached(
             &runner,
             &location,
             Solver::Z3,
@@ -801,6 +801,7 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
             &zfiles,
             cfg.compose_timeout_s,
             ctx.resources().threads.max(1),
+            &cc_smt::Cache::new(ctx.smt_cache_dir()),
         ) {
             Ok(b) => {
                 for f in &zfiles {
@@ -815,7 +816,7 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
     }
     let threads = ctx.resources().threads.max(1);
     if !files.is_empty() {
-        match cc_smt::run_sharded(
+        match cc_smt::run_cached(
             &runner,
             &location,
             solver.other(),
@@ -823,6 +824,7 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
             &files,
             ctx.smt().timeout_s,
             threads,
+            &cc_smt::Cache::new(ctx.smt_cache_dir()),
         ) {
             Ok(b) => {
                 for f in &files {
@@ -1076,7 +1078,16 @@ fn sanity(
     let mut notes = Vec::new();
     let mut refuted = 0u64;
     for s in [solver, solver.other()] {
-        let b = cc_smt::run_batch(runner, location, s, &dir, &files, ctx.smt().timeout_s)?;
+        let b = cc_smt::run_cached(
+            runner,
+            location,
+            s,
+            &dir,
+            &files,
+            ctx.smt().timeout_s,
+            1,
+            &cc_smt::Cache::new(ctx.smt_cache_dir()),
+        )?;
         let sat = files
             .iter()
             .filter(|f| matches!(b.verdicts.get(*f), Some(Verdict::Sat { .. })))
@@ -1283,7 +1294,7 @@ fn requant_check(
     }
     // The other solver (minutes at 32 bits) only when everything else holds: it cannot clear a failure.
     if !files.is_empty() && bad.is_empty() {
-        match cc_smt::run_sharded(
+        match cc_smt::run_cached(
             runner,
             location,
             solver.other(),
@@ -1291,6 +1302,7 @@ fn requant_check(
             &files,
             cfg.requant_timeout_s,
             ctx.resources().threads.max(1),
+            &cc_smt::Cache::new(ctx.smt_cache_dir()),
         ) {
             Ok(b) => {
                 for f in &files {

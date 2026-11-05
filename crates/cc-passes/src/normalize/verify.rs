@@ -61,13 +61,15 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
         .iter()
         .map(|(rule, _, _)| format!("{rule}.smt2"))
         .collect();
-    let other = cc_smt::run_batch(
+    let other = cc_smt::run_cached(
         &runner,
         &location,
         solver.other(),
         &out.path("rules")?,
         &files,
         ctx.smt().timeout_s,
+        1,
+        &cc_smt::Cache::new(ctx.smt_cache_dir()),
     );
     let mut sanity = Vec::new();
     for (rule, expect, text) in &obligations {

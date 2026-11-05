@@ -66,6 +66,9 @@ pub struct PathsConfig {
     // Machine-specific (config.local.toml).
     pub eda_toggle: Option<PathBuf>,
     pub scratch_dir: Option<PathBuf>,
+    /// The solver-answer cache, shared by every pass (and by build directories that point at the same
+    /// one). Default: `<build_dir>/.smt-cache`.
+    pub smt_cache: Option<PathBuf>,
     pub pdk_root: Option<PathBuf>,
     pub nangate45_lib: Option<PathBuf>,
     pub nangate45_lef: Option<PathBuf>,
@@ -84,6 +87,7 @@ impl Default for PathsConfig {
             third_party_dir: "third_party".into(),
             eda_toggle: None,
             scratch_dir: None,
+            smt_cache: None,
             pdk_root: None,
             nangate45_lib: None,
             nangate45_lef: None,
@@ -572,6 +576,14 @@ impl LoadedConfig {
 
     pub fn build_dir(&self) -> PathBuf {
         self.resolve(&self.config.paths.build_dir)
+    }
+
+    /// The solver-answer cache directory (`paths.smt_cache`, else `<build_dir>/.smt-cache`).
+    pub fn smt_cache_dir(&self) -> PathBuf {
+        match &self.config.paths.smt_cache {
+            Some(p) => self.resolve(p),
+            None => self.build_dir().join(".smt-cache"),
+        }
     }
 
     pub fn models_dir(&self) -> PathBuf {

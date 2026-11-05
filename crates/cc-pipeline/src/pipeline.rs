@@ -100,6 +100,7 @@ struct Finished {
     start_ms: u64,
     end_ms: u64,
     peak_rss: Option<u64>,
+    verify_ms: Option<u64>,
 }
 
 #[derive(Debug)]
@@ -415,13 +416,15 @@ impl Pipeline {
             started_at,
             finished_at: None,
             duration_ms: None,
+            verify_ms: None,
             peak_rss_bytes: None,
             error: None,
         }
     }
 
-    /// `run` then `verify` on a dedicated rayon pool, panics caught.
-    fn run_and_verify(&self, i: usize, ctx: &mut PassContext) -> Result<VerifyReport, PassError> {
+    /// `run` then `verify` on a dedicated rayon pool, panics caught. Returns the report and the
+    /// milliseconds spent in `verify`.
+    fn run_and_verify(&self, i: usize, ctx: &mut PassContext) -> Result<(VerifyReport, u64), PassError> {
         let pass = &self.passes[i];
         let name = pass.name();
         let pool = rayon::ThreadPoolBuilder::new()
@@ -430,10 +433,12 @@ impl Pipeline {
             .build()
             .map_err(PassError::other)?;
         let r = catch_unwind(AssertUnwindSafe(|| {
-            pool.install(|| -> Result<VerifyReport, PassError> {
+            pool.install(|| -> Result<(VerifyReport, u64), PassError> {
                 pass.run(ctx)?;
                 ctx.check_cancelled()?;
-                pass.verify(ctx)
+                let t = Instant::now();
+                let report = pass.verify(ctx)?;
+                Ok((report, t.elapsed().as_millis() as u64))
             })
         }));
         r.unwrap_or_else(|p| Err(PassError::failed(format!("panic: {}", panic_message(p.as_ref())))))
@@ -460,7 +465,7 @@ impl Pipeline {
             "start"
         );
         sampler.begin(i);
-        let result: Result<VerifyReport, PassError> = (|| {
+        let result: Result<(VerifyReport, u64), PassError> = (|| {
             dir.reset()?;
             dir.write_manifest(&manifest)?;
             for k in pass.provides() {
@@ -470,7 +475,8 @@ impl Pipeline {
             self.run_and_verify(i, &mut ctx)
         })();
         let peak_rss = sampler.end(i);
-        let (status, error) = match result {
+        let verify_ms = result.as_ref().ok().map(|(_, ms)| *ms);
+        let (status, error) = match result.map(|(r, _)| r) {
             Ok(report) => match dir.write_verify(&report) {
                 Err(e) => (PassStatus::Failed, Some(e.to_string())),
                 Ok(()) if report.passed() => (PassStatus::Ok, None),
@@ -502,6 +508,7 @@ impl Pipeline {
         manifest.error = error.clone();
         manifest.finished_at = Some(now_utc());
         manifest.duration_ms = Some(started.elapsed().as_millis() as u64);
+        manifest.verify_ms = verify_ms;
         manifest.peak_rss_bytes = peak_rss;
         let (status, error) = match dir.write_manifest(&manifest) {
             Ok(()) => (status, error),
@@ -517,6 +524,7 @@ impl Pipeline {
             start_ms,
             end_ms: t0.elapsed().as_millis() as u64,
             peak_rss,
+            verify_ms,
         }
     }
 
@@ -680,6 +688,7 @@ impl Pipeline {
                         start_offset_ms: Some(fin.start_ms),
                         end_offset_ms: Some(fin.end_ms),
                         duration_ms: Some(fin.end_ms.saturating_sub(fin.start_ms)),
+                        verify_ms: fin.verify_ms,
                         peak_rss_bytes: fin.peak_rss,
                         resources: Some(r.resources),
                         message,

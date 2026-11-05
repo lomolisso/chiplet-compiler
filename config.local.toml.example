@@ -14,6 +14,7 @@ asap7_root = "/home/rid2/pdks/asap7"
 asap7_nldm_dir = "/home/rid2/pdks/asap7/asap7sc7p5t_28/LIB/NLDM"
 asap7_lef_dir = "/home/rid2/pdks/asap7/asap7sc7p5t_28/LEF"
 scratch_dir = "/scratch/rid2/chiplet-compiler"    # build area on the build host; tmp/ = EDA temp
+smt_cache = "/scratch/rid2/chiplet-compiler/smt-cache"   # solver answers shared by every build dir
 build_dir = "/scratch/rid2/chiplet-compiler/build"  # pass artifacts on the build host's local disk, not the NFS home
                                                      # (a worktree gets its own: scripts/build-area init <name>)
 synopsys_root = "/software/Synopsys-2024_x86_64"
