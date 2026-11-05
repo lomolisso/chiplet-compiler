@@ -38,7 +38,17 @@ pub fn asap7_merged_name(pdk: &cc_core::config::PdkConfig) -> String {
 }
 const DOCTOR_VERSION: u32 = 1;
 /// The steps `cc-selftest` reports (docker/selftest.sh).
-pub const SELFTEST_STEPS: [&str; 6] = ["xls", "xls_equiv", "rtl_tools", "smt", "grami", "allo"];
+pub const SELFTEST_STEPS: [&str; 9] = [
+    "xls",
+    "xls_equiv",
+    "rtl_tools",
+    "smt",
+    "grami",
+    "allo",
+    "xls_extern",
+    "xls_float_lib",
+    "flopoco_ghdl",
+];
 /// Version query per licensed tool (flags observed on this host, docs/tools/{synopsys,cadence}.md).
 const EDA_VERSION_PROBES: [(&str, &[&str]); 8] = [
     ("dc_shell", &["-version"]),
@@ -357,30 +367,37 @@ impl Doctor<'_> {
             );
         }
 
-        let patch_dir = tp.join("patches").join("grami");
-        let mut patches: Vec<PathBuf> = std::fs::read_dir(&patch_dir)
-            .map(|rd| {
-                rd.flatten()
-                    .map(|e| e.path())
-                    .filter(|p| p.extension().is_some_and(|x| x == "patch"))
-                    .collect()
-            })
-            .unwrap_or_default();
-        patches.sort();
-        if patches.is_empty() {
+        // Every patch set `third_party/patches/<submodule>/` must apply to its submodule, in file order
+        // as the image build applies it: patch k is checked on top of patches 1..k-1 (`git apply` takes
+        // the series in one call).
+        let patch_root = tp.join("patches");
+        let sets = patch_sets(&patch_root);
+        if sets.is_empty() {
             self.push(
-                Check::new("submodule.grami.patches", false)
-                    .note(format!("no patches in {}", patch_dir.display())),
+                Check::new("submodule.patches", false)
+                    .note(format!("no patch sets in {}", patch_root.display())),
             );
         }
-        for p in patches {
-            let inv = git(&tp.join("grami"), &["apply", "--check", &p.display().to_string()]);
-            if let Some(o) = self.exec("submodule.grami.patches", Via::Host, &inv, HOST_CAPS) {
-                let name = p
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_default();
-                self.push(Check::new("submodule.grami.patches", o.success()).note(format!("{name} applies")));
+        for (name, patches) in sets {
+            let check = format!("submodule.{name}.patches");
+            if patches.is_empty() {
+                self.push(
+                    Check::new(check, false).note(format!("no patches in {}/{name}", patch_root.display())),
+                );
+                continue;
+            }
+            for k in 1..=patches.len() {
+                let mut args = vec!["apply".to_string(), "--check".to_string()];
+                args.extend(patches[..k].iter().map(|p| p.display().to_string()));
+                let args: Vec<&str> = args.iter().map(String::as_str).collect();
+                let inv = git(&tp.join(&name), &args);
+                if let Some(o) = self.exec(&check, Via::Host, &inv, HOST_CAPS) {
+                    let file = patches[k - 1]
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default();
+                    self.push(Check::new(check.clone(), o.success()).note(format!("{file} applies")));
+                }
             }
         }
     }
@@ -517,6 +534,12 @@ impl Doctor<'_> {
             ("smt", &["q.smt2"][..]),
             ("grami", &["two_paths.lg", "Output.txt"][..]),
             ("allo", &["allo_add.py"][..]),
+            (
+                "xls_extern",
+                &["allo_extern.py", "allo_extern/test_block.cpp", "allo_extern.v"][..],
+            ),
+            ("xls_float_lib", &["sincos.v", "sincos.stat"][..]),
+            ("flopoco_ghdl", &["fpexp.vhdl", "fpexp.stat"][..]),
         ]);
         for step in SELFTEST_STEPS {
             let mut c = Check::new(format!("image.selftest.{step}"), passed.contains(step));
@@ -1012,6 +1035,32 @@ pub fn gitmodules_shallow(text: &str, path: &str) -> bool {
     false
 }
 
+/// The patch sets under `third_party/patches/`: one directory per submodule, its `*.patch` files in
+/// name order (the order the image build applies them). Sorted by submodule name.
+fn patch_sets(root: &Path) -> Vec<(String, Vec<PathBuf>)> {
+    let Ok(dirs) = std::fs::read_dir(root) else {
+        return Vec::new();
+    };
+    let mut sets: Vec<(String, Vec<PathBuf>)> = dirs
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .map(|e| {
+            let mut patches: Vec<PathBuf> = std::fs::read_dir(e.path())
+                .map(|rd| {
+                    rd.flatten()
+                        .map(|f| f.path())
+                        .filter(|p| p.extension().is_some_and(|x| x == "patch"))
+                        .collect()
+                })
+                .unwrap_or_default();
+            patches.sort();
+            (e.file_name().to_string_lossy().into_owned(), patches)
+        })
+        .collect();
+    sets.sort();
+    sets
+}
+
 /// GraMi `Output.txt`: line 1 elapsed seconds, line 2 the number of frequent subgraphs (grami.md §5).
 fn grami_pattern_count(path: &Path) -> Option<u64> {
     std::fs::read_to_string(path)
@@ -1053,6 +1102,7 @@ pub fn expected_pins(c: &Config) -> Vec<(&'static str, String)> {
         ("grami_commit", t.grami.commit.clone()),
         ("z3_version", b.z3_version.clone()),
         ("bitwuzla_version", b.bitwuzla_version.clone()),
+        ("flopoco_commit", b.flopoco_commit.clone()),
         ("uv_version", b.uv_version.clone()),
         ("bazelisk_version", b.bazelisk_version.clone()),
         ("apt_snapshot", b.apt_snapshot.clone()),
@@ -1108,6 +1158,43 @@ mod tests {
         assert!(gitmodules_shallow(gm, "third_party/a"));
         assert!(!gitmodules_shallow(gm, "third_party/b"));
         assert!(!gitmodules_shallow(gm, "third_party/c"));
+    }
+
+    #[test]
+    fn patch_sets_are_per_submodule_in_name_order() {
+        let root = tempfile::tempdir().unwrap();
+        for f in [
+            "xls/0002-b.patch",
+            "xls/0001-a.patch",
+            "xls/README",
+            "allo/0001-c.patch",
+        ] {
+            let p = root.path().join(f);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, "").unwrap();
+        }
+        std::fs::create_dir_all(root.path().join("grami")).unwrap();
+        let sets: Vec<(String, Vec<String>)> = patch_sets(root.path())
+            .into_iter()
+            .map(|(n, ps)| {
+                let names = ps
+                    .iter()
+                    .map(|p| p.file_name().unwrap().to_string_lossy().into_owned());
+                (n, names.collect())
+            })
+            .collect();
+        assert_eq!(
+            sets,
+            vec![
+                ("allo".to_string(), vec!["0001-c.patch".to_string()]),
+                ("grami".to_string(), vec![]),
+                (
+                    "xls".to_string(),
+                    vec!["0001-a.patch".to_string(), "0002-b.patch".to_string()]
+                ),
+            ]
+        );
+        assert!(patch_sets(&root.path().join("missing")).is_empty());
     }
 
     #[test]

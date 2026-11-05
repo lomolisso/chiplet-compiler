@@ -24,7 +24,7 @@ scripts/on-build-host chipc doctor             # then check it (image.pins, imag
 - **Another host** gets a copy streamed, not rebuilt: `docker save chiplet-compiler/toolchain:<tag> | ssh <host> docker load`. The build-stage cache is not copied, so the next image change on that host rebuilds every stage once (~75 min).
 - **Old tags** are removed by name (`docker rmi chiplet-compiler/toolchain:<old>`) once a new tag is verified; never prune globally.
 
-- **Tag.** The image is `chiplet-compiler/toolchain:<tools.docker.tag>`, currently `0.4.0`: the release in which the image inputs last changed. Bump it (to the upcoming release's version) whenever `docker/`, `[tools.docker.build]`, `[tools.xls]`, `[tools.allo]` or `[tools.grami]` changes.
+- **Tag.** The image is `chiplet-compiler/toolchain:<tools.docker.tag>`, currently `0.5.0`: the release in which the image inputs last changed. Bump it (to the upcoming release's version) whenever `docker/`, `[tools.docker.build]`, `[tools.xls]`, `[tools.allo]`, `[tools.grami]` or `third_party/patches/` changes.
 - **Pins.** `build.sh` gets every pin from `chipc doctor --build-args`, so `config.toml` is the only place they are written. It also checks that `third_party/` sits at the pinned commits.
 
 | Pinned | How |
@@ -33,7 +33,7 @@ scripts/on-build-host chipc doctor             # then check it (image.pins, imag
 | apt packages | every `apt-get` reads one `snapshot.ubuntu.com` date (`apt_snapshot`). `ca-certificates` comes first from the regular archive, because the snapshot service is https-only. `--error-on=any` turns a failed index download into a build failure |
 | PyPI | `UV_EXCLUDE_NEWER=pypi_exclude_newer`: uv resolves as of that date |
 | downloads | uv, bazelisk, the XLS release tarball, z3, bitwuzla: version + sha256 |
-| sources | XLS, Allo and GraMi from the submodules; LLVM fetched at Allo's gitlink inside the build |
+| sources | XLS, Allo and GraMi from the submodules, with `third_party/patches/<name>/*.patch` applied; LLVM fetched at Allo's gitlink inside the build; FloPoCo fetched at `flopoco_tag`, which must resolve to `flopoco_commit`, with `docker/patches/flopoco/*.patch` applied |
 
 - **Caps.** `docker build --memory = --memory-swap = tools.docker.build.memory_gb` (64 GB) and `--cpu-quota` = 16 CPUs. These apply to every RUN step and are hard limits: the kernel OOM-kills inside the step's cgroup. Inside the steps:
   - `ninja -j16` with `LLVM_PARALLEL_LINK_JOBS=2`;
@@ -48,15 +48,19 @@ scripts/on-build-host chipc doctor             # then check it (image.pins, imag
 | `xls-release` | base | XLS release binaries (`codegen_main`, `opt_main`, `ir_converter_main`, `interpreter_main`, `prove_quickcheck_main`, DSLX tools, stdlib) |
 | `solvers` | base | z3 (glibc-2.39 build) and bitwuzla. The "static" bitwuzla binary still needs `libgmp10` and `libmpfr6` |
 | `grami` | base + JDK 17 | GraMi with `third_party/patches/grami/*.patch` applied (Java 17 imports; the `maxNodes` bound in the directed tree); both `*_SUBGRAPHS` trees compiled |
-| `llvm-allo` | build | LLVM `6b09f739` (clang, mlir, openmp; cmake flags from Allo's setup docs) and Allo installed editable into `/opt/cc/venv` |
-| `xls-bazel` | 22.04 | `xlscc`, `eval_ir_main` and `check_ir_equivalence_main` from the same XLS commit; `synth_only` + `ac_datatypes` headers. Built as a non-root user, as upstream does |
-| `final` | base | runtime libraries, JRE 17, yosys / iverilog / verilator, a compiler (Verilator needs one), and the copied stage outputs. `cc-selftest` runs, then `cc-probe` writes `versions.json` |
+| `flopoco` | build | FloPoCo 5.1 (CMake, Ninja) against the snapshot's Sollya, GMP, MPFR, MPFI, Boost and LAPACK, without PAGSuite and ScaLP (`docs/third-party.md`), installed in `/opt/flopoco` |
+| `llvm-allo` | build | LLVM `6b09f739` (clang, mlir, openmp; cmake flags from Allo's setup docs), then `third_party/patches/allo/*.patch` and Allo installed editable into `/opt/cc/venv` |
+| `xls-bazel` | 22.04 | `xlscc`, `eval_ir_main` and `check_ir_equivalence_main` from the same XLS commit; `synth_only` + `ac_datatypes` headers. Built as a non-root user, as upstream does. A second step applies `third_party/patches/xls/*.patch`, rebuilds incrementally and runs the patches' Bazel tests, so the unpatched build stays a cached layer |
+| `final` | base | runtime libraries, JRE 17, yosys / iverilog / verilator, GHDL and the ghdl-yosys plugin, FloPoCo's runtime libraries, a compiler (Verilator needs one), the copied stage outputs and XLS's DSLX float libraries. The Allo patches' tests run, then `cc-selftest`, then `cc-probe` writes `versions.json` |
 
 Layout and environment of the final image:
 - `PATH=/opt/cc/bin:/opt/cc/venv/bin:/opt/xls/bin:/opt/solvers/bin:/opt/llvm-project/build/bin:…`
 - `LLVM_BUILD_DIR=/opt/llvm-project/build`: Allo's ExecutionEngine loads `libmlir_*runner_utils.so` from there.
 - `XLSCC_INCLUDE_DIRS=/opt/xls/include,/opt/xls/include/xls/contrib/xlscc/synth_only` and `XLSCC_DEFINES=__SYNTHESIS__,__xlscc__,__AC_OVERRIDE_OVF_UPDATE_BODY=,__AC_OVERRIDE_OVF_UPDATE2_BODY=`: pass both to every `xlscc` call (`--include_dirs`, `--defines`), as XLS's own `xls_cc_ir` rule does (`xls/contrib/xlscc/build_rules/xlscc_rules.bzl`).
 - `XLS_STDLIB=/opt/xls/share/xls/dslx/stdlib`
+- `XLS_DSLX_PATH=/opt/xls/share`: the root for `import third_party.xls_go_math.fp_sincos_32` and the other DSLX
+  float libraries (`--dslx_path`), copied from the pinned XLS commit (`docs/third-party.md`).
+- `/opt/flopoco/bin` on `PATH` (`flopoco`); `yosys -m ghdl` loads the GHDL plugin.
 - `GRAMI_DIRECTED_CP`, `GRAMI_UNDIRECTED_CP`
 - `HOME=/tmp/home` (mode 1777): containers run as the host uid.
 

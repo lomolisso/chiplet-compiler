@@ -29,6 +29,8 @@ pub fn build_args(cfg: &Config) -> Result<Vec<(String, String)>, PipelineError> 
         ("Z3_SHA256", b.z3_sha256.as_str()),
         ("BITWUZLA_VERSION", b.bitwuzla_version.as_str()),
         ("BITWUZLA_SHA256", b.bitwuzla_sha256.as_str()),
+        ("FLOPOCO_TAG", b.flopoco_tag.as_str()),
+        ("FLOPOCO_COMMIT", b.flopoco_commit.as_str()),
         ("XLS_TAG", cfg.tools.xls.tag.as_str()),
         ("XLS_COMMIT", cfg.tools.xls.commit.as_str()),
         ("XLS_RELEASE_SHA256", cfg.tools.xls.release_sha256.as_str()),

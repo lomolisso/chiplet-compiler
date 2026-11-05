@@ -114,8 +114,15 @@ come from Allo, not DSLX.
 - Flags (from `main.cc`): `--top`, `--out`, `--package`, `--block_pb`/`--block_from_class` (for channel-based
   blocks), `--include_dirs`, `--defines`, `--clang_args_file`, `--meta_out`, `--max_unroll_iters`,
   `--warn_unroll_iters`, `--top_level_init_interval`, `--error_on_uninitialized`, `--channel_strictness`.
-- `#pragma hls_top` marks the top function; loops are unrolled unless pipelined via pragmas
-  (`#pragma hls_unroll yes`, `#pragma hls_pipeline_init_interval N`; tutorial https://google.github.io/xls/tutorials/xlscc_overview/; exact pragma set (unverified)).
+- `#pragma hls_top` marks the top function. Every loop needs a directive unless it is inside an unrolled loop
+  (unrolled) or a pipelined one (pipelined): `#pragma hls_unroll yes` (full), `#pragma hls_unroll N` (a
+  pipelined loop doing N iterations per activation), `#pragma hls_pipeline_init_interval N`; a loop without one
+  is an error ("Loop statement missing #pragma or attribute", `translate_loops.cc`). A pipelined loop needs a
+  block (channels); in a plain function it becomes context channels, so loops of a combinational function are
+  unrolled. Nested pipelined loops in a block translate and generate (checked 2026-11-05 with the pinned tools).
+- Array attributes are type annotations: `T a[N] [[clang::annotate_type("hls_array_as_tuple")]]` (the array
+  becomes a tuple: separate values, constant indices only) and `[[clang::annotate_type("hls_memory")]]` (a
+  memory, like `__xls_memory<T, N>`). Unknown pragmas such as `#pragma HLS ...` are ignored silently.
 
 ## 7a. External Verilog modules (foreign function interface)
 
@@ -126,9 +133,17 @@ come from Allo, not DSLX.
 - In the IR the data is a `#[ffi_proto(...)]` attribute on the function (`xls/ir/ir_parser.cc`); `opt_main`
   keeps the invoke, and `codegen_main` turns it into an instance (`xls/codegen/ffi_instantiation_pass.cc`),
   scheduled as one block of `--ffi_fallback_delay_ps` unless the data carries a delay.
-- `xlscc` has no attribute for it (a function without a body is an error), but it keeps a called C++ function
-  as its own IR function, so the attribute can be attached there. Checked at the pinned commit with an
-  f32 multiply-add (two `DW_fp_*` instances, pipelined) from DSLX and from an Allo kernel through `xlscc`.
+- `xlscc`, with our pinned patch (`third_party/patches/xls`, `docs/third-party.md`), takes the attribute on a C++
+  function: `[[xlscc::extern_verilog("<template>", <delay_ps>)]]` (also spelled `hls_extern_verilog`; the delay
+  is optional). The function keeps its body (the simulation model, as in DSLX) and becomes its own IR function
+  with the template as its foreign function data; placeholders name the C++ parameters, which keep their
+  names in the IR. It must be a called free function (or static method) of value parameters returning one
+  value, without channels, static variables or reference outputs; otherwise, and for a template XLS cannot
+  parse, `xlscc` reports an error at the function. Unit tests: `xls/contrib/xlscc/unit_tests/
+  translator_extern_verilog_test.cc`, run at image build. Allo emits the attribute (`allo.md` §5a).
+- Checked with the pinned tools: an Allo kernel calling an external f32 multiplier (`DW_fp_mult`, 800 ps) gives,
+  through `xlscc`, `opt_main` and `codegen_main` (asap7, 1000 ps clock), a pipeline that instantiates the module
+  (`cc-selftest` step `xls_extern`).
 - `xlscc` honours `hls_pipeline_init_interval` 1 only (`translate_loops.cc`); a pipeline that accepts input
   every N cycles comes from `codegen_main --worst_case_throughput=N`.
 
