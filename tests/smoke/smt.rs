@@ -673,7 +673,10 @@ fn quick_encoding_lemmas_hold() {
     );
     // Negative controls: the f32 multiply and divide lemmas with the flush limit one binade off.
     let mut controls = Vec::new();
-    for (op, name) in [(float::Arith::Mul, "control_mul.smt2"), (float::Arith::Div, "control_div.smt2")] {
+    for (op, name) in [
+        (float::Arith::Mul, "control_mul.smt2"),
+        (float::Arith::Div, "control_div.smt2"),
+    ] {
         std::fs::write(dir.join(name), float::scaled_control(op, -1).unwrap()).unwrap();
         files.push(name.to_string());
         controls.push(name.to_string());
