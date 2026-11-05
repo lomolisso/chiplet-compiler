@@ -96,7 +96,8 @@
    every use once); a guarded value has at
    most 8 cases and a combination at most 64. The whole model set at `full` (78 phases, 2.03 million ops
    after inlining, half of them size computation, 7445 `dim_as_data` edges) takes about 22 s with 8
-   threads (2026-11-01).
+   threads (2026-11-01). Constant computation is 1.25 million of those ops (227 k beyond size
+   computation) with 29 503 `const_in` edges; the pass then takes about 19 s (2026-11-05).
 
 5. **Config** (`[passes.import]`): `inline_composites = ["chlo.*"]` (composite names inlined instead of
    kept; a trailing `*` matches a prefix), `views = true`. Resources: `threads = 8`, `memory_gb = 8`,
