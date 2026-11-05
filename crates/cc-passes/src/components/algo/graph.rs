@@ -31,14 +31,14 @@ pub enum NodeRef {
     Value(u32),
     /// The size value at operand `port` of op `op` (a `dim_as_data` port).
     SizeIn { op: u32, port: u32 },
-    /// A value computed by constant computation (design §4.2) and used by compute.
-    ConstIn(u32),
     /// An exported value of an anon region.
     Out(u32),
     /// Op `op` of the reducer computation inlined at call site `site` (one copy per call site).
     CalleeOp { site: u32, op: u32 },
     /// Argument `value` of the reducer computation inlined at call site `site`.
     CalleeArg { site: u32, value: u32 },
+    /// A value computed by constant computation (design §4.2) and used by compute.
+    ConstIn(u32),
 }
 
 /// What a node is.
@@ -59,12 +59,13 @@ pub enum Kind {
     },
     /// A dimension value entering compute.
     SizeIn,
-    /// A constant-computation value entering compute: folded or precomputed, an input of the graph.
-    ConstIn,
     Op {
         name: String,
         target: Option<String>,
     },
+    /// A constant-computation value entering compute: folded or precomputed, an input of the graph.
+    /// Last, so that the serialized labels of the other kinds (and the hashes over them) are unchanged.
+    ConstIn,
 }
 
 /// An element-type family (design §6.1): the part of a type in a component's identity.

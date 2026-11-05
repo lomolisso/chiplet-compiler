@@ -1085,11 +1085,6 @@
           "type": "string"
         },
         {
-          "const": "const_in",
-          "description": "A constant-computation value entering compute: folded or precomputed, an input of the graph.",
-          "type": "string"
-        },
-        {
           "additionalProperties": false,
           "properties": {
             "op": {
@@ -1114,6 +1109,11 @@
             "op"
           ],
           "type": "object"
+        },
+        {
+          "const": "const_in",
+          "description": "A constant-computation value entering compute: folded or precomputed, an input of the graph.\nLast, so that the serialized labels of the other kinds (and the hashes over them) are unchanged.",
+          "type": "string"
         }
       ]
     },
