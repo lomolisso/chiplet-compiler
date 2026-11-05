@@ -8,7 +8,7 @@ that could not be checked are marked "(unverified)". Facts about this machine we
 |---|---|
 | [jax_export.md](jax_export.md) | `jax.export` (Exported, symbolic shapes, shape assertions, dynamic ops), `lax.composite` rules, wrapping Flax modules, reading StableHLO via JAX's MLIR bindings, memory rules |
 | [stablehlo.md](stablehlo.md) | Op semantics for kernel analysis: elementwise, `broadcast_in_dim`, `dot_general`, `convolution`, `reduce`/`reduce_window`, gather/scatter, dynamic ops, composite, quantized types and quant-to-math |
-| [allo.md](allo.md) | Allo kernels, types, bit ops, schedule primitives, targets, `llvm` simulation, `xls` backend constraints, `allo.verify`, install/LLVM pin, soft-float plan |
+| [allo.md](allo.md) | Allo kernels, types, bit ops, schedule primitives, targets, `llvm` simulation, `xls` backend constraints, `allo.verify`, install/LLVM pin |
 | [xls.md](xls.md) | XLS releases vs Bazel tools, xlscc → IR → opt → codegen flags, scheduling, verification tools, apfloat stdlib coverage, delay/area models |
 | [grami.md](grami.md) | GraMi: MNI frequent subgraph mining, `.lg` format, build (Java ≥11 import fix), direct Java invocation, output format, time-limit pitfall |
 | [synopsys.md](synopsys.md) | Library Compiler, Design Compiler, Formality, PrimeTime, VCS, SpyGlass: batch scripts, flags, resource options |
@@ -23,7 +23,7 @@ Most important cross-cutting findings:
 - `eda-run` only loads the EDA tools from an **interactive** bash (`set -i` is invalid in bash 4.4); use
   `bash --norc -i -c '. ~/bin/eda-toggle.sh; eda-run "$@"' eda-run <tool> …` (`eda_environment.md` §2).
 - GraMi's default `limitedtime=true` can over-count support; always pass `limitedtime=false` (`grami.md` §4).
-- Allo's `xls` backend rejects any `f16/f32/f64/bf16` token in the lowered MLIR → soft-float FUs must be integer-only
+- Allo's `xls` backend rejects any `f16/f32/f64/bf16` token in the lowered MLIR → an FU sent through it must be integer-only
   (`allo.md` §5).
 - XLS releases lack `xlscc`/`eval_ir_main`; `check_ir_equivalence_main` compares procs only for N unrolled
   activations without state (`xls.md` §5).

@@ -221,7 +221,7 @@ targets = ["clock", "fast"]      # clock: the area row at the clock target; fast
 fast_fraction = 0.05             # the fast period as a fraction of the clock target
 ops = []                         # element-wise ops of the catalog; [] = every op of the op table
 int_widths = [2, 4, 8, 16, 32]   # signed and unsigned integer widths (bool is the 1-bit type)
-float_formats = ["f32", "f16", "bf16", "f8e4m3fn"]   # RTL from XLS apfloat, provisional until softfloat
+float_formats = ["f32", "f16", "bf16", "f8e4m3fn"]   # RTL from XLS apfloat, provisional until float IP cores
 mux_inputs = [2, 3, 4, 5, 6, 7, 8]
 mux_widths = [1, 2, 4, 8, 16, 32]
 register_widths = [1, 2, 4, 8, 16, 32]
@@ -284,23 +284,6 @@ timeout_s = 30                   # wall-clock limit per solve (safety net); on e
 threads = 16
 memory_gb = 32                   # solver jobs share it: 2 GB each
 timeout_min = 240
-
-[passes.softfloat]
-float_formats = ["f32", "f16", "bf16", "f8e4m3fn"]   # as characterize's; add "f8e5m2" if a recipe needs it
-int_widths = [2, 4, 8, 16, 32]   # integer types conversions reach (as characterize's)
-ops = []                         # element-wise ops to build; empty: every float op of the catalog
-exhaustive_bits = 16             # every input combination when the operands have at most this many bits
-random_vectors = 100000          # otherwise seeded random operands per primitive, next to the edge cases
-batch = 8                        # primitives per container
-proof_timeout_s = 600            # Bitwuzla per proof; past it a primitive is `exhaustive` or `tested`
-recheck_timeout_s = 7200         # Z3 per proof in verify (re-checks the proven ones; divide@f16 takes 48 min)
-recheck_sample = 2000            # vectors per primitive whose reference verify recomputes
-docker_python = "python"
-views = true
-[passes.softfloat.resources]
-threads = 16                     # containers (builds, solver jobs) in parallel
-memory_gb = 64                   # 4 GB per container (Z3 needs about 1 GB on the hardest query)
-timeout_min = 180                # builds and Bitwuzla about 10 min, the Z3 re-check up to recheck_timeout_s
 
 [passes.allo_emit]
 [passes.allo_emit.resources]

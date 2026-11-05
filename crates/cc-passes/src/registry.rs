@@ -20,8 +20,7 @@ pub fn registry() -> Vec<Box<dyn Pass>> {
         Box::new(crate::datapaths::Datapaths),
         Box::new(crate::mine::Mine),
         Box::new(crate::merge::Merge),
-        // Parallel branches: the primitive library, the soft-float library.
+        // Parallel branch: the primitive library.
         Box::new(crate::characterize::Characterize),
-        Box::new(crate::softfloat::Softfloat),
     ]
 }

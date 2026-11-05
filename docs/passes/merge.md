@@ -91,7 +91,7 @@
       at the `fast` target (the minimum delay). Operators by their catalog key (`add@i32`,
       `compare.LT@ui8`, `convert@i8>f32`; a complex operator as its real parts); constant and accumulator
       registers as `register@w<n>`; an n-input multiplexer as `mux<n>@w<w>` (more inputs than the
-      library: its last per-input increment; wider: copies). A key without a row (the pending soft-float
+      library: its last per-input increment; wider: copies). A key without a row (the pending float
       ops, design §4.9) gets the largest operator row of its type and is flagged `estimated`.
    2. **Contraction** (`contract = true`). Each unit is covered by occurrences of its family's selected
       patterns: patterns in selection order, each pattern's independent occurrences in the unit (its
@@ -294,7 +294,7 @@
      scheduling question for later passes.
    - Contraction restricts sharing: a block inside a pattern occurrence merges only with the same pattern.
    - Floats are not widened across formats; integer widening covers the operators listed in step 3.
-   - Prices of pending soft-float operators are estimates (`estimated`), and array element prices use the
+   - Prices of pending float operators are estimates (`estimated`), and array element prices use the
      multiply at the accumulator type (what the semantics computes), not a narrower multiplier.
    - Composed array steps are proven by Z3 alone, as encoding lemmas are.
    - `fixed` costs more area than `fp32` at ASAP7 (one `rescale` block per family that has the chains:
