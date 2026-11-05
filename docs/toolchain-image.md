@@ -83,6 +83,13 @@ Layout and environment of the final image:
 | Final image size | 2.78 GB (the 0.2.0 image, `sha256:cb662455…`; 0.3.0 adds the JAX venv) |
 | Stage images kept for the cache | 8, the largest 12–15 GB each (`llvm-allo`, `xls-bazel`; layers are shared) on `/srv/docker` |
 
+Image 0.5.0 (iacoma227, 2026-11-05, same caps): the stages up to the unpatched XLS build took 71 min from an
+empty cache on a loaded host (Bazel `Elapsed time` 1358 s); on top of them, `docker/build.sh` took 12 min:
+FloPoCo about 2 min, Allo with its patches about 2 min, the patched `xlscc` with its unit test 346 s (5,300
+more actions, mostly the test's dependencies), the JAX venv, the final stage with the Allo patches' tests (8 s)
+and `cc-selftest` (the three new steps add about 25 s). Peak resident memory of those steps 9.1 GiB (10.1 GiB
+with page cache). Final image 3.72 GB.
+
 The image was first built across several invocations of `docker/build.sh` on 2026-10-31. Each invocation fixed one step and resumed from the layer cache, so every layer above was built by this command from an empty cache. The time above is the sum of the runs.
 
 The three Bazel-built tools (`xlscc`, `eval_ir_main`, `check_ir_equivalence_main`) print `redacted` for `--version` (unstamped build). Their commit is the submodule pin, which `versions.json` records.
