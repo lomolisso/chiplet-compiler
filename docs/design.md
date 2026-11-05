@@ -1,23 +1,25 @@
 # chiplet-compiler: system specification
 
-**Status:** v1, 2026-10-30. Every rule below is stated so that it can be challenged individually. A change to a rule is made together with the code that implements it and recorded in the decision log (section 11).
+**Status:** v1, 2026-10-30; revised 2026-11-05. Every rule below is stated so that it can be challenged individually. A change to a rule is made together with the code that implements it and recorded in the decision log (section 11); rules marked *(planned)* are decided and recorded here first, and the change that implements them removes the mark.
 
 ## 1. Goal and scope
 
-Given a set M of quantized DNN models written in JAX, chiplet-compiler produces, automatically and without hand-written mappings:
+chiplet-compiler generates **chiplet-based inference accelerators** for a set M of quantized DNN models written in JAX. Version 1 generates their compute: given M, it produces, automatically and without hand-written mappings:
 
 1. **C**: the abstract *components* of M (layers and functional blocks).
 2. **Z**: the canonical *kernel classes*. A kernel is a convex unit of computation with at most one contraction or reduction core. Every component is a composition of kernels plus data movement.
 3. **F**: a set of *functional units* (FUs). Each FU F covers a subset cover(F) ⊆ Z, and together the FUs cover every compute kernel class in Z.
-4. **For every FU:** an Allo description, XLS-generated Verilog, verification evidence and synthesis reports on FreePDK45 and ASAP7.
+4. **For every FU and every array's processing element (PE): a soft macro**: an Allo description, XLS-generated Verilog, its interface (ports, configuration encoding, latency, throughput), verification evidence, synthesis reports per configured flow on FreePDK45 and ASAP7, and the classes it covers. An array unit is delivered as its PE plus its description (dataflow, space-time mapping, dimensions as parameters).
 
-**In scope:** compute only, meaning datapaths plus the minimal per-FU loop controller.
+**In scope (v1):** compute only, meaning datapaths plus the minimal per-FU loop controller.
 
-**Out of scope:** memory hierarchy, interconnect, global scheduling, place and route.
+**Later versions:** array grids, memory hierarchy, interconnect, allocation, mapping and scheduling of kernels onto units, partitioning into chiplets, place and route.
 
 **Ground rules.**
 - **No hard-coded op-to-hardware mappings.** Every decision follows from StableHLO semantics, iteration-space analysis, graph theory or formal arithmetic identities. NP-hard steps use published algorithms, selectable in `config.toml`.
-- **Reuse existing tools**: JAX, StableHLO, GraMi, Allo, XLS, Synopsys and Cadence tools, Verilator / iverilog, Yosys, z3 / bitwuzla. We write the glue and the analyses that no tool provides.
+- **Reuse existing tools and IP**: JAX, StableHLO, GraMi, Allo, XLS, Synopsys Design Compiler (and Cadence Innovus for place and route later), Yosys (and OpenROAD later), Verilator / iverilog, z3 / bitwuzla, third-party floating-point IP cores. We write the glue and the analyses that no tool provides.
+- **Plug-and-play external resources.** Every external tool, IP library and PDK sits behind an adapter selected in `config.toml` (section 3.7).
+- **Third-party resources are trusted.** IP cores, EDA tools and PDKs are taken as verified by their makers; verification covers what chiplet-compiler builds (section 5).
 - **Fully automated.** `chipc run` executes the whole flow; no learned heuristics and no manual steps.
 - **Memory-safe on a shared machine.** No pass computes kernels at model scale (section 8).
 
@@ -37,6 +39,7 @@ Facts about the lowered graphs that the design must handle. All were measured on
 | Float carve-outs everywhere (softmax, norms, fp16/bf16 attention, fp32 SSM scans) | Float kernels are first-class, not an afterthought. |
 | `func.call` to private functions in every model; `fft`, `real`, `imag`, `complex` (evo2, rnnt); `reduce_precision` (gemma4); CHLO ops in non-exported lowering | The op table is built from measurement (`import` pass) and must cover every op present. |
 | Symbolic export adds `get_dimension_size`, `dynamic_broadcast_in_dim` / `dynamic_iota` / `dynamic_reshape`, `custom_call @shape_assertion` | These are **size computation**: tagged, not rejected. |
+| Position and rotary tables computed only from `iota` and static sizes (e.g. SAM2's axial table, the only float `remainder` in the model set) | These are **constant computation** *(planned)*: tagged, folded or precomputed, never hardware. |
 | Gather/scatter with arithmetic update (segment sums, embedding bags, MoE combine, sparse conv) | Scatter-reduce is a kernel class, not a data-movement boundary. |
 
 ## 3. Architecture
@@ -48,7 +51,7 @@ Facts about the lowered graphs that the design must handle. All were measured on
                          │                                   │
                   ArtifactStore (build/.<pass>/)       ToolRunner (Docker | Eda | Host)
                                                              │
-                     python/cc_export (JAX)   GraMi   Allo   XLS   Yosys/Verilator   DC/Genus/FM/LEC
+                     python/cc_export (JAX)   GraMi   Allo   XLS   Verilator   DC | Yosys   float IP
 ```
 
 ### 3.1 Pass contract
@@ -72,7 +75,7 @@ pub trait Pass: Send + Sync {
 - **Verification is part of a pass.** `run` is always followed by `verify`, and a pass whose `verify` fails is *failed*. `chipc verify <pass>` re-runs only the checks on existing artifacts.
 - **Patterns:**
   - **Strategy** for selectable algorithms (MIS, clique, partition tie-breaks, …), one trait per decision, chosen by config.
-  - **Adapter** for external tools (`ToolRunner`).
+  - **Adapter** for external tools (`ToolRunner` for processes) and for external resources (one trait per family, section 3.7).
   - **Registry** for passes.
   - **Repository** for artifacts.
   - **Builder** for configs and test fixtures.
@@ -155,6 +158,24 @@ Why this split:
 
 Details are in `docs/tools/`.
 
+### 3.7 External resources *(planned)*
+
+Every external resource family has one Rust trait, implementations chosen in `config.toml`, a declaration of what each implementation supports, and one conformance test suite shared by all implementations:
+
+| Trait | Implementations | Role |
+|---|---|---|
+| `SynthFlow` | Design Compiler; Yosys | synthesize a module, parse area, delay and power; optional equivalence check |
+| `PnrFlow` | Innovus; OpenROAD (later versions) | place and route |
+| `IpProvider` | Synopsys DesignWare (DC flow); Berkeley HardFloat, FloPoCo and other open cores (open flow) | for an op, format and mode: the instantiation template, the contract (accuracy, special values, subnormal mode), a delay hint, the license, the flows that accept it, a NumPy model |
+| `SmtSolver` | Bitwuzla; Z3 | prove and re-check queries |
+| `CliqueSolver`, MIS | exact ILP, branch and bound, Östergård, greedy | NP-hard selections of `mine` and `merge` |
+| `Miner` | GraMi | frequent subgraph mining |
+| `HlsFrontend` | Allo (with XLS) | unit description to RTL |
+
+- **Flows.** Two: the industry flow (Design Compiler for synthesis; Innovus for place and route in later versions) and the open flow (Yosys; OpenROAD later). A flow uses only IP cores it can synthesize; prices and caches are per flow and cell library.
+- **PDKs are data.** One manifest per cell library (Liberty and `.db` files, LEF, corners, driving cell, default clock); code names no library.
+- A configuration whose choices do not fit together (an IP its flow cannot read, an op no provider covers) is reported before anything runs.
+
 ## 4. The pass pipeline
 
 Names are config sections and build directories. Arrows show data dependencies.
@@ -194,12 +215,13 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
   - Inline `func.call` and JAX's own composites (`chlo.*`), keeping provenance; `cc.*` composites stay component boundaries.
   - Symbolic shape inference: the size computation is interpreted over symbolic expressions (case splits on undecided signs and comparisons, the floor-division identities, run-time integers opaque), and every `?` takes the dim the table's shape rule derives.
   - Tag size computation: ops that compute small integer values from a dimension and feed only shape operands or other size ops (`get_dimension_size` and shape assertions by definition). A dimension value that enters compute is allowed and recorded (`dim_as_data`): size independence constrains the graph's structure, not the use of a size as a run-time scalar.
+  - Tag constant computation *(planned)*: an op that no entry argument reaches (its transitive operands are only constants, `iota` and size values) computes a constant. It is folded or precomputed, and `kernels` treats it as a boundary like size computation; a constant result used by compute is a kernel input.
   - Classify every op with the **op-semantics table** (`crates/cc-ir/src/ops/`), built from the measured inventory. It is data, not code paths.
 - **Verification.**
   - SSA and type invariants; declared types agree.
   - Symbolic dims re-evaluated by a concrete interpreter at sample sizes (translation validation).
   - Op census equal to `export`'s minus what inlining removed; GEMM/conv signatures equal.
-  - Size tags recomputed independently.
+  - Size and constant tags recomputed independently (constant: no path from an entry argument).
   - Every op is covered by the table: an unknown op is a hard error that names the model and phase.
 
 ### 4.3 `components`
@@ -241,7 +263,7 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
   - **K3:** no escaping intermediates (a value consumed inside K has all its consumers inside);
   - **K4:** domain alignment: an epilogue member has a core result's dims; a prologue member feeds exactly one core operand, has its dims and has all its consumers in K; a map kernel has one domain.
 
-  Shapes are compared on the components' dimension classes (§4.3), so one partition holds for every instance. Element-wise operands from outside K are allowed while K stays convex (a residual add); a `broadcast_in_dim` (static or dynamic) of a K input whose consumers are all in K joins K. Every other layout op, data movement, size computation, constants, `sort`/`fft` and composite calls are boundaries: kernels do not cross component borders.
+  Shapes are compared on the components' dimension classes (§4.3), so one partition holds for every instance. Element-wise operands from outside K are allowed while K stays convex (a residual add); a `broadcast_in_dim` (static or dynamic) of a K input whose consumers are all in K joins K. Every other layout op, data movement, size and constant computation, constants, `sort`/`fft` and composite calls are boundaries: kernels do not cross component borders.
 
   Deterministic algorithm, on the DAG with each region-owning op contracted with its regions: seed cores, absorb epilogues to a fixpoint (a member's whole consumer set or nothing), then prologues, then group the remaining elementwise ops into map kernels, then absorb broadcasts; ties go to the earlier core in SSA order. A cyclic quotient bans the latest kernel's last member and recomputes. Every kernel is also written as a graph of its own.
 - **Verification.** An independent checker re-verifies K1–K4, the partition property, **acyclicity of the quotient graph** (convex parts can still form a cyclic quotient), and that the kernel graphs plus boundary ops rebuild the component exactly.
@@ -321,21 +343,24 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
 - **Method.**
   - The primitive set follows the op semantics: every element-wise op of the op table at every
     configured type the SMT semantics defines it on.
-  - Generate each primitive once (DSLX → XLS → Verilog, or a small Verilog template); float RTL comes
+  - Generate each primitive once (DSLX → XLS → Verilog, or a small Verilog template). Float RTL comes
     from XLS's `apfloat` (provisional) until the third-party float IP cores of section 4.12 are
-    integrated, and float ops without it are pending.
-  - Synthesize with DC (Nangate45 and a merged ASAP7 `.db`, both built by `lc_shell` in `chipc doctor`)
-    or Genus, at two timing points: the clock target (the area) and a tight constraint (the minimum
-    delay). Yosys with ABC on the same Liberty files is the license-free alternative.
+    integrated *(planned)*: then a float primitive is a wrapper module around the flow's IP core(s) and
+    glue, and an op no provider covers is reported as a gap. Float `remainder` has no primitive
+    *(planned)*: its only use is constant computation.
+  - Synthesize through the configured `SynthFlow`: DC (Nangate45 and a merged ASAP7 `.db`, both built by
+    `lc_shell` in `chipc doctor`) or Yosys with ABC on the same Liberty files, at two timing points: the
+    clock target (the area) and a tight constraint (the minimum delay). The Genus path is removed
+    *(planned)*.
   - Record area, delay and leakage.
 - **Verification.**
   - Synthesis logs are free of errors, unresolved references and latches; netlists use only library
     cells.
-  - Formality/Conformal LEC (Yosys' equivalence flow for Yosys) of netlist vs RTL for every primitive,
-    bounded per design; a check that runs out of time with no failing point passes only with every
-    sanity check (ports and flip-flops as in the RTL, library cells only) and is reported.
-  - Sanity: area is monotone in width, multipliers grow about quadratically and adders linearly
-    (flagged, not failed).
+  - Cheap checks *(planned)*: the netlist has the module's ports and widths, every output is driven, the
+    area is not zero, and area against width follows the expected trend (monotone; multipliers about
+    quadratic, adders about linear), a clear violation failing.
+  - Equivalence of netlist and RTL checks the synthesis tool, which section 5 trusts: it is optional and
+    off by default *(planned)*. When enabled it is bounded per design as today.
   - Coverage: every vertex of the datapaths maps to a primitive.
 
 ### 4.10 `mine`
@@ -372,29 +397,46 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
 ### 4.12 Float operators (third-party IP cores)
 
 - **Purpose.** Every float operator of a unit is an instance of a third-party floating-point IP core
-  (a vendor library such as Synopsys DesignWare, or an open-source core), chosen per format and EDA flow.
-- **Trust.** The cores are taken as verified by their vendors. Proofs treat each instance as an opaque
+  (a vendor library such as Synopsys DesignWare, or an open-source core), chosen per format and EDA flow
+  through the flow's `IpProvider` (section 3.7).
+- **Providers.** The DC flow uses DesignWare (`DW_fp_*`: arithmetic, divide, square root, reciprocal and
+  its square root, exponentials, logarithms, sine and cosine, conversions, compare). The open flow uses
+  Berkeley HardFloat (arithmetic, compare, conversions) and FloPoCo (exponential, logarithm, power);
+  operators without an open core (float sine and cosine) take a well-known, verified open-source soft
+  macro, or are reported as a gap.
+- **Trust.** The cores are taken as verified by their makers. Proofs treat each instance as an opaque
   function with the core's documented contract; verification covers what is built around the instances.
-- **Status.** Until the cores are integrated, `characterize` prices floats with XLS `apfloat`
-  (provisional, section 4.9).
+- **Glue.** Small bit-level logic around cores is ours and proven bit-exact by SMT: sign, absolute value
+  and negation, NaN and signed-zero handling, flushing for the formats that flush (section 6.4), and the
+  E4M3FN wrapper (exact decode to f16, encode with round to nearest even), since no core implements
+  E4M3FN's encoding without infinities. Glue does no other significand arithmetic.
+- **Compositions.** An operator without a core is composed from cores, sized to the error budget of
+  section 6.4: power as `exp2(y · log2 x)` with a wider inner logarithm, tanh from the exponential with a
+  separate small-argument branch, log1p by Goldberg's formula. FP8 operators run on f16 or f32 cores
+  through the wrapper.
+- **Status.** *(planned)* Until the cores are integrated, `characterize` prices floats with XLS
+  `apfloat` (provisional, section 4.9).
 
 ### 4.13 `allo_emit`
 
-- **Purpose.** Each FU and each template instance → an Allo kernel plus its configuration interface.
+- **Purpose.** Each FU and each array's PE → an Allo kernel plus its configuration interface; each array's description is passed on.
 - **Method.**
-  - Emit Allo Python from the merged datapath (and template parameters); float operators are instances of third-party IP cores (section 4.12).
-  - Schedule customizations: pipelining and unrolling follow from the skeleton.
+  - Emit Allo Python from the merged datapath (and template parameters). Float operators are calls to external modules *(planned)*: an Allo declaration carrying the IP core's instantiation template, its delay and a NumPy model for simulation (section 4.12).
+  - Schedule customizations: pipelining, unrolling and partitioning follow from the skeleton.
 - **Verification (functional).**
-  - The Allo `llvm` target runs each FU × configuration × width on generated vectors at **tiny sizes** (symbolic dims set to `testing.tiny_dim`).
-  - It is compared against our reference interpreter of the kernel class (Rust, bit-exact for integers, order contract for floats).
+  - An SMT proof of the unit's structure with every core instance an uninterpreted function under its contract, as in `merge`.
+  - The Allo `llvm` target runs each FU × configuration × width on generated vectors at **tiny sizes** (symbolic dims set to `testing.tiny_dim`), with the cores' NumPy models; no vendor simulator.
+  - It is compared against our reference interpreter of the kernel class (Rust, bit-exact for integers, the numerics of section 6.4 for floats).
   - `allo.verify` checks schedule transformations against the unscheduled kernel.
 
 ### 4.14 `xls`
 
 - **Purpose.** RTL.
 - **Method.** Allo `xls` target → C++ for `xlscc` → XLS IR → `opt_main` → `codegen_main` (pipeline generator, delay model `asap7`, clock and stages from config).
+  - External modules *(planned)*: an `extern_verilog` attribute on the called C++ function (a patch to `xlscc`, proposed upstream, with the matching Allo emission) gives its IR function XLS's foreign-function data; `codegen_main` instantiates the module, scheduled as one combinational block of the core's delay. XLS supports combinational external modules only; every chosen core is combinational.
+  - A unit that accepts a new input only every N cycles is scheduled with `--worst_case_throughput=N`.
 - **Verification.**
-  - The same golden vectors run in the XLS IR interpreter/JIT.
+  - The same golden vectors run in the XLS IR interpreter/JIT, for units without external modules; with them, every external call must be an instance of its declared module, and the evidence of section 4.13 applies.
   - `check_ir_equivalence_main` between unoptimized and optimized IR (bounded for procs).
   - Codegen signature (latency, II) recorded.
 
@@ -402,18 +444,17 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
 
 - **Purpose.** Traditional RTL verification.
 - **Method.**
-  - Simulate each generated module (Verilator or iverilog in Docker; VCS/Xcelium optional via `EdaRunner`) with the golden vectors, through a generated testbench.
-  - Lint (Verilator `--lint-only`; SpyGlass optional).
+  - Simulate each generated module that has no vendor core (Verilator or iverilog in Docker) with the golden vectors, through a generated testbench; in the open flow the open cores' Verilog is simulated with it.
+  - Lint every module (Verilator `--lint-only`).
 - **Verification.** Pass/fail per FU × configuration × width; lint clean.
 
 ### 4.16 `synth`
 
 - **Purpose.** Area, timing and power.
 - **Method.**
-  - DC (or Genus) on Nangate45 and ASAP7 at the configured clock.
-  - Formality (or Conformal) LEC between RTL and netlist.
-  - PrimeTime STA.
-- **Verification.** LEC equivalent; timing met or slack reported; reports parsed into JSON.
+  - The configured `SynthFlow` (DC, or Yosys in the open flow) on Nangate45 and ASAP7 at the configured clock; timing from the tool's own reports.
+  - Equivalence of RTL and netlist optional, off by default (section 5).
+- **Verification.** Timing met or slack reported; the cheap checks of section 4.9; reports parsed into JSON.
 
 ### 4.17 `report`
 
@@ -426,14 +467,16 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
    - Graph properties are checked structurally.
    - Arithmetic equivalences are checked with SMT (section 5).
    - Rewrite rules are proven once, not per instance.
-   - Hardware is checked with LEC.
-3. **Numeric evaluation only at tiny, generated sizes.**
+   - What we generate (units, glue, templates) is proven or simulated; third-party resources are not.
+3. **Third-party resources are trusted.** IP cores, EDA tools and PDKs are taken as verified by their makers. A core instance is an opaque function with its documented contract in every proof; the output of a synthesis tool is not re-proven against its input (an equivalence check is optional).
+4. **Numeric evaluation only at tiny, generated sizes.**
    - Simulation (Allo `llvm`, XLS IR interpreter, RTL simulators) uses symbolic dims instantiated to small values and synthetic data.
    - Never real weights, never model-scale tensors, never a full model forward pass.
-4. **Exactness contract.**
+5. **Exactness contract.**
    - Integer kernels: bit-exact everywhere.
-   - Float kernels: bit-exact against the reference interpreter that implements the **same order contract** (ω, FMA or not, FTZ). Versus JAX itself only a tolerance makes sense: XLA's reduction order is unspecified and it contracts `a*b+c` into FMA.
-5. **Every check is recorded** in `build/.<pass>/verify.json` with its evidence.
+   - Float kernels: bit-exact against the reference interpreter that implements the **same order contract** (ω, FMA or not) and the numerics of section 6.4, with approximate operators within their error budget. Versus JAX itself only a tolerance makes sense: XLA's reduction order is unspecified and it contracts `a*b+c` into FMA.
+6. **Every check is recorded** in `build/.<pass>/verify.json` with its evidence.
+7. **Solver answers are reused, never trusted blindly** *(planned)*. `verify` regenerates every query and compares it byte for byte with the stored one; an identical query already answered by the same solver and version (a cache shared across build directories) is not run again.
 
 ## 6. Datatypes and precision reuse
 
@@ -464,7 +507,22 @@ The variant per model follows its recipe by default (`passes.merge.requant_varia
 
 ### 6.4 Float formats
 
-Float operators are third-party IP cores (section 4.12) in FP8 E4M3FN, bf16, fp16 and fp32 (E5M2 optional), with fp32 accumulation where the recipe says so. FP8 conversions follow the OCP OFP8 spec: round-to-nearest-even, with saturating and non-saturating modes and the overflow-boundary rules of Rev 1.1 (`docs/context/literature/fp8_formats.md`).
+Float operators are third-party IP cores (section 4.12) in FP8 E4M3FN, bf16, fp16 and fp32 (E5M2 optional), with fp32 accumulation where the recipe says so.
+
+**Numerics specification** *(planned)*. StableHLO names IEEE 754 operations but gives no accuracy guarantee and leaves reduction order to the implementation; OCP OFP8 leaves FP8 arithmetic out of scope and OCP MX leaves dot-product precision open. Accelerators use that freedom (flush-to-zero, truncated alignment in matrix units, approximate special functions). chiplet-compiler states one specification, chosen for efficiency, and proves its hardware against it: being formal does not require being more precise than the workload needs.
+
+| Aspect | Rule |
+|---|---|
+| Subnormals | f32 and bf16 flush to zero: subnormal inputs read as zero of the same sign, and a result is flushed when its value rounded with an unbounded exponent is below the smallest normal, keeping its sign. f16 and FP8 keep gradual underflow. |
+| Rounding | Round to nearest, ties to even, everywhere. |
+| Exact operators | Arithmetic, divide, square root, compare, min/max, conversions, rounding to integral: the IEEE operation under the subnormal rule, as the core computes it (correctly rounded). |
+| Accumulation | Products and sums by f32 IP cores (multiply-add or dot-product cores) in a fixed order, recorded in the unit's certificate; an FP8 × FP8 product is exact in f32. |
+| Reductions | The order the hardware uses, recorded in the certificate (`seq`, a tree, or blocks), plus a documented error bound. |
+| Approximate operators | exponentials, logarithms, tanh, reciprocal square root, sine, cosine, power: an error budget per operator and format in `config.toml`, loose by default. A single core is accepted at its documented guarantee; a composition (section 4.12) is sized to the budget. Full input range by default. |
+| Special values | One canonical NaN; infinities and the special cases of C11 Annex F; an E4M3FN arithmetic result beyond 448 is NaN. |
+| FP8 conversions | Round to nearest even, saturating to ±max with NaN kept (the OCP OFP8 saturating mode, Rev 1.1); the ports clip to ±448 before converting, so the two agree on model data. |
+
+Datapath and merge proofs state these semantics: an exact operator in a flushing format is the IEEE operation on flushed inputs, computed with two more exponent bits and flushed below the smallest normal; approximate operators stay uninterpreted functions, so a proof holds for any core within the contract.
 
 ## 7. "Solved" kernels without hard-coded mappings
 
@@ -604,9 +662,9 @@ build/         (ignored) build/.<pass>/ artifacts
 | The primitive set is every element-wise op at every configured type the SMT semantics defines | A hand-written primitive list | No hard-coded op set; a new op or type in the semantics enters the library by itself |
 | ASAP7's group libraries merged into one Liberty and `.db` by `chipc doctor` | DC on the five group `.db` files | DC's library analysis leaves placeholders per group (no inverters or flops) and repeats about 100 s on every compile; Yosys' ABC reads one file (OpenROAD's `mergeLib.pl` does the same) |
 | Characterization jobs are directories named by the hash of their scripts, RTL and libraries, reused by later runs | Pass-level caching only | A full run takes hours; an interrupted or partly changed run redoes only what changed |
-| Every primitive synthesized in its own DC/Genus session | Several designs per session | A session that synthesized one design gives the next another netlist (a 32-bit divider after a 16-bit one: 15 614 against 9 340 µm²): results depended on batch order |
+| Every primitive synthesized in its own DC session | Several designs per session | A session that synthesized one design gives the next another netlist (a 32-bit divider after a 16-bit one: 15 614 against 9 340 µm²): results depended on batch order |
 | DesignWare parts kept as blocks (`compile_ultra_ungroup_dw false`) | Flattened netlists | Formality then proves a DesignWare divider against its model in seconds; flattened it stayed unverified for hours |
-| LEC bounded at 2 minutes per design; a check that runs out of time with no failing point passes with clean sanity checks and is reported | A hand-kept allow-list; unbounded LEC | Everything else proves in at most 47 s; some timing-driven 32-bit dividers do not finish at all (general-purpose engines need hours to never at this width); the sanity checks catch what LEC does not (they found accumulators whose register DC had removed) |
+| When the optional equivalence check is enabled: LEC bounded at 2 minutes per design; a check that runs out of time with no failing point passes with clean sanity checks and is reported | A hand-kept allow-list; unbounded LEC | Everything else proves in at most 47 s; some timing-driven 32-bit dividers do not finish at all (general-purpose engines need hours to never at this width); the sanity checks catch what LEC does not (they found accumulators whose register DC had removed) |
 | GraMi patched with a node bound (`maxNodes`) | Drop large patterns after GraMi | GraMi enumerates every frequent pattern of any size: on the map family it ran over 16 minutes at τ = 10 for patterns the pass drops; the bound prunes them in the search, exactly for patterns within it |
 | Merge per family of units (as `mine`); a pair is admissible when its hosts are related by ⊑ and no class is in both | One merge over all classes | The stages of one template class run at the same time; ⊑ keeps one loop nest per unit |
 | Integer blocks widen (operands extended by signedness, result truncated); floats share only within one format | Widen floats too | Two's-complement arithmetic commutes with truncation; narrower float results through a wider unit round twice |
@@ -618,3 +676,13 @@ build/         (ignored) build/.<pass>/ artifacts
 | `fixed` requantization is one fused `rescale` primitive (32×24 multiply, rounding shift, saturation, convert) | Generic shift ops and 64-bit integers in the op table and the library | The fused design has minimal widths and lets synthesis optimize across its parts; generic ops put the product in a 64-bit multiplier, and every op would gain 64-bit rows, dividers included, that the equivalence checker cannot prove; no other kernel uses shifts |
 | The `rescale` multiplier and shift come from the f32 scale's bits, in hardware | Integer multiplier and shift as inputs, computed offline | No offline step outside the graph; decoding is wiring and a small subtract |
 | The `fixed` tolerance lemma is per integer type, on the rescaled value, with the fp32 product bounded by IEEE 754's rounding error and the product a free variable | A lemma per class on its outputs, against the solver's f32 multiply | The f32 operations after the round can turn a difference of 1 into 2 at an int8 output (a non-integer zero point), so the per-class claim is false; and an f32 multiplier against an integer one ran past 10 minutes at 8 bits, while the bounded form is proven in under a minute at 32 bits |
+| Third-party resources (IP cores, EDA tools, PDKs) trusted; equivalence of netlist and RTL optional, off by default *(planned)* | LEC of every primitive and unit | The check verifies the vendor's tool, not our work; it cost hours on dividers and left rows inconclusive; cheap structural checks catch our own script errors |
+| Two flows: Design Compiler (Innovus later) and Yosys (OpenROAD later) *(planned)* | Every Synopsys and Cadence tool as alternatives | One standard industry RTL-to-GDS flow and one open flow; fewer paths to maintain |
+| One adapter trait per external resource family, PDKs as data *(planned)* | Match arms per tool inside passes; library names in code | Adding a flow, an IP library, a solver or a PDK is one implementation, tested by a shared suite |
+| Constant computation (no path from an entry argument) tagged and never hardware *(planned)* | Kernels for every op | Position and rotary tables depend only on sizes; float `remainder` occurs only there |
+| f32 and bf16 flush to zero; f16 and FP8 keep subnormals *(planned)* | IEEE gradual underflow in every format | Most accelerators flush bf16 and many f32 (our JAX reference on XLA:CPU runs f32 flush-to-zero); FP8's subnormals are a real part of its range |
+| Accumulation by f32 IP cores in a recorded order *(planned)* | An exact integer FP8 accumulator; block-fused alignment as in GPU matrix units | Cores only; a recorded order keeps the proof bit-exact |
+| Approximate operators: a configurable error budget, loose by default; a core at its documented guarantee *(planned)* | At most 1 ulp everywhere | Precision beyond what the workload keeps costs area; a core's guarantee does not depend on the target |
+| E4M3FN through a bit-level wrapper around f16 or f32 cores *(planned)* | A native FP8 core | No core implements E4M3FN's encoding without infinities |
+| External modules through an `extern_verilog` attribute in `xlscc` (pinned patch, proposed upstream) *(planned)* | Annotating the IR after `xlscc`; Allo's HLS backends | XLS IR already instantiates foreign functions; the attribute makes it a front-end feature, upstreamable |
+| Array units delivered as their PE plus a description; grids in later versions *(planned)* | A fixed-size array per unit | The PE does not depend on the grid size, which is chosen together with the memory system |

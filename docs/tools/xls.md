@@ -117,6 +117,21 @@ come from Allo, not DSLX.
 - `#pragma hls_top` marks the top function; loops are unrolled unless pipelined via pragmas
   (`#pragma hls_unroll yes`, `#pragma hls_pipeline_init_interval N`; tutorial https://google.github.io/xls/tutorials/xlscc_overview/; exact pragma set (unverified)).
 
+## 7a. External Verilog modules (foreign function interface)
+
+- DSLX `#[extern_verilog("<template>")]` on a function (`docs_src/dslx_ffi.md`, example `xls/examples/ffi.x`):
+  placeholders `{fn}` (instance name), `{<param>}`, `{return}` and tuple paths such as `{return.0.1}`. The
+  DSLX body is the simulation model. **Combinational modules only** (sequential support is planned upstream,
+  google/xls#1301).
+- In the IR the data is a `#[ffi_proto(...)]` attribute on the function (`xls/ir/ir_parser.cc`); `opt_main`
+  keeps the invoke, and `codegen_main` turns it into an instance (`xls/codegen/ffi_instantiation_pass.cc`),
+  scheduled as one block of `--ffi_fallback_delay_ps` unless the data carries a delay.
+- `xlscc` has no attribute for it (a function without a body is an error), but it keeps a called C++ function
+  as its own IR function, so the attribute can be attached there. Checked at the pinned commit with an
+  f32 multiply-add (two `DW_fp_*` instances, pipelined) from DSLX and from an Allo kernel through `xlscc`.
+- `xlscc` honours `hls_pipeline_init_interval` 1 only (`translate_loops.cc`); a pipeline that accepts input
+  every N cycles comes from `codegen_main --worst_case_throughput=N`.
+
 ## 8. Area / delay models
 
 - Delay models: `asap7`, `sky130`, `unit` (textprotos in `xls/estimators/delay_model/models/`); `delay_info_main`

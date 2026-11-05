@@ -120,6 +120,9 @@ Code comment in `customize.py`: "TODO Add XLS DSLX Backend": only the xlscc path
 | sw_emu int32 marshalling | don't use for >32-bit FUs |
 | LLVM build oversubscription | explicit `-j`, link jobs, Docker `--memory` |
 | Upstream churn (main only) | pin commits for Allo and LLVM; record both in `verify.json` |
+| A kernel calling a separate function fails in `xlscc`: the XLS emitter defines the callee as returning its value but inherits the Vitis emitter's call, which passes the result through a pointer (`fmul(v5, v6, &v8)`; `mlir/lib/Translation/EmitVivadoHLS.cpp:2301`) | inline callees; fix: an `emitCall` override in `EmitXlsHLS.cpp` (planned patch, design §4.14) |
+| `IPModule` (external C++ for the `llvm` simulator and Vitis HLS) is ignored by the XLS backend | external Verilog modules through a planned extern declaration and `xlscc` attribute (design §4.13-§4.14) |
+| The XLS emitter emits initiation interval 1 for every pipelined loop, fully unrolls loops without a directive, and emits nothing for `partition` or dataflow regions | throughput via `codegen_main --worst_case_throughput`; the rest are planned emitter patches |
 
 ## Sources
 

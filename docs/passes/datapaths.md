@@ -150,6 +150,8 @@
 8. **Limitations.**
    - Ops whose float result the spec leaves to an approximate function are uninterpreted: a proof
      holds for any implementation of them; the third-party float IP cores (design §4.12) implement them.
+   - Float semantics are IEEE with gradual underflow in every format; the planned numerics (design §6.4)
+     flush f32 and bf16 to zero, and the proofs will state that.
    - Padding and window bounds are address logic: a datapath input reads the operand element (or the
      padding value) the address unit selects; `reduce_window` padding elements are init values in
      place.
