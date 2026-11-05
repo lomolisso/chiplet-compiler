@@ -133,7 +133,11 @@ pub fn execute(cli: &Cli, passes: Vec<Box<dyn Pass>>, out: &mut dyn Write) -> Re
             };
             let s = p.run(&opts)?;
             for r in &s.passes {
-                let ms = r.duration_ms.map(|d| format!("{d} ms")).unwrap_or_default();
+                let ms = match (r.duration_ms, r.verify_ms) {
+                    (Some(d), Some(v)) => format!("{d} ms (verify {v} ms)"),
+                    (Some(d), None) => format!("{d} ms"),
+                    _ => String::new(),
+                };
                 let msg = r
                     .message
                     .as_deref()

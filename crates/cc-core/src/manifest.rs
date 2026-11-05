@@ -66,6 +66,9 @@ pub struct Manifest {
     pub started_at: String,
     pub finished_at: Option<String>,
     pub duration_ms: Option<u64>,
+    /// The part of `duration_ms` spent in `verify`.
+    #[serde(default)]
+    pub verify_ms: Option<u64>,
     /// Peak RSS of the driver process during the pass window (an upper bound when passes overlap).
     pub peak_rss_bytes: Option<u64>,
     pub error: Option<String>,

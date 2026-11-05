@@ -919,6 +919,7 @@ impl Doctor<'_> {
             started_at: started_at.to_string(),
             finished_at: Some(canon::now_utc()),
             duration_ms: Some(t0.elapsed().as_millis() as u64),
+            verify_ms: None,
             peak_rss_bytes: None,
             error: (failed > 0).then(|| format!("failed checks: {}", self.report.failed_checks().join(", "))),
         };

@@ -38,6 +38,9 @@ pub struct PassRun {
     pub start_offset_ms: Option<u64>,
     pub end_offset_ms: Option<u64>,
     pub duration_ms: Option<u64>,
+    /// The part of `duration_ms` spent in `verify`.
+    #[serde(default)]
+    pub verify_ms: Option<u64>,
     pub peak_rss_bytes: Option<u64>,
     pub resources: Option<PassResources>,
     pub message: Option<String>,
@@ -52,6 +55,7 @@ impl PassRun {
             start_offset_ms: None,
             end_offset_ms: None,
             duration_ms: None,
+            verify_ms: None,
             peak_rss_bytes: None,
             resources: None,
             message: None,
