@@ -29,7 +29,7 @@ written against the pinned commits, and an upstream change is picked up only whe
 
 Each patch adds its tests: the Allo ones in `tests/test_xls_extensions.py`, run in the image's final stage; the
 `xlscc` one as a Bazel test, run in the image's Bazel stage. `chipc doctor` checks that every patch set still
-applies to its submodule, each patch on top of the ones before it (`git apply --check`).
+applies to its submodule, each patch on top of the ones before it (`git apply` on a copy of the touched files).
 
 ## Image-only tools
 
@@ -63,7 +63,7 @@ git submodule update --init --depth 1        # non-recursive: no LLVM on the hos
    ```
    XLS: take the commit of a release tag, so the release tarball and the Bazel-built tools come from the same source.
 2. Update `config.toml`: the commit. XLS also needs `tag` and `release_sha256`, which is the release asset's digest from the GitHub releases API. For Allo, set `llvm_commit` to `git -C third_party/allo ls-tree HEAD externals/llvm-project`.
-3. Check that the patches still apply, as a series: `git -C third_party/<name> apply --check ../patches/<name>/*.patch`
-   (or `chipc doctor`). Regenerate a patch that does not apply against the new commit.
+3. Check that the patches still apply, as a series: `chipc doctor` (`submodule.<name>.patches`). Regenerate a
+   patch that does not apply against the new commit.
 4. Bump `[tools.docker] tag` and rebuild the image (`docker/build.sh`, see `docs/toolchain-image.md`).
 5. `git add third_party/<name> config.toml`, then run `chipc doctor` until it is green.

@@ -63,7 +63,8 @@ chipc doctor --build-args    # the docker/build.sh inputs, from config.toml
    - Each HEAD (`git rev-parse`) must equal its `config.toml` pin, and its `.gitmodules` entry must say `shallow = true`.
    - Allo's LLVM gitlink must equal `tools.allo.llvm_commit`.
    - Every patch set `third_party/patches/<submodule>/` must apply to its submodule as the image build applies
-     it: patch k with `git apply --check` on top of patches 1 to k-1, in file-name order.
+     it: in file-name order, each patch on top of the ones before. The series is applied with `git apply` to a
+     copy of the files it touches (`patches/<submodule>/` in doctor's directory); the submodule is never written.
 3. **Image.**
    - The daemon answers.
    - `<image>:<tag>` exists.
