@@ -109,8 +109,8 @@ def unit(a: uint32, b: uint32, c: uint32) -> uint32:
 
 
 s = allo.customize(unit)
-a, b = np.float32(1.5).view(np.uint32), np.float32(-2.25).view(np.uint32)
-assert np.uint32(s.build()(a, b, np.uint32(0))).view(np.float32) == np.float32(-3.375)
+a, b = int(np.float32(1.5).view(np.uint32)), int(np.float32(-2.25).view(np.uint32))
+assert np.uint32(s.build()(a, b, 0)).view(np.float32) == np.float32(-3.375)
 s.build(target="xls", project="allo_extern")
 EOF2
 python3 allo_extern.py
