@@ -288,6 +288,9 @@
    `verify` about 140 s), 165 s in a release build (`verify` 69 s). About 390 s of the debug pass are 38
    slow evaluations, most of them one pair with 13 254 vertex mappings evaluated again after every merge
    into its growing host (about 10 s each); a bound that survives the host's growth would avoid them.
+   With the numerics of design §6.4 (same day, release, every proof query new to the cache): the same
+   units and summary, 184 s (`verify` 85 s), every check passing, the sanity mutations refuted by both
+   solvers.
 
 8. **Known limitations.**
    - Float prices come from `characterize`'s provisional `apfloat` rows until the float IP cores are

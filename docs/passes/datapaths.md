@@ -158,7 +158,11 @@
    (66 s and 98 s in Z3); every equivalence proof takes milliseconds. Peak RSS 0.32 GB; outputs 15 MB.
    With the shared solver-answer cache (2026-11-05, iacoma227): 185 s before it, 95 s on an empty cache
    (`verify` reuses the lemma answers `run` just stored) and 5 s once the cache holds the model set's
-   queries (debug or release build).
+   queries (debug or release build). With the numerics of design §6.4 (2026-11-05, iacoma227, release):
+   the same classes, tuples and order verdicts, 13 encoding lemmas (11 decided in 1 to 5 s, the bf16
+   multiply and divide in 42 s and 48 s, run in parallel, so they set the pass's time on an empty
+   cache), 91 classes whose order binds with their bounds in `verify.json`; 14 s for the pass and 11 s
+   for `verify` once the cache holds the lemmas.
 
 8. **Limitations.**
    - Ops whose float result the spec leaves to an approximate function are uninterpreted: a proof
