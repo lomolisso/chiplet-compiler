@@ -274,6 +274,89 @@ pub fn native_from_f64(c: &mut Ctx, f: Format, x: T) -> R {
     c.ite(tiny, z, r)
 }
 
+/// Move the exponent of a normal or zero FP term by `k` (no multiplier: `fp.mul` by a power of two is a
+/// full significand multiplier to a bit-blasting solver). Zeros, infinities and NaN are kept; the caller
+/// guarantees the result stays normal.
+fn shift_exp(c: &mut Ctx, x: T, k: i64) -> R {
+    let Sort::Fp { e, s } = c.sort(x) else {
+        return Err(SortError("an exponent shift of a non-FP term".into()));
+    };
+    let b = c.bits_of(x)?;
+    let w = e + s;
+    let sign = c.extract(b, w - 1, w - 1)?;
+    let ex = c.extract(b, w - 2, s - 1)?;
+    let frac = c.extract(b, s - 2, 0)?;
+    let d = c.bvs(i128::from(k), e);
+    let moved = c.op2(Op::BvAdd, ex, d)?;
+    let lo = c.op2(Op::Concat, moved, frac)?;
+    let nb = c.op2(Op::Concat, sign, lo)?;
+    let y = c.app(Op::FpFromBits { e, s }, &[nb])?;
+    let z = c.op1(Op::FpIsZero, x)?;
+    let n = c.op1(Op::FpIsNaN, x)?;
+    let i = c.op1(Op::FpIsInfinite, x)?;
+    let keep = c.or(&[z, n, i])?;
+    c.ite(keep, x, y)
+}
+
+/// The scale of [`scaled_op`]: a product or quotient that may be tiny is computed `2^SCALE` larger.
+const SCALE: i64 = 32;
+
+/// A multiply or divide of DAZ operands of f32 under the flush rule, in Float32 alone. When the
+/// exponent fields say the result may be below `2^-125` (`e_x + e_y < -125` for a product, `e_x - e_y <
+/// -124` for a quotient, unbiased), the left operand is scaled by `2^32` (its exponent field moved:
+/// exact, as it is then below `2^4`, and no infinity arises), so the result `r` is the rounding to 24 bits
+/// of the exact value times `2^32`, in the normal range wherever the decision matters: the result is
+/// zero of its sign when `|r| < 2^-94`, else `r · 2^-32` (normal, exact). Otherwise the result is at least
+/// `2^-125` and the operation's own. One Float32 multiplier or divider, as the IEEE operation has; the
+/// lemma ([`scaled_lemma`]) proves the decision for every exact value.
+fn scaled_op(c: &mut Ctx, f: Format, op: Arith, x: T, y: T) -> R {
+    let (tp, xa) = scaled_pre(c, f, op, x, y)?;
+    let r = op.apply(c, &[xa, y])?;
+    scaled_post(c, tp, r, 0)
+}
+
+/// Whether the result may be tiny (from the exponent fields), and the left operand to use.
+fn scaled_pre(c: &mut Ctx, f: Format, op: Arith, x: T, y: T) -> Result<(T, T), SortError> {
+    if f != Format::F32 {
+        return Err(SortError(format!("{}: no scaled encoding", f.name())));
+    }
+    let bx = c.bits_of(x)?;
+    let by = c.bits_of(y)?;
+    let ex = c.extract(bx, 30, 23)?;
+    let ey = c.extract(by, 30, 23)?;
+    let ex = c.resize(ex, 10, false)?;
+    let ey = c.resize(ey, 10, false)?;
+    let tp = match op {
+        // Biased: e_x + e_y < 2 · 127 - 125.
+        Arith::Mul => {
+            let sum = c.op2(Op::BvAdd, ex, ey)?;
+            let lim = c.bv(129, 10);
+            c.op2(Op::BvUlt, sum, lim)?
+        }
+        // Biased: e_x + 124 < e_y.
+        _ => {
+            let off = c.bv(124, 10);
+            let l = c.op2(Op::BvAdd, ex, off)?;
+            c.op2(Op::BvUlt, l, ey)?
+        }
+    };
+    let xs = shift_exp(c, x, SCALE)?;
+    let xa = c.ite(tp, xs, x)?;
+    Ok((tp, xa))
+}
+
+/// The result from the Float32 result `r` of the (possibly scaled) operation (`off` moves the flush
+/// limit by binades: 0, except in a negative control).
+fn scaled_post(c: &mut Ctx, tp: T, r: T, off: i64) -> R {
+    let lim = lit(c, F32, ((127 - 126 + SCALE + off) as u128) << 23)?;
+    let ar = c.op1(Op::FpAbs, r)?;
+    let tiny = c.op2(Op::FpLt, ar, lim)?;
+    let z = signed_zero(c, r)?;
+    let back = shift_exp(c, r, -SCALE)?;
+    let small = c.ite(tiny, z, back)?;
+    c.ite(tp, small, r)
+}
+
 /// The correctly rounded arithmetic operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Arith {
@@ -327,12 +410,9 @@ impl Arith {
 ///
 /// - gradual native formats: the theory's operation;
 /// - f32 add, subtract: in Float32, flushed when subnormal (an underflowing sum is exact: Hauser, "Handling
-///   floating-point exceptions in numeric programs", ACM TOPLAS 18(2), 1996);
-/// - f32 multiply, divide: in Float64 on the exact widenings, then [`native_from_f64`] (its lemma proves
-///   that rounding for every Float64); the product is exact in Float64 (48 significand bits, exponents
-///   within range) and rounding the rounded quotient again equals rounding the exact one (53 >= 2 · 24 + 2
-///   bits: Figueroa, "When is double rounding innocuous?", ACM SIGNUM Newsletter 30(3), 1995), so the
-///   flush decision and the result are those of the exact value;
+///   floating-point exceptions in numeric programs", ACM TOPLAS 18(2), 1996; the lemma proves it);
+/// - f32 multiply, divide: in Float32 with the left operand scaled when the result may be tiny
+///   ([`scaled_op`]);
 /// - f32 square root: in Float32 (the root of a normal f32 is normal: the lemma proves it is never
 ///   subnormal);
 /// - carrier formats: in the Float32 carrier, then [`from_f32`] with the format's rule.
@@ -355,21 +435,9 @@ pub fn arith(c: &mut Ctx, f: Format, op: Arith, args: &[T]) -> R {
                 c.note(format!("{}.{}", f.name(), op.name()));
                 op.apply(c, &xs)
             }
-            // The rounding is `native_from_f64`'s, whose lemma covers it.
             Arith::Mul | Arith::Div => {
-                let mut ws = Vec::with_capacity(xs.len());
-                for x in xs {
-                    ws.push(c.app(
-                        Op::FpToFp {
-                            e: 11,
-                            s: 53,
-                            rm: Rm::Rne,
-                        },
-                        &[x],
-                    )?);
-                }
-                let r = op.apply(c, &ws)?;
-                native_from_f64(c, f, r)
+                c.note(format!("{}.{}", f.name(), op.name()));
+                scaled_op(c, f, op, xs[0], xs[1])
             }
         };
     }
@@ -617,6 +685,12 @@ pub fn lemmas(used: &std::collections::BTreeSet<String>) -> Result<Vec<(String, 
             (Flavour::Ieee, "saturate") if !f.native() => ieee_round(f, true)?,
             (Flavour::Ieee, "from_f64") => ieee_from_f64(f)?,
             (Flavour::Ieee, "sqrt") if f.native() => native_sqrt(f)?,
+            (Flavour::Ieee, op @ ("mul" | "div")) if f.native() => {
+                scaled_lemma(f, Arith::by_name(op).unwrap_or(Arith::Mul))?
+            }
+            (Flavour::Ieee, op @ ("add" | "sub")) if f.native() => {
+                native_sum(f, Arith::by_name(op).unwrap_or(Arith::Add))?
+            }
             (Flavour::Ieee, op) if Arith::by_name(op).is_some() => {
                 ieee_op(f, Arith::by_name(op).unwrap_or(Arith::Add))?
             }
@@ -852,6 +926,154 @@ fn native_sqrt(f: Format) -> Result<String, SortError> {
     )
 }
 
+/// A sum or difference of two DAZ operands of a flushing native format that IEEE makes subnormal is
+/// exact (rounding up and down agree; Hauser, ACM TOPLAS 18(2), 1996). So the encoding (the theory's
+/// operation, flushed when subnormal) is the specified one: a subnormal result is the exact value, below
+/// `2^emin` and with at most the format's precision, so flushed; any other result is the rounding with an
+/// unbounded exponent. Z3 decides this in about a second, against about 45 s for the whole operation in
+/// the sort with two more exponent bits.
+fn native_sum(f: Format, op: Arith) -> Result<String, SortError> {
+    let mut c = Ctx::new();
+    let a = c.var("a", f.sort())?;
+    let b = c.var("b", f.sort())?;
+    let xs = [daz(&mut c, f, a)?, daz(&mut c, f, b)?];
+    let r = op.apply(&mut c, &xs)?;
+    let sub = c.op1(Op::FpIsSubnormal, r)?;
+    let (up, down) = match op {
+        Arith::Sub => (
+            c.op2(Op::FpSub(Rm::Rtp), xs[0], xs[1])?,
+            c.op2(Op::FpSub(Rm::Rtn), xs[0], xs[1])?,
+        ),
+        _ => (
+            c.op2(Op::FpAdd(Rm::Rtp), xs[0], xs[1])?,
+            c.op2(Op::FpAdd(Rm::Rtn), xs[0], xs[1])?,
+        ),
+    };
+    let same = c.eq(up, down)?;
+    let inexact = c.not(same)?;
+    let goal = c.and(&[sub, inexact])?;
+    finish(
+        &c,
+        &format!(
+            "{}: a {} of DAZ operands that is subnormal is inexact (expect unsat)",
+            f.name(),
+            op.name()
+        ),
+        goal,
+    )
+}
+
+/// `2^k` as a Float64, `k` a 12-bit signed term in the normal range.
+fn pow2_f64_term(c: &mut Ctx, k: T) -> R {
+    let b = c.bv(1023, 12);
+    let field = c.op2(Op::BvAdd, k, b)?;
+    let field = c.extract(field, 10, 0)?;
+    let z1 = c.bv(0, 1);
+    let z52 = c.bv(0, 52);
+    let hi = c.op2(Op::Concat, z1, field)?;
+    let bits = c.op2(Op::Concat, hi, z52)?;
+    c.app(Op::FpFromBits { e: 11, s: 53 }, &[bits])
+}
+
+/// [`scaled_op`]'s decision for every exact value. For DAZ operands that are normal, the exact product
+/// or quotient `v` lies in `[2^(e_x + e_y), 2^(e_x + e_y + 2))` or `(2^(e_x - e_y - 1), 2^(e_x - e_y + 1))`
+/// in magnitude, with the sign of the operands' product. The Float32 operation is by definition the
+/// rounding of `v` (scaled by `2^32` when the operand was), so the encoding is a function of `v`; the
+/// lemma compares it, for every `v` in that range, with `v` rounded in `(_ FloatingPoint 10 24)`, flushed
+/// and narrowed. `v` ranges over Float64: both sides are constant between dyadic breakpoints of at most 26
+/// significant bits, all Float64 values, so agreement there is agreement on every real. Zero, infinite
+/// and NaN operands give zero, infinity or NaN, which are never flushed (smoke cases). No multiplier
+/// is in the query: stated against the operation itself the solver relates two multipliers (or dividers),
+/// which Z3 does not decide in 10 minutes.
+fn scaled_lemma(f: Format, op: Arith) -> Result<String, SortError> {
+    scaled_lemma_with(f, op, 0)
+}
+
+/// [`scaled_lemma`] with the flush limit moved by `off` binades: a negative control (`off != 0` must be
+/// `sat`, so the lemma's hypotheses reach the boundary).
+pub fn scaled_control(op: Arith, off: i64) -> Result<String, SortError> {
+    scaled_lemma_with(Format::F32, op, off)
+}
+
+fn scaled_lemma_with(f: Format, op: Arith, off: i64) -> Result<String, SortError> {
+    let mut c = Ctx::new();
+    let a = c.var("a", f.sort())?;
+    let b = c.var("b", f.sort())?;
+    let x = daz(&mut c, f, a)?;
+    let y = daz(&mut c, f, b)?;
+    let (tp, _) = scaled_pre(&mut c, f, op, x, y)?;
+    let v = c.var("v", F64)?;
+    // The range of the exact value.
+    let bx = c.bits_of(x)?;
+    let by = c.bits_of(y)?;
+    let field = |c: &mut Ctx, bits: T| -> R {
+        let e = c.extract(bits, 30, 23)?;
+        let e = c.resize(e, 12, false)?;
+        let bias = c.bv(127, 12);
+        c.op2(Op::BvSub, e, bias)
+    };
+    let (ex, ey) = (field(&mut c, bx)?, field(&mut c, by)?);
+    let (k_lo, k_hi) = match op {
+        Arith::Mul => {
+            let s = c.op2(Op::BvAdd, ex, ey)?;
+            let two = c.bv(2, 12);
+            (s, c.op2(Op::BvAdd, s, two)?)
+        }
+        _ => {
+            let d = c.op2(Op::BvSub, ex, ey)?;
+            let one = c.bv(1, 12);
+            (c.op2(Op::BvSub, d, one)?, c.op2(Op::BvAdd, d, one)?)
+        }
+    };
+    let lo = pow2_f64_term(&mut c, k_lo)?;
+    let hi = pow2_f64_term(&mut c, k_hi)?;
+    let av = c.op1(Op::FpAbs, v)?;
+    let above = if op == Arith::Mul {
+        c.op2(Op::FpLeq, lo, av)?
+    } else {
+        c.op2(Op::FpLt, lo, av)?
+    };
+    let below = c.op2(Op::FpLt, av, hi)?;
+    let sx = c.op1(Op::FpIsNegative, x)?;
+    let sy = c.op1(Op::FpIsNegative, y)?;
+    let sv = c.op1(Op::FpIsNegative, v)?;
+    let sxy = c.app(Op::Xor, &[sx, sy])?;
+    let sign = c.eq(sv, sxy)?;
+    let mut normal = Vec::new();
+    for t in [x, y] {
+        let z = c.op1(Op::FpIsZero, t)?;
+        let n = c.op1(Op::FpIsNaN, t)?;
+        let i = c.op1(Op::FpIsInfinite, t)?;
+        let sp = c.or(&[z, n, i])?;
+        normal.push(c.not(sp)?);
+    }
+    // The encoding as a function of v.
+    let vs = shift_exp(&mut c, v, SCALE)?;
+    let va = c.ite(tp, vs, v)?;
+    let r = c.app(
+        Op::FpToFp {
+            e: 8,
+            s: 24,
+            rm: Rm::Rne,
+        },
+        &[va],
+    )?;
+    let got = scaled_post(&mut c, tp, r, off)?;
+    let want = reference(&mut c, f, v, false)?;
+    let eq = c.eq(got, want)?;
+    let differ = c.not(eq)?;
+    let goal = c.and(&[normal[0], normal[1], above, below, sign, differ])?;
+    finish(
+        &c,
+        &format!(
+            "{}: the scaled {} differs from the exact value rounded with two more exponent bits, flushed and narrowed (expect unsat)",
+            f.name(),
+            op.name()
+        ),
+        goal,
+    )
+}
+
 /// Rounding a Float64 (through Float32 rounded to odd for a carrier) equals the specified rounding.
 fn ieee_from_f64(f: Format) -> Result<String, SortError> {
     let mut c = Ctx::new();
@@ -1065,6 +1287,8 @@ mod tests {
             "bf16.from_f64",
             "f32.add",
             "f32.sub",
+            "f32.mul",
+            "f32.div",
             "f32.sqrt",
             "f32.from_f64",
             "f8e4m3fn.decode",

@@ -65,11 +65,14 @@ encodings in interchange sorts that the lemmas prove equal to that statement.
   - add, subtract: the Float32 operation, flushed when subnormal: a sum that underflows is exact (Hauser,
     "Handling floating-point exceptions in numeric programs", ACM TOPLAS 18(2), 1996), so it is below
     `2^emin` exactly when it is subnormal;
-  - multiply, divide: the Float64 operation on the exact widenings, then `native_from_f64` (zero of its
-    sign below the threshold, else `to_fp` RNE). The product of two f32 values is exact in Float64 (48
-    significand bits, exponents in range); rounding the Float64 quotient to 24 bits equals rounding the
-    exact one (53 ≥ 2 · 24 + 2: Figueroa, "When is double rounding innocuous?", ACM SIGNUM Newsletter
-    30(3), 1995). So the threshold test and the rounding see the exact value's;
+  - multiply, divide (`scaled_op`): one Float32 operation. When the exponent fields say the result may
+    be below `2^-125` (`e_x + e_y < -125`, or `e_x − e_y < -124`), the left operand is scaled by `2^32`
+    (its exponent field moved: exact, it is then below `2^4`); the result `r` is then the rounding to 24
+    bits of the exact value times `2^32`, normal wherever the decision matters, and the result is zero of
+    its sign when `|r| < 2^-94`, else `r · 2^-32` (exact). Otherwise the result is at least `2^-125` and
+    the operation's own. A Float64 product or quotient would state the same, but made Z3 take minutes to
+    find a counterexample in `merge`'s sanity queries (227 s for one with two divides) where this
+    encoding takes seconds;
   - square root: the Float32 operation (the root of a normal value is normal);
   - the remainder, which is exact: flushed when subnormal.
 - **Carrier formats** (bf16, the f8 formats) are their bit patterns. `to_f32` decodes a pattern exactly
@@ -103,9 +106,10 @@ encodings in interchange sorts that the lemmas prove equal to that statement.
   | `bf16.{mul,div,sqrt}` | DAZ, the op in Float32 and `from_f32` equal the op in `(_ FloatingPoint 10 8)` on the DAZ operands, flushed and narrowed | 42, 48, 3 s |
   | `bf16.{add,sub}` | the same against the op in `(_ FloatingPoint 8 8)` flushed when subnormal: Z3 has no addition with more exponent than significand bits, and an underflowing sum is exact | 5, 4 s |
   | `bf16.from_f64` | the round-to-odd path equals the flushed rounding from Float64 | 2 s |
-  | `f32.{add,sub}` | the Float32 op flushed when subnormal equals the op in `(_ FloatingPoint 10 24)` on the DAZ operands, flushed and narrowed | 46, 42 s |
+  | `f32.{add,sub}` | a Float32 sum or difference of DAZ operands that is subnormal is exact (rounding up and down agree): then it is the exact value, below `2^emin` with at most 24 bits, so flushing it when subnormal is the rule, and any other result is the rounding with an unbounded exponent (stating the whole op against `(_ FloatingPoint 10 24)` also holds, in 46 s) | 1 s |
   | `f32.sqrt` | the Float32 square root of a DAZ operand is never subnormal | 1 s |
-  | `f32.from_f64` | `native_from_f64(x)` is `x` rounded in `(_ FloatingPoint 10 24)`, flushed and narrowed, for every Float64 `x` (multiply, divide and the f64 to f32 conversion) | 1 s |
+  | `f32.{mul,div}` | for normal DAZ operands and every exact value `v` in the range their exponents give (`[2^(e_x+e_y), 2^(e_x+e_y+2))`, `(2^(e_x−e_y−1), 2^(e_x−e_y+1))`, the operands' sign), `scaled_op` with the Float32 operation replaced by its definition (the rounding of `v`, scaled) equals `v` rounded in `(_ FloatingPoint 10 24)`, flushed and narrowed. `v` ranges over Float64: both sides are constant between dyadic breakpoints of at most 26 significant bits, all Float64 values, so this covers every real. Zero, infinite and NaN operands give zero, infinity or NaN, never flushed (smoke cases) | 1, 1 s |
+  | `f32.from_f64` | `native_from_f64(x)` is `x` rounded in `(_ FloatingPoint 10 24)`, flushed and narrowed, for every Float64 `x` (the f64 to f32 conversion) | 1 s |
   | `f8e4m3fn.decode` | agrees with `(_ FloatingPoint 4 4)` on subnormals and `(_ FloatingPoint 5 4)` on normals | 2 s |
   | `f8e4m3fn.round` | agrees with `(_ FloatingPoint 4 4)` up to 240, with `(_ FloatingPoint 5 4)` from 2^-6, and gives the NaN pattern past 464 and for NaN and infinities | 2 s |
   | `f8e4m3fn.saturate` | as `round`, but the largest finite pattern of the sign past 464 and for infinities | 2 s |
@@ -113,9 +117,10 @@ encodings in interchange sorts that the lemmas prove equal to that statement.
 
   E4M3FN is no SMT-LIB sort (its top binade is finite), so its lemmas are piecewise against the two IEEE
   sorts whose grids it shares. An encoding without a lemma (an arithmetic op in an FN format, say) is an
-  error, never trusted. f32 multiply and divide have no whole-operation lemma: Z3 does not decide the
-  Float64 multiplier against the `(_ FloatingPoint 10 24)` one within 10 minutes (nor the divider), so
-  that step rests on the exactness argument above and the lemma covers the rounding. Measured in the
+  error, never trusted. The f32 multiply and divide lemmas leave the multiplier out (the operation is the
+  rounding of the exact value by the theory's definition): stated against the operation in `(_
+  FloatingPoint 10 24)`, Z3 relates two multipliers (or dividers) and does not decide it in 15 minutes.
+  Their negative controls (the flush limit one binade off) are `sat` (smoke tests). Measured in the
   image (Z3 5.3.3, iacoma227, 2026-11-05), each lemma alone.
 
 ## Op semantics (`ops.rs`)
@@ -169,8 +174,8 @@ E4M3FN decoding table against an independent formula, `rescale` against its refe
 shifts, saturation, zero, subnormal and infinite scales, three widths), and four negative controls that
 must be `sat`: exchanged `subtract` operands, a bf16 truncation instead of a rounding, an IEEE f32
 multiplier (gradual underflow) against the f32 spec, and a bf16 multiply on an IEEE f32 multiplier
-against the bf16 spec. It also runs Z3 on every encoding lemma it decides in seconds (all but the four of
-about 45 s), formats no model uses included.
+against the bf16 spec. It also runs Z3 on every encoding lemma it decides in seconds (all but bf16's multiply
+and divide, about 45 s each), formats no model uses included.
 
 ## Reduction order and its error bound
 

@@ -164,9 +164,9 @@
    - Ops whose float result the spec leaves to an approximate function are uninterpreted: a proof
      holds for any implementation of them; the third-party float IP cores (design §4.12) implement them.
    - Floats follow design §6.4: f32 and bf16 flush subnormals, f16 and FP8 keep them, conversions into
-     FP8 saturate. The f32 multiply and divide are encoded in Float64 and rest on an exactness argument
-     for that step (the product is exact, the quotient's double rounding harmless) plus a lemma for the
-     rounding; Z3 does not decide the whole operation (docs/framework/smt.md, "Floats").
+     FP8 saturate. The f32 multiply and divide lemmas state the operation as the rounding of its exact
+     value (the theory's definition), as Z3 does not decide one multiplier against another
+     (docs/framework/smt.md, "Floats").
    - The bound of a bound order covers float sums; other combiners whose order binds (a float product,
      an arg-max with float ties) get none.
    - Padding and window bounds are address logic: a datapath input reads the operand element (or the

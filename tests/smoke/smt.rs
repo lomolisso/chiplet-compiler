@@ -606,9 +606,9 @@ fn rescale_lemma_holds_and_its_controls_fail() {
     }
 }
 
-/// The encoding lemmas that Z3 decides in seconds (every one except the bf16 multiply and divide and
-/// the f32 add and subtract, which take about 45 s each and run in `datapaths` when a model uses them)
-/// hold, including those of formats no model uses.
+/// The encoding lemmas that Z3 decides in seconds (every one except the bf16 multiply and divide, which
+/// take about 45 s each and run in `datapaths` when a model uses them) hold, including those of formats
+/// no model uses, and the f32 multiply and divide lemmas fail with a wrong flush limit.
 #[test]
 fn quick_encoding_lemmas_hold() {
     let env = Env::new();
@@ -631,6 +631,10 @@ fn quick_encoding_lemmas_hold() {
         "bf16.sub",
         "bf16.sqrt",
         "bf16.from_f64",
+        "f32.add",
+        "f32.sub",
+        "f32.mul",
+        "f32.div",
         "f32.sqrt",
         "f32.from_f64",
         "f8e4m3fn.decode",
@@ -667,8 +671,20 @@ fn quick_encoding_lemmas_hold() {
         ToolLog::new("lemmas", dir.join("logs")),
         CancelToken::new(),
     );
+    // Negative controls: the f32 multiply and divide lemmas with the flush limit one binade off.
+    let mut controls = Vec::new();
+    for (op, name) in [(float::Arith::Mul, "control_mul.smt2"), (float::Arith::Div, "control_div.smt2")] {
+        std::fs::write(dir.join(name), float::scaled_control(op, -1).unwrap()).unwrap();
+        files.push(name.to_string());
+        controls.push(name.to_string());
+    }
     let b = cc_smt::run_batch(&runner, &loc, Solver::Z3, &dir, &files, 60).unwrap();
     for f in &files {
-        assert_eq!(b.verdicts.get(f), Some(&Verdict::Unsat), "{f}");
+        let v = b.verdicts.get(f);
+        if controls.contains(f) {
+            assert!(matches!(v, Some(Verdict::Sat { .. })), "{f}: {v:?}");
+        } else {
+            assert_eq!(v, Some(&Verdict::Unsat), "{f}");
+        }
     }
 }
