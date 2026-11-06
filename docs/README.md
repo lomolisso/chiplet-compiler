@@ -12,6 +12,7 @@
 | [framework/cli.md](framework/cli.md) | `chipc` commands |
 | [framework/ir.md](framework/ir.md) | `cc-ir`: the IR, symbolic dimensions, the op-semantics table, graphs for matching |
 | [framework/smt.md](framework/smt.md) | `cc-smt`: SMT-LIB scripts and the solver runner |
+| [framework/float.md](framework/float.md) | `cc-float`: glue around float IP cores, its proofs through Yosys, compositions sized to the error budget, the error sampler |
 | [passes/](passes/) | One document per pass: `export`, `export-frontend` (the Python side), `import`, `components`, `normalize`, `kernels`, `kernel_classes`, `iteration_space`, `datapaths`, `characterize`, `mine`, `merge`, `selftest` |
 | [toolchain-image.md](toolchain-image.md) | The Docker toolchain image: build, pins, cache, measurements |
 | [third-party.md](third-party.md) | The submodules (GraMi, Allo, XLS) and their pins |

@@ -25,6 +25,8 @@ All notable changes to this project are listed here. The format follows
 - PDK manifests (`pdks/<kit>.toml`): each kit's Liberty files, LEF, VT, corner, driving cell, default clock and XLS delay model, under `paths.pdk_root`.
 - `characterize` cheap checks on every netlist: every output driven, and an area below half of a narrower width's fails.
 - `[passes.mine] miner` selects the frequent subgraph miner (`grami`).
+- `cc-float`: glue wrappers around float IP cores (subnormal flush with one more exponent bit, the E4M3FN decoder and round-to-nearest encoder, FP8 saturation, NaN and signed-zero handling, NaN to 0 for float to integer), each proven bit-exact on its Verilog through Yosys `write_smt2` with the cores bound by their contracts; compositions (power, tanh, log1p, rsqrt) sized to an error budget from the cores' accuracy, their special values proven the same way.
+- Composition-error sampler (`python -m cc_float.sampler`): cores modelled at their contracts, exhaustive over the 16-bit and 8-bit formats, stratified over f32; and an exhaustive check of bf16 and f16 sine and cosine through XLS's `fp_sincos_32` IR (`python -m cc_float.sincos`).
 - Toolchain image 0.5.0: external Verilog modules in Allo (`allo.extern_verilog`) and `xlscc` (`hls_extern_verilog` attribute), Allo's XLS emitter fixed for calls and following loop and partition schedules (pinned patches), FloPoCo, GHDL with its Yosys plugin, and XLS's DSLX sine/cosine and exponential libraries.
 
 ### Changed

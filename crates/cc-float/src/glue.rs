@@ -13,6 +13,7 @@ use cc_smt::float::{Arith, Flavour, Format};
 use serde::{Deserialize, Serialize};
 
 use crate::FloatError;
+use crate::compose::Recipe;
 use crate::rtl::{Mutation, Rtl};
 
 type Res<X> = Result<X, FloatError>;
@@ -81,6 +82,8 @@ pub enum Glue {
     /// `convert` to an integer around a float-to-integer core (rounding toward zero, saturating), with
     /// NaN to 0.
     ToInt { fmt: Format, signed: bool, w: u32 },
+    /// A composition of cores at `q` significand bits (`crate::recipe`), its special values as glue.
+    Compose { recipe: Recipe, fmt: Format, q: u32 },
 }
 
 /// What a core computes in a wrapper.
@@ -154,11 +157,9 @@ impl Glue {
                 format!("glue_{op}_{}_via_{}", fmt.name(), via.name())
             }
             Glue::Convert { from, to } => format!("glue_convert_{}_{}", from.name(), to.name()),
-            Glue::MaxMin { max, fmt } => format!(
-                "glue_{}_{}",
-                if *max { "maximum" } else { "minimum" },
-                fmt.name()
-            ),
+            Glue::MaxMin { max, fmt } => {
+                format!("glue_{}_{}", if *max { "maximum" } else { "minimum" }, fmt.name())
+            }
             Glue::Compare { dir, fmt } => {
                 format!("glue_compare_{}_{}", dir.name().to_lowercase(), fmt.name())
             }
@@ -168,6 +169,9 @@ impl Glue {
                 fmt.name(),
                 if *signed { "i" } else { "ui" }
             ),
+            Glue::Compose { recipe, fmt, q } => {
+                format!("glue_{}_{}_q{q}", crate::recipe::op_name(*recipe), fmt.name())
+            }
         }
     }
 
@@ -179,7 +183,8 @@ impl Glue {
             | Glue::MaxMin { fmt, .. }
             | Glue::Compare { fmt, .. }
             | Glue::Sign { fmt, .. }
-            | Glue::ToInt { fmt, .. } => *fmt,
+            | Glue::ToInt { fmt, .. }
+            | Glue::Compose { fmt, .. } => *fmt,
             Glue::Convert { from, .. } => *from,
         }
     }
@@ -189,6 +194,10 @@ impl Glue {
             Glue::Arith { op, .. } => op.arity(),
             Glue::Approx { arity, .. } => *arity,
             Glue::MaxMin { .. } | Glue::Compare { .. } => 2,
+            Glue::Compose {
+                recipe: Recipe::Power,
+                ..
+            } => 2,
             _ => 1,
         }
     }
@@ -198,9 +207,7 @@ impl Glue {
         let bad = || FloatError::Glue(format!("{}: no wrapper", self.name()));
         Ok(match self {
             Glue::Arith { op, fmt } => {
-                let a = Role::Arith {
-                    op: op.name().into(),
-                };
+                let a = Role::Arith { op: op.name().into() };
                 // A sum or difference that underflows is exact (Hauser, ACM TOPLAS 18(2), 1996): a
                 // core of the format's own width rounds it like an unbounded exponent, and the glue
                 // flushes it when subnormal. Products, quotients and roots need one more exponent bit.
@@ -213,28 +220,14 @@ impl Glue {
                 };
                 vec![need(a, cf, op.arity())]
             }
-            Glue::Approx {
-                op,
-                arity,
-                fmt,
-                via,
-            } => {
+            Glue::Approx { op, arity, fmt, via } => {
                 let a = need(Role::Approx { op: op.clone() }, *via, *arity);
                 let direct = *via == *fmt || (fmt.flushes() && *via == wide(*fmt));
                 if direct || *fmt == Format::E4M3FN {
                     vec![a]
                 } else if fmt.bits() < via.bits() && fmt.flavour == Flavour::Ieee {
                     let to = if fmt.flushes() { wide(*fmt) } else { *fmt };
-                    vec![
-                        a,
-                        need(
-                            Role::Convert {
-                                from: via.name(),
-                            },
-                            to,
-                            1,
-                        ),
-                    ]
+                    vec![a, need(Role::Convert { from: via.name() }, to, 1)]
                 } else {
                     return Err(bad());
                 }
@@ -244,13 +237,7 @@ impl Glue {
                     vec![]
                 } else if to.bits() < from.bits() && to.flavour == Flavour::Ieee {
                     let r = if to.flushes() { wide(*to) } else { *to };
-                    vec![need(
-                        Role::Convert {
-                            from: from.name(),
-                        },
-                        r,
-                        1,
-                    )]
+                    vec![need(Role::Convert { from: from.name() }, r, 1)]
                 } else {
                     return Err(bad());
                 }
@@ -269,6 +256,7 @@ impl Glue {
                 decoded(*fmt),
                 1,
             )],
+            Glue::Compose { recipe, fmt, q } => crate::recipe::needs(*recipe, *fmt, *q)?,
         })
     }
 
@@ -387,20 +375,14 @@ impl Glue {
                 let ordered = if mutation == Mutation::NoZeroOrder {
                     pick
                 } else {
-                    r.wire(
-                        fmt.bits(),
-                        format!("({zx} & {zy}) ? {zpick} : {pick}"),
-                    )
+                    r.wire(fmt.bits(), format!("({zx} & {zy}) ? {zpick} : {pick}"))
                 };
                 if mutation == Mutation::NoNanCase {
                     ordered
                 } else {
                     r.wire(
                         fmt.bits(),
-                        format!(
-                            "({nx} | {ny}) ? {} : {ordered}",
-                            Rtl::nan_literal(*fmt)
-                        ),
+                        format!("({nx} | {ny}) ? {} : {ordered}", Rtl::nan_literal(*fmt)),
                     )
                 }
             }
@@ -443,6 +425,9 @@ impl Glue {
                         r.wire(w, format!("({n} | {z}) ? {x} : {u}"))
                     }
                 }
+            }
+            Glue::Compose { recipe, fmt, q } => {
+                crate::recipe::build(&mut r, *recipe, *fmt, *q, &xs, cores, mutation)?
             }
             Glue::ToInt { fmt, w, .. } => {
                 let cf = core_fmt(&needs[0]);
@@ -504,7 +489,12 @@ fn flush_narrow(r: &mut Rtl, c: Format, f: Format, z: &str, m: Mutation) -> Res<
         );
         let special = r.wire(
             f.bits(),
-            format!("{{{s}, {}'b{}, {z}[{}:0]}}", f.e, "1".repeat(f.e as usize), c.m - 1),
+            format!(
+                "{{{s}, {}'b{}, {z}[{}:0]}}",
+                f.e,
+                "1".repeat(f.e as usize),
+                c.m - 1
+            ),
         );
         return Ok(r.wire(f.bits(), format!("{top} ? {special} : {body}")));
     }

@@ -13,6 +13,7 @@ mod datapaths;
 mod eda;
 mod env;
 mod export;
+mod float;
 mod import;
 mod iteration_space;
 mod kernel_classes;

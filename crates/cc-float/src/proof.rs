@@ -35,6 +35,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::FloatError;
+use crate::compose::Recipe;
 use crate::glue::{Built, Glue, Role, SignOp};
 use crate::rtl::Mutation;
 
@@ -71,6 +72,15 @@ fn value(c: &mut Ctx, f: Format, t: T) -> Res<T> {
     } else {
         float::to_f32(c, f, t)?
     })
+}
+
+/// The exact value of a bit pattern of `f` as an FP term.
+fn bits_value(c: &mut Ctx, f: Format, b: T) -> Res<T> {
+    if f.native() {
+        Ok(c.app(Op::FpFromBits { e: f.e, s: f.m + 1 }, &[b])?)
+    } else {
+        value(c, f, b)
+    }
 }
 
 fn to_sort(c: &mut Ctx, s: Sort, x: T) -> Res<T> {
@@ -230,7 +240,13 @@ fn exact_value(c: &mut Ctx, op: Arith, xs: &[T], v: T) -> Res<T> {
 /// exponent bit (no rounding happens), else `cc_smt`'s rounding (Float32 to a carrier: `from_f32`;
 /// to a native format: the theory's rounding).
 fn round_result(c: &mut Ctx, core: Format, f: Format, z: T) -> Res<T> {
-    let y = c.app(Op::FpFromBits { e: core.e, s: core.m + 1 }, &[z])?;
+    let y = c.app(
+        Op::FpFromBits {
+            e: core.e,
+            s: core.m + 1,
+        },
+        &[z],
+    )?;
     if core == f {
         return if f.native() { Ok(y) } else { Ok(z) };
     }
@@ -261,6 +277,260 @@ fn round_result(c: &mut Ctx, core: Format, f: Format, z: T) -> Res<T> {
         core.name(),
         f.name()
     )))
+}
+
+/// The value of a composition (design §4.12) on the format's operands, with its cores as the functions
+/// `core<k>` of their operands' encodings (in the order of `recipe::needs`): the special values of C11
+/// Annex F (F.10.3.9 log1p, F.10.4.4 pow, F.10.2.6 tanh) and IEEE 754-2019 §9.2 (rSqrt), else the
+/// recipe over the cores rounded once to the format as an arithmetic result. Stated on FP values with
+/// the theory's predicates, independently of the glue's bit tests; an FP8 result that would be infinite
+/// is NaN (design §6.4).
+fn compose_spec(c: &mut Ctx, rec: Recipe, f: Format, q: u32, args: &[Val]) -> Res<T> {
+    let qf = crate::recipe::inner(f, q);
+    let sq = sort_of(qf);
+    let mut xs = Vec::new();
+    for a in args {
+        let d = float::daz(c, f, a.t)?;
+        xs.push(value(c, f, d)?);
+    }
+    let sf = c.sort(xs[0]);
+    let x = xs[0];
+    let fl = |c: &mut Ctx, s: Sort, v: f64| -> Res<T> {
+        let Sort::Fp { e, s: sb } = s else {
+            return Err(FloatError::Proof("a literal of a non-FP sort".into()));
+        };
+        Ok(float::lit(
+            c,
+            s,
+            crate::recipe::encode(Format::ieee(e, sb - 1), v, false),
+        )?)
+    };
+    let pz = fl(c, sf, 0.0)?;
+    let nz = c.op1(Op::FpNeg, pz)?;
+    let nan = float::nan(c, sf)?;
+    let inf = |c: &mut Ctx, neg: bool| -> Res<T> {
+        if f.flavour == Flavour::FiniteNan {
+            return Ok(nan);
+        }
+        let Sort::Fp { e, s: sb } = sf else {
+            return Err(FloatError::Proof("non-FP sort".into()));
+        };
+        let p = float::lit(c, sf, ((1u128 << e) - 1) << (sb - 1))?;
+        Ok(if neg { c.op1(Op::FpNeg, p)? } else { p })
+    };
+    let one = fl(c, sf, 1.0)?;
+    let one_q = c.bv(crate::recipe::encode(qf, 1.0, false), qf.bits());
+    let uf = |c: &mut Ctx, k: usize, ops: &[T]| -> Res<T> {
+        let name = format!("core{k}");
+        let sorts: Vec<Sort> = ops.iter().map(|&t| c.sort(t)).collect();
+        c.fun(&name, &sorts, Sort::Bv(qf.bits()))?;
+        Ok(c.app(Op::Uf(name), ops)?)
+    };
+    // The encoding in Q of a value (exact: Q holds every value of the format).
+    let enc_q = |c: &mut Ctx, v: T| -> Res<T> {
+        let w = to_sort(c, sq, v)?;
+        Ok(c.bits_of(w)?)
+    };
+    // One rounding of a Q encoding to the format, as an arithmetic result, as a value of `sf`.
+    let round = |c: &mut Ctx, bits: T| -> Res<T> {
+        let v = c.app(Op::FpFromBits { e: qf.e, s: qf.m + 1 }, &[bits])?;
+        if f.flavour == Flavour::FiniteNan {
+            let v32 = to_sort(c, Sort::Fp { e: 8, s: 24 }, v)?;
+            let b = float::from_f32(c, f, v32)?;
+            return value(c, f, b);
+        }
+        if f.flushes() {
+            let wf = crate::glue::wide(f);
+            let y = to_sort(c, sort_of(wf), v)?;
+            let min = float::lit(c, sort_of(wf), ((f.emin() + wf.bias()) as u128) << wf.m)?;
+            let ay = c.op1(Op::FpAbs, y)?;
+            let tiny = c.op2(Op::FpLt, ay, min)?;
+            let wz = float::lit(c, sort_of(wf), 0)?;
+            let wnz = c.op1(Op::FpNeg, wz)?;
+            let neg = c.op1(Op::FpIsNegative, y)?;
+            let z0 = c.ite(neg, wnz, wz)?;
+            let y = c.ite(tiny, z0, y)?;
+            return to_sort(c, sf, y);
+        }
+        to_sort(c, sf, v)
+    };
+    let copysign = |c: &mut Ctx, r: T, neg: T| -> Res<T> {
+        let a = c.op1(Op::FpAbs, r)?;
+        let n = c.op1(Op::FpNeg, a)?;
+        Ok(c.ite(neg, n, a)?)
+    };
+    let is = |c: &mut Ctx, o: Op, x: T| c.op1(o, x);
+    let xnan = is(c, Op::FpIsNaN, x)?;
+    let xinf = is(c, Op::FpIsInfinite, x)?;
+    let xzero = is(c, Op::FpIsZero, x)?;
+    let xneg = is(c, Op::FpIsNegative, x)?;
+    let ax = c.op1(Op::FpAbs, x)?;
+    Ok(match rec {
+        Recipe::Power => {
+            let y = xs[1];
+            let ynan = is(c, Op::FpIsNaN, y)?;
+            let yinf = is(c, Op::FpIsInfinite, y)?;
+            let yzero = is(c, Op::FpIsZero, y)?;
+            let yneg = is(c, Op::FpIsNegative, y)?;
+            // Integer: equal to its truncation (finite). Odd: an integer whose half is not one, the
+            // half taken exactly on the exponent field for |y| >= 2.
+            let yfin = {
+                let a = c.or(&[ynan, yinf])?;
+                c.not(a)?
+            };
+            let ty = c.app(Op::FpRoundToIntegral(Rm::Rtz), &[y])?;
+            let yeq = c.op2(Op::FpEq, ty, y)?;
+            let yint = c.and(&[yfin, yeq])?;
+            let ay = c.op1(Op::FpAbs, y)?;
+            let two = fl(c, sf, 2.0)?;
+            let ge2 = c.op2(Op::FpLeq, two, ay)?;
+            let yb = c.bits_of(ay)?;
+            let Sort::Fp { e: se, s: ss } = sf else {
+                return Err(FloatError::Proof("non-FP sort".into()));
+            };
+            let w = se + ss;
+            let ex = c.extract(yb, w - 2, ss - 1)?;
+            let one_e = c.bv(1, se);
+            let exm = c.op2(Op::BvSub, ex, one_e)?;
+            let man = c.extract(yb, ss - 2, 0)?;
+            let hb = c.op2(Op::Concat, exm, man)?;
+            let z1 = c.bv(0, 1);
+            let hb = c.op2(Op::Concat, z1, hb)?;
+            let half = c.app(Op::FpFromBits { e: se, s: ss }, &[hb])?;
+            let th = c.app(Op::FpRoundToIntegral(Rm::Rtz), &[half])?;
+            let hint = c.op2(Op::FpEq, th, half)?;
+            let hnot = c.not(hint)?;
+            let one_y = c.op2(Op::FpEq, ay, one)?;
+            let big_odd = c.and(&[ge2, hnot])?;
+            let oddish = c.or(&[one_y, big_odd])?;
+            let yodd = c.and(&[yint, oddish])?;
+            let xone = c.op2(Op::FpEq, x, one)?;
+            let xnotz = c.not(xzero)?;
+            let xone_pos = c.and(&[xone, xnotz])?;
+            let lt1 = c.op2(Op::FpLt, ax, one)?;
+            let ax1 = c.op2(Op::FpEq, ax, one)?;
+            // Core path on |x| and y.
+            let xq = enc_q(c, ax)?;
+            let yq = enc_q(c, y)?;
+            let lg = uf(c, 0, &[xq])?;
+            let t = uf(c, 1, &[yq, lg])?;
+            let ex2 = uf(c, 2, &[t])?;
+            let mag = round(c, ex2)?;
+            let negr = c.and(&[xneg, yodd])?;
+            let path = copysign(c, mag, negr)?;
+            let pinf = inf(c, false)?;
+            let ninf = inf(c, true)?;
+            let xinf_r = {
+                let sxinf = if f.flavour == Flavour::FiniteNan {
+                    nan
+                } else {
+                    c.ite(xneg, ninf, pinf)?
+                };
+                let szero = c.ite(xneg, nz, pz)?;
+                let neg_y = c.ite(yodd, szero, pz)?;
+                let pos_y = c.ite(yodd, sxinf, pinf)?;
+                let neg_x = c.ite(yneg, neg_y, pos_y)?;
+                let pos_x = c.ite(yneg, pz, pinf)?;
+                c.ite(xneg, neg_x, pos_x)?
+            };
+            let xzero_r = {
+                let sxinf = if f.flavour == Flavour::FiniteNan {
+                    nan
+                } else {
+                    c.ite(xneg, ninf, pinf)?
+                };
+                let szero = c.ite(xneg, nz, pz)?;
+                let neg_y = c.ite(yodd, sxinf, pinf)?;
+                let pos_y = c.ite(yodd, szero, pz)?;
+                c.ite(yneg, neg_y, pos_y)?
+            };
+            let yinf_r = {
+                let flip = c.app(Op::Xor, &[lt1, yneg])?;
+                let r = c.ite(flip, pz, pinf)?;
+                c.ite(ax1, one, r)?
+            };
+            let ynot_int = c.not(yint)?;
+            let neg_nonint = c.and(&[xneg, xnotz, ynot_int])?;
+            let r = c.ite(neg_nonint, nan, path)?;
+            let r = c.ite(xinf, xinf_r, r)?;
+            let r = c.ite(xzero, xzero_r, r)?;
+            let r = c.ite(yinf, yinf_r, r)?;
+            let anynan = c.or(&[xnan, ynan])?;
+            let r = c.ite(anynan, nan, r)?;
+            let r = c.ite(xone_pos, one, r)?;
+            c.ite(yzero, one, r)?
+        }
+        Recipe::Tanh => {
+            let aq = enc_q(c, ax)?;
+            let s = uf(c, 0, &[aq, aq])?;
+            let c3 = uf(c, 1, &[s, aq])?;
+            let three = c.bv(crate::recipe::encode(qf, 3.0, false), qf.bits());
+            let d = uf(c, 2, &[c3, three])?;
+            let cubic = uf(c, 3, &[aq, d])?;
+            let aqv = to_sort(c, sq, ax)?;
+            let a2v = c.op2(Op::FpAdd(Rm::Rne), aqv, aqv)?;
+            let a2 = c.bits_of(a2v)?;
+            let big = uf(c, 4, &[a2])?;
+            let num = uf(c, 5, &[big, one_q])?;
+            let den = uf(c, 6, &[big, one_q])?;
+            let mid = uf(c, 7, &[num, den])?;
+            let thr = |c: &mut Ctx, v: f64, up: bool| -> Res<T> {
+                let b = c.bv(crate::recipe::encode(f, v, up), f.bits());
+                bits_value(c, f, b)
+            };
+            let x1 = thr(c, crate::compose::tanh_cubic_limit(f), true)?;
+            let cl = thr(c, crate::compose::tanh_clamp(f), false)?;
+            let small = c.op2(Op::FpLt, ax, x1)?;
+            let sat = c.op2(Op::FpLt, cl, ax)?;
+            let sat = c.or(&[sat, xinf])?;
+            let v = c.ite(sat, one_q, mid)?;
+            let v = c.ite(small, cubic, v)?;
+            let r = round(c, v)?;
+            let r = copysign(c, r, xneg)?;
+            c.ite(xnan, nan, r)?
+        }
+        Recipe::LogPlusOne => {
+            let xq = enc_q(c, x)?;
+            let wv = uf(c, 0, &[one_q, xq])?;
+            let lw = uf(c, 1, &[wv])?;
+            let dm = uf(c, 2, &[wv, one_q])?;
+            let ratio = uf(c, 3, &[lw, dm])?;
+            let prod = uf(c, 4, &[xq, ratio])?;
+            let wone = c.eq(wv, one_q)?;
+            let v = c.ite(wone, xq, prod)?;
+            let r = round(c, v)?;
+            let m1 = c.op1(Op::FpNeg, one)?;
+            let below = c.op2(Op::FpLt, x, m1)?;
+            let is_m1 = c.op2(Op::FpEq, x, m1)?;
+            let pinf = inf(c, false)?;
+            let ninf = inf(c, true)?;
+            let r = c.ite(xzero, x, r)?;
+            let r = c.ite(xinf, pinf, r)?;
+            let r = c.ite(is_m1, ninf, r)?;
+            let bad = c.or(&[xnan, below])?;
+            c.ite(bad, nan, r)?
+        }
+        Recipe::Rsqrt => {
+            let xq = enc_q(c, x)?;
+            let rec = uf(c, 0, &[one_q, xq])?;
+            let root = uf(c, 1, &[rec])?;
+            let r = round(c, root)?;
+            let sinf = if f.flavour == Flavour::FiniteNan {
+                nan
+            } else {
+                let p = inf(c, false)?;
+                let n = inf(c, true)?;
+                c.ite(xneg, n, p)?
+            };
+            let r = c.ite(xinf, pz, r)?;
+            let r = c.ite(xzero, sinf, r)?;
+            let xnotz = c.not(xzero)?;
+            let neg = c.and(&[xneg, xnotz])?;
+            let bad = c.or(&[xnan, neg])?;
+            c.ite(bad, nan, r)?
+        }
+        Recipe::Wider => return Err(FloatError::Proof("no wider composition".into())),
+    })
 }
 
 /// A float value of format `f` from an encoding term (`Val` as `cc_smt::ops` reads it).
@@ -335,7 +605,19 @@ pub fn query(b: &Built, yosys: &str) -> Res<Query> {
         let fp = |c: &mut Ctx, t: T, f: Format| -> Res<T> {
             Ok(c.app(Op::FpFromBits { e: f.e, s: f.m + 1 }, &[t])?)
         };
+        let composed = matches!(g, Glue::Compose { .. });
         match &b.needs[k].role {
+            // In a composition every core but the final conversion is a function of its operands'
+            // encodings, whatever it computes: the proof covers the structure and the special values,
+            // the sampler the accuracy.
+            Role::Arith { .. } | Role::Approx { .. } if composed => {
+                let name = format!("core{k}");
+                let sorts: Vec<Sort> = a.iter().map(|&t| c.sort(t)).collect();
+                let ret = c.sort(*z);
+                c.fun(&name, &sorts, ret)?;
+                let app = c.app(Op::Uf(name), a)?;
+                hyps.push(c.eq(*z, app)?);
+            }
             Role::Arith { op } => {
                 let zf = fp(&mut c, *z, cf)?;
                 let want = if let Some(v) = v {
@@ -462,6 +744,13 @@ pub fn query(b: &Built, yosys: &str) -> Res<Query> {
                 w: *w,
             };
             (Val::new(ty, out), ops::convert(&mut c, args[0], ty)?)
+        }
+        Glue::Compose { recipe, fmt, q } => {
+            let got = bits_value(&mut c, *fmt, out)?;
+            let want = compose_spec(&mut c, *recipe, *fmt, *q, &args)?;
+            let eq = c.eq(got, want)?;
+            let t = c.bool(true);
+            (Val::new(Ty::Bool, eq), Val::new(Ty::Bool, t))
         }
     };
     let same = ops::same(&mut c, got, want)?;
@@ -696,11 +985,9 @@ impl Prover {
                                 self.timeout_s,
                             ) {
                                 Ok(batch) => {
-                                    let v = batch.verdicts.get(&file).cloned().unwrap_or(
-                                        Verdict::Error {
-                                            message: "no answer".into(),
-                                        },
-                                    );
+                                    let v = batch.verdicts.get(&file).cloned().unwrap_or(Verdict::Error {
+                                        message: "no answer".into(),
+                                    });
                                     let _ = self.cache.put(solver, &version, &hash, &v);
                                     (v, t0.elapsed().as_secs_f64(), false)
                                 }
@@ -763,7 +1050,9 @@ mod tests {
 
     #[test]
     fn finds_sorts_beyond_the_interchange_ones() {
-        assert!(!uses_other_sorts("(declare-const x (_ FloatingPoint 8 24)) ((_ to_fp 11 53) RNE x)"));
+        assert!(!uses_other_sorts(
+            "(declare-const x (_ FloatingPoint 8 24)) ((_ to_fp 11 53) RNE x)"
+        ));
         assert!(uses_other_sorts("((_ to_fp 9 24) RNE x)"));
         assert!(uses_other_sorts("(declare-const x (_ FloatingPoint 8 8))"));
         assert!(uses_other_sorts("((_ to_fp_unsigned 9 8) RNE b)"));

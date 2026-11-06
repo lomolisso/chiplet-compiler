@@ -5,6 +5,7 @@
 pub mod compose;
 pub mod glue;
 pub mod proof;
+pub mod recipe;
 pub mod rtl;
 
 pub use glue::{Built, CoreNeed, Dir, Glue, Role, SignOp};

@@ -139,11 +139,8 @@ impl Rtl {
     pub fn wire(&mut self, width: u32, expr: impl AsRef<str>) -> String {
         let n = format!("g{}", self.next);
         self.next += 1;
-        self.body.push(format!(
-            "  wire [{}:0] {n} = {};",
-            width - 1,
-            expr.as_ref()
-        ));
+        self.body
+            .push(format!("  wire [{}:0] {n} = {};", width - 1, expr.as_ref()));
         n
     }
 
@@ -231,11 +228,7 @@ impl Rtl {
         let params = if inst.params.is_empty() {
             String::new()
         } else {
-            let ps: Vec<String> = inst
-                .params
-                .iter()
-                .map(|(p, v)| format!(".{p}({v})"))
-                .collect();
+            let ps: Vec<String> = inst.params.iter().map(|(p, v)| format!(".{p}({v})")).collect();
             format!(" #({})", ps.join(", "))
         };
         self.body.push(format!(
@@ -288,13 +281,7 @@ impl Rtl {
             let ports: Vec<String> = st
                 .ports
                 .iter()
-                .map(|(p, (out, w))| {
-                    format!(
-                        "{} [{}:0] {p}",
-                        if *out { "output" } else { "input" },
-                        w - 1
-                    )
-                })
+                .map(|(p, (out, w))| format!("{} [{}:0] {p}", if *out { "output" } else { "input" }, w - 1))
                 .collect();
             let _ = writeln!(s, "module {m}{ps} ({});", ports.join(", "));
             let _ = writeln!(s, "endmodule");
@@ -397,10 +384,7 @@ impl Rtl {
             Flavour::FiniteNan => {
                 // The all-ones exponent is a normal binade except the NaN pattern.
                 let nan = self.is_nan(f, x);
-                self.wire(
-                    g.bits(),
-                    format!("{nan} ? {} : {normal}", Self::nan_literal(g)),
-                )
+                self.wire(g.bits(), format!("{nan} ? {} : {normal}", Self::nan_literal(g)))
             }
         };
         // Subnormals: the leading one at bit i of the trailing significand gives 2^(emin - m + i).
@@ -429,10 +413,7 @@ impl Rtl {
         };
         let ez = self.wire(1, format!("~(|{e})"));
         let et = self.wire(1, format!("&{e}"));
-        Ok(self.wire(
-            g.bits(),
-            format!("{ez} ? {sub} : ({et} ? {top} : {normal})"),
-        ))
+        Ok(self.wire(g.bits(), format!("{ez} ? {sub} : ({et} ? {top} : {normal})")))
     }
 
     /// A result of the IEEE format `c` (`c.m == f.m`, `c.e >= f.e`) as a value of `f` under design
@@ -498,10 +479,7 @@ impl Rtl {
         let kmax = u128::from(i.m + 3);
         let ez = self.wire(1, format!("~(|{e})"));
         let eeff = self.wire(i.e, format!("{ez} ? {} : {e}", lit(1, i.e)));
-        let sig = self.wire(
-            sw,
-            format!("{{{}, ~{ez}, {mm}}}", zeros(sw - i.m - 1)),
-        );
+        let sig = self.wire(sw, format!("{{{}, ~{ez}, {mm}}}", zeros(sw - i.m - 1)));
         // Normal in `o` iff the unbiased exponent is at least emin(o).
         let t = (o.emin() + i.bias()) as u128;
         let normal = self.wire(1, format!("{eeff} >= {}", lit(t, i.e)));
@@ -521,10 +499,7 @@ impl Rtl {
         let q = self.wire(sw, format!("{sig} >> {k}"));
         let km1 = self.wire(kw, format!("{k} - {}", lit(1, kw)));
         let g = self.wire(1, format!("({sig} >> {km1}) & {}", lit(1, sw)));
-        let mask = self.wire(
-            sw,
-            format!("({} << {km1}) - {}", lit(1, sw), lit(1, sw)),
-        );
+        let mask = self.wire(sw, format!("({} << {km1}) - {}", lit(1, sw), lit(1, sw)));
         let sticky = self.wire(1, format!("|({sig} & {mask})"));
         let up = if m == Mutation::TruncatingEncoder {
             self.wire(1, "1'b0")
@@ -557,10 +532,7 @@ impl Rtl {
         };
         let mag = self.wire(
             o.bits() - 1,
-            format!(
-                "{nan} ? {nanm} : ({ovf} ? {big} : {packed}[{}:0])",
-                o.bits() - 2
-            ),
+            format!("{nan} ? {nanm} : ({ovf} ? {big} : {packed}[{}:0])", o.bits() - 2),
         );
         Ok(self.wire(o.bits(), format!("{{{s}, {mag}}}")))
     }

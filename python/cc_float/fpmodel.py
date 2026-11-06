@@ -88,8 +88,8 @@ def rnd(x: np.ndarray, p: int, emin: int | None = None) -> np.ndarray:
         _, e = np.frexp(x)
         if emin is not None:
             e = np.maximum(e, emin + 1)
-        s = np.ldexp(1.0, p - e)
-        r = np.rint(x * s) / s
+        # ldexp on x itself: 2^(p - e) alone overflows for the smallest float64 values.
+        r = np.ldexp(np.rint(np.ldexp(x, p - e)), e - p)
     return np.where(np.isfinite(x), r, x)
 
 

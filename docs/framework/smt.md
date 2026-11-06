@@ -16,7 +16,8 @@ toolchain image). String helpers build terms: `bv(w)`, `bv_lit(v, w)`, `and`, `o
 
 What both solvers accept (observed in the image, 2026-11-02): bit-vectors, the IEEE interchange float
 sorts (Float16, Float32, Float64, Float128), uninterpreted functions over bit-vectors and over those float
-sorts. Bitwuzla rejects other float sorts (they need its `--fpexp` build option), equalities over
+sorts. Bitwuzla rejects other float sorts (they need its `--fpexp` build option; it parses a `to_fp`
+into such a sort without that check, so `cc-float` routes a query by both), equalities over
 uninterpreted sorts, and `fp.to_ieee_bv`. Queries that both solvers must answer stay within that set.
 
 ## Terms (`term.rs`)
@@ -94,6 +95,11 @@ encodings in interchange sorts that the lemmas prove equal to that statement.
   bits (Boldo, Melquiond, "Emulation of FMA and correctly rounded sums: proved algorithms using rounding
   to odd", IEEE TC 57(4), 2008). Through Float32 rounded to nearest the lemma below is `sat`: some 32-bit
   integers round differently. f64 to f32 is `native_from_f64`.
+- **The arithmetic without its multiplier:** `arith_exact(ctx, f, op, args, v)` is `arith` with the
+  theory's operation replaced by its definition, the rounding of `v` (a Float64 term the caller
+  constrains to be the exact result); every decision of the encoding is then a function of `v`. Proofs
+  that would relate two multipliers (or dividers, roots) of different sorts use it: the f32 glue proofs of
+  `cc-float` (docs/framework/float.md), with the exact value constrained to its binade range.
 - **Lemmas:** `lemmas(used)` writes one query per encoding used, each `unsat` in Z3, which has every
   sort. The reference rounds in the format's own sort with two more exponent bits (rounding with an
   unbounded exponent: no operation of two values underflows or overflows there), flushes below `2^emin`
@@ -122,6 +128,19 @@ encodings in interchange sorts that the lemmas prove equal to that statement.
   FloatingPoint 10 24)`, Z3 relates two multipliers (or dividers) and does not decide it in 15 minutes.
   Their negative controls (the flush limit one binade off) are `sat` (smoke tests). Measured in the
   image (Z3 5.3.3, iacoma227, 2026-11-05), each lemma alone.
+
+## Verilog to SMT-LIB
+
+What chiplet-compiler writes in Verilog (the float glue of design §4.12) is proven on the Verilog
+itself: Yosys (`read_verilog -sv`, `hierarchy -check`, `proc`) reads the module with blackbox stubs in
+place of the third-party cores, `cutpoint <module>/<cell>` replaces each core instance's outputs by free
+values, `check -assert` rejects an unclean design, and `write_smt2 -stbv -wires` writes it: the state
+(inputs and free values) is one bit-vector sort `|<m>_s|`, every named wire a function `|<m>_n
+<wire>|` of it (1-bit wires as `Bool`). The query declares one state `rtl.state`, binds a variable
+`rtl.<wire>` to each port and core wire, and adds the term DAG's assertions over those variables: the
+cores' contracts and the negated claim against `ops::apply` (docs/framework/float.md, section 6).
+Yosys 0.33 has no `cutpoint -blackbox`, so the core cells are named. Both solvers accept the format
+(checked with Bitwuzla 0.9.1 and Z3 5.3.3 in image 0.5.0).
 
 ## Op semantics (`ops.rs`)
 
