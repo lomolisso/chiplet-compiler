@@ -201,7 +201,10 @@ impl Glue {
                 let a = Role::Arith {
                     op: op.name().into(),
                 };
-                let cf = if fmt.flushes() {
+                // A sum or difference that underflows is exact (Hauser, ACM TOPLAS 18(2), 1996): a
+                // core of the format's own width rounds it like an unbounded exponent, and the glue
+                // flushes it when subnormal. Products, quotients and roots need one more exponent bit.
+                let cf = if fmt.flushes() && !matches!(op, Arith::Add | Arith::Sub) {
                     wide(*fmt)
                 } else if fmt.flavour == Flavour::FiniteNan {
                     Format::F16
@@ -481,6 +484,14 @@ pub fn exact_widening(from: Format, to: Format) -> bool {
 }
 
 fn flush_narrow(r: &mut Rtl, c: Format, f: Format, z: &str, m: Mutation) -> Res<String> {
+    if c == f {
+        // A core of the format's own width: a subnormal result (exact) is flushed.
+        return Ok(if m == Mutation::NoFlush {
+            z.to_string()
+        } else {
+            r.daz(f, z)
+        });
+    }
     if m == Mutation::NoFlush {
         // A negative control: results below 2^emin narrowed as if normal (exponent wrapped).
         let s = r.sign(c, z);

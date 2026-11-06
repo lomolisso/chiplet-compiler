@@ -13,10 +13,13 @@
 //!   to the format (`flush`, saturation and NaN rules included), or the core's operands are not the
 //!   format's operands (subnormals read as zero) exactly widened.
 //!
-//! `unsat` proves the wrapper. Multiply, divide and square root of the flushing formats leave both the
-//! core's and the specification's arithmetic out: each is the rounding of one value `v`, the exact
-//! result, constrained to the binade range the operands give (as the encoding lemmas of `cc_smt` do);
-//! a solver relating a multiplier of one sort to a multiplier of another does not finish.
+//! `unsat` proves the wrapper. f32 multiply, divide and square root leave both the core's and the
+//! specification's arithmetic out: each is the rounding of one value `v`, the exact result, constrained
+//! to the binade range the operands give (as the encoding lemmas of `cc_smt` do); a solver relating a
+//! 24-bit multiplier of one sort to one of another does not finish (Z3: no answer in 10 minutes, where
+//! these queries take seconds). The narrower formats keep both operations: there the specification
+//! rounds twice (to Float32, then to the format), which equals one rounding only for actual products,
+//! quotients and roots, not for every `v`.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -111,7 +114,7 @@ fn catalog_name(op: Arith) -> &'static str {
 fn exact_value_form(g: &Glue) -> Option<Arith> {
     match g {
         Glue::Arith { op, fmt }
-            if fmt.flushes() && matches!(op, Arith::Mul | Arith::Div | Arith::Sqrt) =>
+            if *fmt == Format::F32 && matches!(op, Arith::Mul | Arith::Div | Arith::Sqrt) =>
         {
             Some(*op)
         }
