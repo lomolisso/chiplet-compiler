@@ -35,6 +35,7 @@ All notable changes to this project are listed here. The format follows
 
 ### Changed
 
+- `characterize` runs 12 Design Compiler sessions at once by default (`tools.eda.max_licenses` 12, `threads` 12, `memory_gb` 96).
 - `datapaths` and `merge` prove the design's numerics: f32 and bf16 flush subnormals to zero, conversions into FP8 saturate (NaN kept).
 - `characterize` checks netlist against RTL only with `lec = true` (off by default); `library.json` and `summary.json` schemas 2 (`lec` and `lec_tool` optional, the kit's clock recorded).
 - `characterize` Design Compiler job directories no longer depend on the toolchain image tag (the RTL is in their key by its text), so a new image reuses them.

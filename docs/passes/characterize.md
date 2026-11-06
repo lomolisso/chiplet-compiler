@@ -200,7 +200,7 @@
    is a configuration error), `views = true`. The routes also read `[numerics]` (design §6.4), whose hash
    is part of the pass's cache key. The corner
    is the manifest's: Nangate45's only corner (typical) and ASAP7's `vt`/`corner` (RVT, TT). Resources:
-   `threads = 2`, `memory_gb = 8`, `timeout_min = 600`.
+   `threads = 12`, `memory_gb = 96` (8 GB per session), `timeout_min = 600`.
 
 6. **Verification** (`verify.rs`; it reads the copies in `out/library/`, the Liberty files and the
    config, never the run's results):

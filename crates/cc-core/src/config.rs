@@ -439,7 +439,7 @@ pub struct EdaConfig {
 impl Default for EdaConfig {
     fn default() -> Self {
         Self {
-            max_licenses: 2,
+            max_licenses: 12,
             watchdog_interval_s: 2.0,
             license_retries: 3,
             license_backoff_s: 30.0,
