@@ -16,8 +16,8 @@ use super::catalog::{Kind, Primitive};
 use crate::eda::parse::{Lec, Measured};
 
 pub const LIBRARY_SCHEMA: &str = "cc.characterize.library/2";
-pub const COVERAGE_SCHEMA: &str = "cc.characterize.coverage/1";
-pub const SUMMARY_SCHEMA: &str = "cc.characterize.summary/2";
+pub const COVERAGE_SCHEMA: &str = "cc.characterize.coverage/2";
+pub const SUMMARY_SCHEMA: &str = "cc.characterize.summary/3";
 
 /// A kit as the rows were measured on it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -104,10 +104,25 @@ pub struct Library {
 #[serde(rename_all = "snake_case")]
 pub enum Status {
     Measured,
-    /// Measured on stand-in RTL (XLS `apfloat`) until the soft-float library replaces it.
+    /// Measured on stand-in RTL (the requantization primitive with its float conversion).
     Provisional,
-    /// No RTL yet.
+    /// No RTL: a float op without a route (a gap) or excluded, with the reason.
     Pending,
+    /// An IP core's RTL (or its adapter) that float primitives instantiate: no rows of its own.
+    Core,
+}
+
+/// The coverage status of a primitive.
+pub fn status(p: &Primitive) -> Status {
+    if p.kind == super::catalog::Kind::Core {
+        Status::Core
+    } else if p.pending.is_some() {
+        Status::Pending
+    } else if p.provisional {
+        Status::Provisional
+    } else {
+        Status::Measured
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -140,6 +155,9 @@ pub struct Summary {
     pub measured: u64,
     pub provisional: u64,
     pub pending: u64,
+    /// IP cores and adapters (dependencies of float primitives, no rows).
+    #[serde(default)]
+    pub cores: u64,
     pub rows: u64,
     pub lec_equivalent: u64,
     /// Rows whose check ran out of time with no failing point (every sanity check passed).
@@ -163,13 +181,7 @@ pub fn coverage(cat: &[Primitive], rows: &[Row]) -> Coverage {
             .iter()
             .map(|p| CoverageEntry {
                 key: p.key.clone(),
-                status: if p.pending.is_some() {
-                    Status::Pending
-                } else if p.provisional {
-                    Status::Provisional
-                } else {
-                    Status::Measured
-                },
+                status: status(p),
                 reason: p.pending.clone(),
                 rows: n.get(p.key.as_str()).copied().unwrap_or(0),
             })

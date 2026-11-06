@@ -84,6 +84,9 @@ pub enum Recipe {
     Rsqrt,
     /// A core of a wider format, rounded once: within `1/2 + e · 2^-k` ulps.
     Wider,
+    /// `x^y` from one power core at the inner format (no core for C11 Annex F's special values: they
+    /// are the glue of [`Recipe::Power`]); rounded once: `C = e_pow`, as [`Recipe::Wider`].
+    PowerCore,
 }
 
 /// Precision `p` (with the hidden bit) of a format.
@@ -130,6 +133,7 @@ pub fn constant(r: Recipe, f: Format, errors: &BTreeMap<String, f64>) -> Res<f64
         Recipe::LogPlusOne => 2.0 * e("log")? + 3.0,
         Recipe::Rsqrt => 2.0 * e("sqrt")? + 0.5,
         Recipe::Wider => e("core")?,
+        Recipe::PowerCore => e("pow")?,
     })
 }
 

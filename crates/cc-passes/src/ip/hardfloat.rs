@@ -9,7 +9,7 @@
 //! | `add`, `sub` | `AddRecFN` | `a`, `b`, `rnd`, `z`, `flags` |
 //! | `mul` | `MulRecFN` | `a`, `b`, `rnd`, `z`, `flags` |
 //! | `div`, `sqrt` | `DivSqrtRecFN_small` (iterative: at most p + 2 cycles) | `clock`, `reset`, `start`, `ready`, `a`, (`b`), `rnd`, `done`, `z`, `flags` |
-//! | `compare` | `CompareRecFN` (quiet) | `a`, `b`, `lt`, `eq`, `gt`, `flags` |
+//! | `compare` | `CompareRecFN` (quiet; `lt` is `z`) | `a`, `b`, `lt`, `eq`, `gt`, `flags` |
 //! | `to_int.<rnd>.<s\|u><w>` | `RecFNToIN` (saturating) | `a`, `rnd`, `z`, `flags` |
 //! | `from_int.<s\|u><w>` | `INToRecFN` | `a`, `rnd`, `z`, `flags` |
 //! | `convert.e<E>m<M>` | `RecFNToRecFN` | `a`, `rnd`, `z`, `flags` |
@@ -114,9 +114,9 @@ impl IpProvider for HardFloat {
             CoreOp::Compare => vec![
                 ("a", "a0"),
                 ("b", "a1"),
-                ("lt", "lt"),
-                ("eq", "eq"),
-                ("gt", "gt"),
+                ("lt", "z"),
+                ("eq", ""),
+                ("gt", ""),
                 ("flags", ""),
             ],
             CoreOp::ToInt {

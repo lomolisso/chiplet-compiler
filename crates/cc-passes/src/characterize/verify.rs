@@ -24,7 +24,7 @@ pub fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
     let stored: Vec<Primitive> = out.read_json("catalog.json")?;
 
     // The catalog regenerates from the configuration, byte for byte.
-    let cat = match catalog::catalog(&cfg) {
+    let cat = match catalog::catalog(&cfg, ctx.numerics()) {
         Ok(c) => c,
         Err(e) => {
             rep.push(Check::new("catalog", false).note(e));
@@ -159,7 +159,10 @@ fn complete(
     cov: &Coverage,
 ) {
     let mut want = BTreeSet::new();
-    for p in cat.iter().filter(|p| p.source.is_some()) {
+    for p in cat
+        .iter()
+        .filter(|p| p.source.is_some() && p.kind != catalog::Kind::Core)
+    {
         for k in kits {
             for t in &cfg.targets {
                 want.insert((p.key.clone(), k.clone(), t.clone()));
@@ -198,13 +201,7 @@ fn complete(
             bad.push(format!("coverage: {} is not in the catalog", e.key));
             continue;
         };
-        let status = if p.pending.is_some() {
-            Status::Pending
-        } else if p.provisional {
-            Status::Provisional
-        } else {
-            Status::Measured
-        };
+        let status = super::json::status(p);
         if e.status != status || (status == Status::Pending && e.reason.as_deref().is_none_or(str::is_empty))
         {
             bad.push(format!("coverage: {} is {:?}", e.key, e.status));

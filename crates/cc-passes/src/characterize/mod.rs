@@ -116,7 +116,7 @@ impl Pass for Characterize {
         let ctx: &PassContext = ctx;
         let fail = |e: String| PassError::failed(e);
         cfg.check().map_err(fail)?;
-        let cat = catalog::catalog(&cfg).map_err(fail)?;
+        let cat = catalog::catalog(&cfg, ctx.numerics()).map_err(fail)?;
         let kits = flow::kits(ctx, &cfg).map_err(fail)?;
         let out = ctx.output(LIBRARY)?;
         out.write_json("catalog.json", &cat)?;
@@ -148,8 +148,8 @@ impl Pass for Characterize {
                 }
             }
         }
-        let designs = flow::designs(&cat);
-        let jobs = flow::jobs(ctx, &cfg, &kits, &designs, &rtl_dir)?;
+        let batches = flow::batches(&cat, cfg.batch);
+        let jobs = flow::jobs(ctx, &cfg, &kits, &batches, &rtl_dir)?;
         let (ran, reused, secs) = flow::run_jobs(ctx, &cfg, &kits, &jobs, &rtl_dir)?;
 
         let by_id: BTreeMap<&str, &catalog::Primitive> = cat.iter().map(|p| (p.id.as_str(), p)).collect();
@@ -246,17 +246,17 @@ fn summarize(
     for p in cat {
         *by_kind.entry(format!("{:?}", p.kind).to_lowercase()).or_default() += 1;
     }
-    let pending = cat.iter().filter(|p| p.pending.is_some()).count() as u64;
-    let provisional = cat.iter().filter(|p| p.provisional).count() as u64;
+    let count = |s: json::Status| cat.iter().filter(|p| json::status(p) == s).count() as u64;
     Summary {
         schema: SUMMARY_SCHEMA.into(),
         tool: cfg.tool.clone(),
         lec: cfg.lec,
         primitives: cat.len() as u64,
         by_kind,
-        measured: cat.len() as u64 - pending - provisional,
-        provisional,
-        pending,
+        measured: count(json::Status::Measured),
+        provisional: count(json::Status::Provisional),
+        pending: count(json::Status::Pending),
+        cores: count(json::Status::Core),
         rows: rows.len() as u64,
         lec_equivalent: rows
             .iter()

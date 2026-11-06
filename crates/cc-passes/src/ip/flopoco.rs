@@ -5,10 +5,16 @@
 //!
 //! | Op | Operator | Ports | Contract |
 //! |---|---|---|---|
+//! | `div` | `FPDiv` | `X`, `Y`, `R` | correctly rounded |
+//! | `sqrt` | `FPSqrt` | `X`, `R` | correctly rounded |
 //! | `exp` | `FPExp` | `X`, `R` | faithful |
 //! | `ln` | `FPLog` | `X`, `R` | faithful |
 //! | `pow` | `FPPow` (`type=0`: pow) | `X`, `Y`, `R` | faithful; special cases not documented |
 //! | `from_ieee`, `to_ieee` | `InputIEEE`, `OutputIEEE` (same widths) | `X`, `R` | exact |
+//!
+//! FloPoCo's VHDL is read by Yosys through GHDL and by Design Compiler (`analyze -format vhdl`); the open
+//! flow takes division and square root from it (HardFloat's are iterative), the industry flow only what
+//! DesignWare lacks (power).
 //!
 //! Widths: those FloPoCo's own unit tests run (`wE` 5 to 11, `wF` 5 to 52, `FPExp.cpp`, `FPLog.cpp`), and
 //! for `FPExp` and `FPPow`, whose exponential needs `wF + g <= 2^(wE-1) - 1` (`FPExp.cpp`), with 4 guard
@@ -34,9 +40,9 @@ impl Named for FloPoCo {
 impl IpProvider for FloPoCo {
     fn capabilities(&self) -> IpCapabilities {
         IpCapabilities {
-            flows: &["yosys"],
+            flows: &["dc", "yosys"],
             licence: "LGPL-3.0 (the VHDL FloPoCo generates; FloPoCo itself is AGPL-3.0-based)",
-            ops: &["exp", "ln", "pow", "from_ieee", "to_ieee"],
+            ops: &["div", "sqrt", "exp", "ln", "pow", "from_ieee", "to_ieee"],
         }
     }
 
@@ -48,6 +54,18 @@ impl IpProvider for FloPoCo {
         let exp_fits = u64::from(s) + 4 < (1u64 << (e - 1));
         let w = |k: &str, v: u32| format!("{k}={v}");
         let (args, ports, accuracy, specials): (Vec<String>, Vec<(&str, &str)>, Accuracy, bool) = match op {
+            CoreOp::Div => (
+                vec!["FPDiv".into(), w("wE", e), w("wF", s)],
+                vec![("X", "a0"), ("Y", "a1"), ("R", "z")],
+                Accuracy::CorrectlyRounded,
+                true,
+            ),
+            CoreOp::Sqrt => (
+                vec!["FPSqrt".into(), w("wE", e), w("wF", s)],
+                vec![("X", "a0"), ("R", "z")],
+                Accuracy::CorrectlyRounded,
+                true,
+            ),
             CoreOp::Exp if exp_fits => (
                 vec!["FPExp".into(), w("wE", e), w("wF", s)],
                 vec![("X", "a0"), ("R", "z")],

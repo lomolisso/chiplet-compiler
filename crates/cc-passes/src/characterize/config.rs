@@ -79,7 +79,11 @@ impl Default for CharacterizeConfig {
             providers: BTreeMap::from([
                 (
                     "dc".to_string(),
-                    vec!["designware".to_string(), "hardfloat".to_string()],
+                    vec![
+                        "designware".to_string(),
+                        "hardfloat".to_string(),
+                        "flopoco".to_string(),
+                    ],
                 ),
                 (
                     "yosys".to_string(),

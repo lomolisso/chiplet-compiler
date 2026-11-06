@@ -39,12 +39,17 @@
         },
         {
           "const": "provisional",
-          "description": "Measured on stand-in RTL (XLS `apfloat`) until the soft-float library replaces it.",
+          "description": "Measured on stand-in RTL (the requantization primitive with its float conversion).",
           "type": "string"
         },
         {
           "const": "pending",
-          "description": "No RTL yet.",
+          "description": "No RTL: a float op without a route (a gap) or excluded, with the reason.",
+          "type": "string"
+        },
+        {
+          "const": "core",
+          "description": "An IP core's RTL (or its adapter) that float primitives instantiate: no rows of its own.",
           "type": "string"
         }
       ]

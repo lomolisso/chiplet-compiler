@@ -585,6 +585,7 @@ pub enum Mutation {
     NoOverflowCase,
     /// A missing NaN case (maximum/minimum without NaN propagation; float to integer without NaN to 0).
     NoNanCase,
-    /// maximum/minimum without the signed-zero order.
+    /// maximum/minimum without the signed-zero order; rounding to integral without the operand's sign
+    /// on a zero result.
     NoZeroOrder,
 }

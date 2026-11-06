@@ -12,7 +12,7 @@
 //! | `ln` | `DW_fp_ln` (`extra_prec = sig_width`, `arch = 0`) | 2-29 / 3-31 | 1 ulp for any input |
 //! | `log2` | `DW_fp_log2` (`extra_prec = sig_width`, `arch = 0`) | 2-29 / 3-31 | 2 ulps for any input |
 //! | `sin`, `cos` | `DW_fp_sincos` (radians, `arch = 2`, `err_range = 1`) | 2-32 / 3-31 | relative error not bounded |
-//! | `compare` | `DW_fp_cmp` | 2-253 / 3-31 | exact (also `unordered`) |
+//! | `compare` | `DW_fp_cmp` (`altb` is `z`) | 2-253 / 3-31 | exact |
 //! | `to_int.<rnd>.s<w>` | `DW_fp_flt2i` (`isize = w`, 3-512) | 2-253 / 3-31 | rounded per `rnd`, saturating |
 //! | `from_int.<s\|u><w>` | `DW_fp_i2flt` (`isize = w`, `isign`) | 2-253 / 3-31 | correctly rounded |
 //!
@@ -135,10 +135,10 @@ impl IpProvider for DesignWare {
                         ("a", "a0"),
                         ("b", "a1"),
                         ("zctr", "1'b0"),
-                        ("altb", "lt"),
-                        ("aeqb", "eq"),
-                        ("agtb", "gt"),
-                        ("unordered", "unordered"),
+                        ("altb", "z"),
+                        ("aeqb", ""),
+                        ("agtb", ""),
+                        ("unordered", ""),
                         ("z0", ""),
                         ("z1", ""),
                         ("status0", ""),

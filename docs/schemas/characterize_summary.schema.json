@@ -11,6 +11,13 @@
       },
       "type": "object"
     },
+    "cores": {
+      "default": 0,
+      "description": "IP cores and adapters (dependencies of float primitives, no rows).",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
     "designware_rows": {
       "format": "uint64",
       "minimum": 0,

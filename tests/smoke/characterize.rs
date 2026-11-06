@@ -146,6 +146,29 @@ impl ToolRunner for Tools {
                         .unwrap();
                     }
                 }
+                // Generated IP cores: a module (or entity) of the name the line gives.
+                let script = std::fs::read_to_string(cwd.join("gen.sh")).unwrap_or_default();
+                for l in script.lines() {
+                    let words: Vec<&str> = l.split_whitespace().collect();
+                    for (i, w) in words.iter().enumerate() {
+                        let file = if *w == "--out" {
+                            words.get(i + 1).map(|f| f.to_string())
+                        } else {
+                            w.strip_prefix("outputFile=")
+                                .or_else(|| w.strip_prefix("--output_verilog_path="))
+                                .map(|f| f.trim_end_matches(';').to_string())
+                        };
+                        if let Some(f) = file {
+                            let id = f.rsplit_once('.').map(|(a, _)| a).unwrap_or(&f).to_string();
+                            let text = if f.ends_with(".vhdl") {
+                                format!("entity {id} is\nend entity;\n")
+                            } else {
+                                format!("module {id}();\nendmodule\n")
+                            };
+                            std::fs::write(cwd.join(&f), text).unwrap();
+                        }
+                    }
+                }
                 out.push_str("@@done\n");
             }
             "dc_shell" => {
@@ -321,9 +344,12 @@ fn first_id(s: &Setup, prefix: &str) -> String {
 fn runs_green_on_stand_in_tools_and_reuses_its_jobs() {
     let s = Setup::green();
     let cfg: CharacterizeConfig = s.config().pass_section("characterize").unwrap().parse().unwrap();
-    let cat = catalog(&cfg).unwrap();
+    let cat = catalog(&cfg, &cc_core::config::NumericsConfig::default()).unwrap();
     let lib = s.library();
-    let with_rtl = cat.iter().filter(|p| p.source.is_some()).count();
+    let with_rtl = cat
+        .iter()
+        .filter(|p| p.source.is_some() && p.kind != cc_passes::characterize::catalog::Kind::Core)
+        .count();
     assert_eq!(lib.rows.len(), with_rtl);
     assert!(
         lib.rows
@@ -342,10 +368,10 @@ fn runs_green_on_stand_in_tools_and_reuses_its_jobs() {
     let sum: Summary =
         serde_json::from_str(&std::fs::read_to_string(s.out("summary.json")).unwrap()).unwrap();
     assert!(sum.jobs_run > 0 && sum.jobs_reused == 0);
-    assert!(
-        sum.pending > 0,
-        "float ops without an apfloat function are pending"
-    );
+    // Float `remainder` has no primitive; every other f16 op is a wrapper around DesignWare or
+    // HardFloat cores (the generated ones are core primitives without rows).
+    assert_eq!(sum.pending, 1, "{sum:?}");
+    assert!(sum.cores > 0 && sum.provisional == 0, "{sum:?}");
     assert!(
         std::fs::read_to_string(s.env.build_dir().join(".characterize/views/library.md"))
             .unwrap()
@@ -610,7 +636,14 @@ fn float_routes_are_written_and_verified() {
         serde_json::from_str(&std::fs::read_to_string(s.out("routes.json")).unwrap()).unwrap();
     assert_eq!(
         (r.flow.as_str(), r.providers.clone()),
-        ("dc", vec!["designware".to_string(), "hardfloat".to_string()])
+        (
+            "dc",
+            vec![
+                "designware".to_string(),
+                "hardfloat".to_string(),
+                "flopoco".to_string()
+            ]
+        )
     );
     assert!(r.gaps.is_empty(), "{:?}", r.gaps);
     let add = r.routes.iter().find(|x| x.key == "add@f16").unwrap();
@@ -627,6 +660,16 @@ fn float_routes_are_written_and_verified() {
         serde_json::from_str(&std::fs::read_to_string(s.out("routes.json")).unwrap()).unwrap();
     assert!(r.gaps.iter().any(|g| g == "exponential@f16"), "{:?}", r.gaps);
     assert!(s.failing().is_empty(), "{:?}", s.failing());
+    // A gap is a pending primitive with its reason, never an estimate: no row.
+    let cov: cc_passes::characterize::json::Coverage =
+        serde_json::from_str(&std::fs::read_to_string(s.out("coverage.json")).unwrap()).unwrap();
+    let e = cov
+        .primitives
+        .iter()
+        .find(|p| p.key == "exponential@f16")
+        .unwrap();
+    assert_eq!(e.rows, 0);
+    assert!(e.reason.as_deref().unwrap_or("").starts_with("gap:"), "{e:?}");
     // An edited routes file fails verify.
     s.edit_json("routes.json", |v| v["gaps"] = serde_json::json!([]));
     s.expect("routes");
@@ -666,8 +709,9 @@ fn verify_maps_every_datapath_vertex_to_the_library() {
 #[test]
 fn catalog_is_deterministic_and_complete_over_the_op_table() {
     let cfg = CharacterizeConfig::default();
-    let a = catalog(&cfg).unwrap();
-    assert_eq!(a, catalog(&cfg).unwrap());
+    let n = cc_core::config::NumericsConfig::default();
+    let a = catalog(&cfg, &n).unwrap();
+    assert_eq!(a, catalog(&cfg, &n).unwrap());
     let keys: std::collections::BTreeSet<&str> = a.iter().map(|p| p.key.as_str()).collect();
     assert_eq!(keys.len(), a.len());
     for k in [
@@ -690,25 +734,39 @@ fn catalog_is_deterministic_and_complete_over_the_op_table() {
     ] {
         assert!(keys.contains(k), "{k}");
     }
-    // The rescale primitives come last (earlier job batches stay as they are) and reuse the
-    // characterized i32 -> f32 conversion.
-    let first = a.iter().position(|p| p.op == "rescale").unwrap();
-    assert!(a[first..].iter().all(|p| p.op == "rescale"));
+    // The rescale primitives reuse the characterized i32 -> f32 conversion; the generated IP cores
+    // the float primitives instantiate come last.
     let r = a.iter().find(|p| p.key == "rescale@i32").unwrap();
     assert_eq!(r.deps, vec!["convert_i32_f32".to_string()]);
+    let first = a
+        .iter()
+        .position(|p| p.kind == cc_passes::characterize::catalog::Kind::Core)
+        .unwrap();
+    assert!(
+        a[first..]
+            .iter()
+            .all(|p| p.kind == cc_passes::characterize::catalog::Kind::Core)
+    );
+    // Only float remainder has no primitive (constant computation only); no float op is provisional.
     let pending: Vec<&str> = a
         .iter()
         .filter(|p| p.pending.is_some())
         .map(|p| p.key.as_str())
         .collect();
     assert!(
-        pending.contains(&"divide@f32") && pending.contains(&"exponential@bf16"),
+        pending.iter().all(|k| k.starts_with("remainder@")) && pending.len() == 4,
         "{pending:?}"
     );
     assert!(
-        !pending.iter().any(|k| k.ends_with("@i32")),
-        "every integer op has RTL: {pending:?}"
+        a.iter()
+            .filter(|p| p.family == "float" && p.kind == cc_passes::characterize::catalog::Kind::Op)
+            .all(|p| !p.provisional)
     );
+    // A float op is a wrapper around its cores: DesignWare linked, a HardFloat core a dependency.
+    let mul = a.iter().find(|p| p.key == "multiply@f32").unwrap();
+    assert_eq!(mul.libraries, vec!["designware".to_string()]);
+    let cvt = a.iter().find(|p| p.key == "convert@f32>bf16").unwrap();
+    assert_eq!(cvt.deps, vec!["hardfloat_e8m23_convert_e9m7".to_string()]);
     // Integer divide follows XLA's results for a zero divisor and the overflow case.
     let div = a.iter().find(|p| p.key == "divide@i8").unwrap();
     let src = format!("{:?}", div.source);

@@ -23,6 +23,22 @@
           },
           "type": "array"
         },
+        "glue": {
+          "description": "The `cc_float` glue module of the wrapper (`glue_<op>_<format>...`), when there is one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "k": {
+          "description": "Extra significand bits of a composition's inner cores (`q = p + k`).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "key": {
           "type": "string"
         },
@@ -72,12 +88,15 @@
       "description": "One core of a route.",
       "properties": {
         "accuracy": {
-          "description": "The contract's accuracy: `correctly_rounded`, `faithful`, `<n> ulp`, `absolute <bound>`,\n`unbounded`; and its subnormal mode (`ieee`, `flush`).",
+          "description": "The contract's accuracy: `correctly_rounded`, `faithful`, `<n> ulp`, `absolute <bound>`,\n`unbounded`; its subnormal mode (`ieee`, `flush`) and whether it has the IEEE special values.",
           "type": "string"
         },
         "format": {
-          "description": "The operand format: a format name (`f32`, `f16`, `bf16`, `f8e5m2`) or `e<E>m<M>`.",
+          "description": "The format the provider was asked at (its operands'): a format name (`f32`, `f16`, `bf16`,\n`f8e5m2`) or `e<E>m<M>`.",
           "type": "string"
+        },
+        "ieee_specials": {
+          "type": "boolean"
         },
         "module": {
           "type": "string"
@@ -86,10 +105,25 @@
           "description": "The core operation (`cc_core::adapters::CoreOp` syntax).",
           "type": "string"
         },
+        "params": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "The instance's parameters (Verilog literals).",
+          "type": "object"
+        },
         "provider": {
           "type": "string"
         },
+        "source": {
+          "description": "Where the RTL comes from: `designware` (the vendor library), `hardfloat`, `flopoco`, `xls_dslx`.",
+          "type": "string"
+        },
         "subnormals": {
+          "type": "string"
+        },
+        "timing": {
+          "description": "`combinational` (every core of a route is).",
           "type": "string"
         }
       },
@@ -98,20 +132,44 @@
         "op",
         "format",
         "module",
+        "params",
         "accuracy",
-        "subnormals"
+        "subnormals",
+        "ieee_specials",
+        "source",
+        "timing"
       ],
       "type": "object"
     },
     "RouteKind": {
-      "enum": [
-        "core",
-        "composition",
-        "glue",
-        "excluded",
-        "gap"
-      ],
-      "type": "string"
+      "description": "What a route is built from.",
+      "oneOf": [
+        {
+          "const": "core",
+          "description": "One wrapper around one or two cores.",
+          "type": "string"
+        },
+        {
+          "const": "composition",
+          "description": "A composition of cores (`cc_float::recipe`; rounding to integral through two cores).",
+          "type": "string"
+        },
+        {
+          "const": "glue",
+          "description": "Bit-level glue only.",
+          "type": "string"
+        },
+        {
+          "const": "excluded",
+          "description": "Deliberately without a primitive (float `remainder`: constant computation only).",
+          "type": "string"
+        },
+        {
+          "const": "gap",
+          "description": "No provider of the flow offers what the op needs.",
+          "type": "string"
+        }
+      ]
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",

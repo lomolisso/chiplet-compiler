@@ -109,6 +109,23 @@ fn float_glue_proofs_hold_and_controls_fail() {
             },
             Mutation::NoNanCase,
         ),
+        (Glue::Clamp { fmt: Format::F16 }, Mutation::NoNanCase),
+        (
+            Glue::Round {
+                fmt: Format::F32,
+                rnd: cc_core::adapters::Rounding::Ceil,
+            },
+            Mutation::NoZeroOrder,
+        ),
+        (
+            Glue::FromInt {
+                fmt: Format::E4M3FN,
+                signed: true,
+                w: 8,
+                via: Format::F16,
+            },
+            Mutation::TruncatingEncoder,
+        ),
     ];
     // Compositions at the inner precision the budget sizes for 2-ulp cores.
     let budget = Budget::cuda();
@@ -135,10 +152,31 @@ fn float_glue_proofs_hold_and_controls_fail() {
             ));
         }
     }
+    // One power core with the special values as glue (faithful core: the budget's k).
+    for fmt in [Format::F32, Format::BF16, Format::F16, Format::E4M3FN] {
+        let cores = [("pow".to_string(), Accuracy::Faithful)].into();
+        let k = compose::size("power", fmt, Recipe::PowerCore, &budget, &cores)
+            .unwrap()
+            .k;
+        set.push(built(
+            &Glue::Compose {
+                recipe: Recipe::PowerCore,
+                fmt,
+                q: fmt.m + 1 + k,
+            },
+            Mutation::None,
+        ));
+    }
     for (g, m) in &controls {
         set.push(built(g, *m));
     }
-    for recipe in [Recipe::Power, Recipe::LogPlusOne, Recipe::Rsqrt, Recipe::Tanh] {
+    for recipe in [
+        Recipe::Power,
+        Recipe::LogPlusOne,
+        Recipe::Rsqrt,
+        Recipe::Tanh,
+        Recipe::PowerCore,
+    ] {
         set.push(built(
             &Glue::Compose {
                 recipe,

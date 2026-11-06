@@ -100,6 +100,11 @@
           "const": "rescale",
           "description": "The fixed-point requantization primitive (`cc_smt::ops::rescale`): an integer times an f32 scale\nby an exact integer multiply and a rounding shift, back to f32.",
           "type": "string"
+        },
+        {
+          "const": "core",
+          "description": "The RTL of an IP core (generated in the RTL step) or of the adapter around one, which float\nprimitives instantiate; not a design of its own (no rows).",
+          "type": "string"
         }
       ]
     },
@@ -151,7 +156,7 @@
           ]
         },
         "provisional": {
-          "description": "The RTL is a stand-in until the soft-float library replaces it (XLS `apfloat`, which flushes\nsubnormals and has IEEE special values for every format).",
+          "description": "The RTL is a stand-in for what the primitive will be (the requantization primitive's float\nconversion as characterized); no float op is provisional any more.",
           "type": "boolean"
         },
         "source": {

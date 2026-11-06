@@ -8,8 +8,9 @@
 //! f16 (arithmetic) or f32 (approximate operators) cores through an exact decoder and a round-to-nearest
 //! encoder.
 
-use cc_core::adapters::CoreInstance;
+use cc_core::adapters::{CoreInstance, Rounding};
 use cc_smt::float::{Arith, Flavour, Format};
+use cc_smt::ops::Ty;
 use serde::{Deserialize, Serialize};
 
 use crate::FloatError;
@@ -70,8 +71,9 @@ pub enum Glue {
         fmt: Format,
         via: Format,
     },
-    /// `convert` between float formats: exact widening (glue only), narrowing to an IEEE format (a
-    /// convert core), to E4M3FN (the encoder, saturating), to E5M2 (a convert core, saturated).
+    /// `convert` between float formats: exact widening (glue only), to another IEEE format (a convert
+    /// core: narrowing, or between f16 and bf16), to E4M3FN (the encoder, saturating), to E5M2 (a
+    /// convert core, saturated).
     Convert { from: Format, to: Format },
     /// IEEE 754-2019 `maximum` / `minimum` around a less-than core.
     MaxMin { max: bool, fmt: Format },
@@ -84,6 +86,29 @@ pub enum Glue {
     ToInt { fmt: Format, signed: bool, w: u32 },
     /// A composition of cores at `q` significand bits (`crate::recipe`), its special values as glue.
     Compose { recipe: Recipe, fmt: Format, q: u32 },
+    /// `convert` from a `w`-bit integer around an integer-to-float core of `via` (the format itself, or
+    /// for E4M3FN a format that holds every integer of the width exactly), then the FP8 encoder
+    /// (saturating) for E4M3FN: one rounding.
+    FromInt {
+        fmt: Format,
+        signed: bool,
+        w: u32,
+        via: Format,
+    },
+    /// `convert` between bool and a float: to the float 0 or 1; to bool `x != 0` (NaN is true).
+    Bool { fmt: Format, to_float: bool },
+    /// `is_finite`: neither NaN nor an infinity.
+    IsFinite { fmt: Format },
+    /// floor, ceil, round_nearest_even: below `2^(p-1)` in magnitude the value through a to-integer
+    /// core of that rounding and an integer-to-float core; above it (and for NaN and infinities) the
+    /// operand itself; a zero result keeps the operand's sign.
+    Round { fmt: Format, rnd: Rounding },
+    /// `reduce_precision` to `e` exponent and `m` significand bits on the bit pattern (the StableHLO
+    /// definition: round to nearest even on the pattern, beyond the exponent range infinity, below it
+    /// zero, NaN and infinities kept).
+    ReducePrecision { fmt: Format, e: u32, m: u32 },
+    /// `clamp(min, x, max)` = `minimum(maximum(x, min), max)` from two less-than cores.
+    Clamp { fmt: Format },
 }
 
 /// What a core computes in a wrapper.
@@ -101,6 +126,11 @@ pub enum Role {
     /// Conversion of an operand of `format` to a `w`-bit integer, toward zero, saturating at the
     /// bounds; the result for NaN is not used.
     ToInt { signed: bool, w: u32 },
+    /// Conversion of an operand of `format` to a `w`-bit integer rounded per `rnd` (`Rounding::name`);
+    /// only operands below `2^(w-2)` in magnitude are used.
+    RoundToInt { rnd: String, signed: bool, w: u32 },
+    /// Conversion of a `w`-bit integer to `format`, round to nearest even.
+    FromInt { signed: bool, w: u32 },
 }
 
 /// A core a wrapper needs: `CoreInstance::exp_width` and `sig_width` must be `format`'s.
@@ -170,8 +200,55 @@ impl Glue {
                 if *signed { "i" } else { "ui" }
             ),
             Glue::Compose { recipe, fmt, q } => {
-                format!("glue_{}_{}_q{q}", crate::recipe::op_name(*recipe), fmt.name())
+                let core = if *recipe == Recipe::PowerCore { "_core" } else { "" };
+                format!(
+                    "glue_{}{core}_{}_q{q}",
+                    crate::recipe::op_name(*recipe),
+                    fmt.name()
+                )
             }
+            Glue::FromInt { fmt, signed, w, via } => {
+                let i = if *signed { "i" } else { "ui" };
+                if via == fmt {
+                    format!("glue_convert_{i}{w}_{}", fmt.name())
+                } else {
+                    format!("glue_convert_{i}{w}_{}_via_{}", fmt.name(), via.name())
+                }
+            }
+            Glue::Bool { fmt, to_float: true } => format!("glue_convert_bool_{}", fmt.name()),
+            Glue::Bool { fmt, to_float: false } => format!("glue_convert_{}_bool", fmt.name()),
+            Glue::IsFinite { fmt } => format!("glue_is_finite_{}", fmt.name()),
+            Glue::Round { fmt, rnd } => format!("glue_{}_{}", round_op(*rnd), fmt.name()),
+            Glue::ReducePrecision { fmt, e, m } => {
+                format!("glue_reduce_precision_{}_e{e}m{m}", fmt.name())
+            }
+            Glue::Clamp { fmt } => format!("glue_clamp_{}", fmt.name()),
+        }
+    }
+
+    /// The type of operand `j` (a float of the format, except for the conversions from integers and
+    /// bool).
+    pub fn input_ty(&self, j: usize) -> Ty {
+        match self {
+            Glue::FromInt { signed, w, .. } => Ty::Int {
+                signed: *signed,
+                w: *w,
+            },
+            Glue::Bool { to_float: true, .. } => Ty::Bool,
+            _ => {
+                let _ = j;
+                Ty::Float(self.format())
+            }
+        }
+    }
+
+    /// The width of the result.
+    pub fn output_width(&self) -> u32 {
+        match self {
+            Glue::Compare { .. } | Glue::IsFinite { .. } | Glue::Bool { to_float: false, .. } => 1,
+            Glue::ToInt { w, .. } => *w,
+            Glue::Convert { to, .. } => to.bits(),
+            _ => self.format().bits(),
         }
     }
 
@@ -184,7 +261,13 @@ impl Glue {
             | Glue::Compare { fmt, .. }
             | Glue::Sign { fmt, .. }
             | Glue::ToInt { fmt, .. }
-            | Glue::Compose { fmt, .. } => *fmt,
+            | Glue::Compose { fmt, .. }
+            | Glue::FromInt { fmt, .. }
+            | Glue::Bool { fmt, .. }
+            | Glue::IsFinite { fmt }
+            | Glue::Round { fmt, .. }
+            | Glue::ReducePrecision { fmt, .. }
+            | Glue::Clamp { fmt } => *fmt,
             Glue::Convert { from, .. } => *from,
         }
     }
@@ -195,9 +278,10 @@ impl Glue {
             Glue::Approx { arity, .. } => *arity,
             Glue::MaxMin { .. } | Glue::Compare { .. } => 2,
             Glue::Compose {
-                recipe: Recipe::Power,
+                recipe: Recipe::Power | Recipe::PowerCore,
                 ..
             } => 2,
+            Glue::Clamp { .. } => 3,
             _ => 1,
         }
     }
@@ -235,7 +319,8 @@ impl Glue {
             Glue::Convert { from, to } => {
                 if exact_widening(*from, *to) || *to == Format::E4M3FN && from.bits() > 8 {
                     vec![]
-                } else if to.bits() < from.bits() && to.flavour == Flavour::Ieee {
+                } else if to.flavour == Flavour::Ieee && from.flavour == Flavour::Ieee && to != from {
+                    // Narrowing, or neither containing the other (f16 and bf16): one rounding by a core.
                     let r = if to.flushes() { wide(*to) } else { *to };
                     vec![need(Role::Convert { from: from.name() }, r, 1)]
                 } else {
@@ -257,6 +342,42 @@ impl Glue {
                 1,
             )],
             Glue::Compose { recipe, fmt, q } => crate::recipe::needs(*recipe, *fmt, *q)?,
+            Glue::FromInt { fmt, signed, w, via } => {
+                let ok = if *fmt == Format::E4M3FN {
+                    via.flavour == Flavour::Ieee && via.m > fmt.m && via.e >= fmt.e
+                } else {
+                    via == fmt
+                };
+                if !ok {
+                    return Err(bad());
+                }
+                vec![need(
+                    Role::FromInt {
+                        signed: *signed,
+                        w: *w,
+                    },
+                    *via,
+                    1,
+                )]
+            }
+            Glue::Bool { .. } | Glue::IsFinite { .. } | Glue::ReducePrecision { .. } => vec![],
+            Glue::Round { fmt, rnd } => {
+                let c = decoded(*fmt);
+                let w = c.m + 2;
+                vec![
+                    need(
+                        Role::RoundToInt {
+                            rnd: rnd.name().into(),
+                            signed: true,
+                            w,
+                        },
+                        c,
+                        1,
+                    ),
+                    need(Role::FromInt { signed: true, w }, c, 1),
+                ]
+            }
+            Glue::Clamp { fmt } => vec![need(Role::Less, decoded(*fmt), 2); 2],
         })
     }
 
@@ -288,7 +409,14 @@ impl Glue {
         let mut r = Rtl::new(self.name());
         let f = self.format();
         let xs: Vec<String> = (0..self.arity())
-            .map(|j| r.input(&format!("a{j}"), f.bits()))
+            .map(|j| {
+                let w = match self.input_ty(j) {
+                    Ty::Bool => 1,
+                    Ty::Int { w, .. } => w,
+                    _ => f.bits(),
+                };
+                r.input(&format!("a{j}"), w)
+            })
             .collect();
         let core_fmt = |n: &CoreNeed| Format::ieee(n.exp_width, n.sig_width);
         let out = match self {
@@ -351,41 +479,70 @@ impl Glue {
             }
             Glue::MaxMin { max, fmt } => {
                 let cf = core_fmt(&needs[0]);
-                let x = r.daz(*fmt, &xs[0]);
-                let y = r.daz(*fmt, &xs[1]);
-                let wx = r.widen(*fmt, cf, &x)?;
-                let wy = r.widen(*fmt, cf, &y)?;
-                let (_, lt) = r.core(&cores[0], &[wx, wy], cf.bits(), 1)?;
-                let nx = r.is_nan(*fmt, &x);
-                let ny = r.is_nan(*fmt, &y);
-                let zx = r.is_zero(*fmt, &x);
-                let zy = r.is_zero(*fmt, &y);
-                let sx = r.sign(*fmt, &x);
-                let (pick, zpick) = if *max {
-                    (
-                        r.wire(fmt.bits(), format!("{lt} ? {y} : {x}")),
-                        r.wire(fmt.bits(), format!("{sx} ? {y} : {x}")),
-                    )
+                max_min(&mut r, *fmt, cf, &cores[0], &xs[0], &xs[1], *max, mutation)?
+            }
+            Glue::Clamp { fmt } => {
+                let cf = core_fmt(&needs[0]);
+                // clamp(min, x, max) = minimum(maximum(x, min), max).
+                let lo = max_min(&mut r, *fmt, cf, &cores[0], &xs[1], &xs[0], true, mutation)?;
+                max_min(&mut r, *fmt, cf, &cores[1], &lo, &xs[2], false, mutation)?
+            }
+            Glue::FromInt { fmt, w, via, .. } => {
+                let (_, z) = r.core(&cores[0], &[xs[0].clone()], *w, via.bits())?;
+                if *fmt == Format::E4M3FN {
+                    // A conversion: saturating (design §6.4).
+                    r.encode_fp8(*via, *fmt, &z, true, mutation)?
                 } else {
-                    (
-                        r.wire(fmt.bits(), format!("{lt} ? {x} : {y}")),
-                        r.wire(fmt.bits(), format!("{sx} ? {x} : {y}")),
-                    )
-                };
-                let ordered = if mutation == Mutation::NoZeroOrder {
-                    pick
-                } else {
-                    r.wire(fmt.bits(), format!("({zx} & {zy}) ? {zpick} : {pick}"))
-                };
-                if mutation == Mutation::NoNanCase {
-                    ordered
-                } else {
-                    r.wire(
-                        fmt.bits(),
-                        format!("({nx} | {ny}) ? {} : {ordered}", Rtl::nan_literal(*fmt)),
-                    )
+                    z
                 }
             }
+            Glue::Bool { fmt, to_float: true } => {
+                let one = crate::recipe::encode(*fmt, 1.0, false);
+                r.wire(
+                    fmt.bits(),
+                    format!("{} ? {}'d{one} : {}'d0", xs[0], fmt.bits(), fmt.bits()),
+                )
+            }
+            Glue::Bool { fmt, to_float: false } => {
+                let x = r.daz(*fmt, &xs[0]);
+                let z = r.is_zero(*fmt, &x);
+                r.wire(1, format!("~{z}"))
+            }
+            Glue::IsFinite { fmt } => {
+                let x = r.daz(*fmt, &xs[0]);
+                let n = r.is_nan(*fmt, &x);
+                let i = r.is_inf(*fmt, &x);
+                r.wire(1, format!("~({n} | {i})"))
+            }
+            Glue::Round { fmt, .. } => {
+                let cf = core_fmt(&needs[0]);
+                let w = match needs[0].role {
+                    Role::RoundToInt { w, .. } => w,
+                    _ => return Err(FloatError::Glue("round: no to-integer core".into())),
+                };
+                let x = r.daz(*fmt, &xs[0]);
+                let wx = r.widen(*fmt, cf, &x)?;
+                let (_, n) = r.core(&cores[0], &[wx], cf.bits(), w)?;
+                let (_, y) = r.core(&cores[1], &[n], w, cf.bits())?;
+                // Integral values below 2^(p-1) are exact in the format.
+                let y = if cf == *fmt {
+                    y
+                } else {
+                    r.encode_fp8(cf, *fmt, &y, false, mutation)?
+                };
+                let wd = fmt.bits();
+                let limit = crate::recipe::encode(*fmt, 2f64.powi(fmt.m as i32), false);
+                let big = r.wire(1, format!("{x}[{}:0] >= {}'d{limit}", wd - 2, wd - 1));
+                let yz = r.is_zero(*fmt, &y);
+                let s = r.sign(*fmt, &x);
+                let zero = r.wire(wd, format!("{{{s}, {}'d0}}", wd - 1));
+                if mutation == Mutation::NoZeroOrder {
+                    r.wire(wd, format!("{big} ? {x} : {y}"))
+                } else {
+                    r.wire(wd, format!("{big} ? {x} : ({yz} ? {zero} : {y})"))
+                }
+            }
+            Glue::ReducePrecision { fmt, e, m } => reduce_precision(&mut r, *fmt, &xs[0], *e, *m)?,
             Glue::Compare { dir, fmt } => {
                 let cf = core_fmt(&needs[0]);
                 let x = r.daz(*fmt, &xs[0]);
@@ -442,12 +599,7 @@ impl Glue {
                 }
             }
         };
-        let ow = match self {
-            Glue::Compare { .. } => 1,
-            Glue::ToInt { w, .. } => *w,
-            Glue::Convert { to, .. } => to.bits(),
-            _ => f.bits(),
-        };
+        let ow = self.output_width();
         r.output("z", ow, &out);
         Ok(Built {
             glue: self.clone(),
@@ -456,6 +608,103 @@ impl Glue {
             mutation,
         })
     }
+}
+
+/// The catalog name of a rounding to integral.
+pub fn round_op(rnd: Rounding) -> &'static str {
+    match rnd {
+        Rounding::Floor => "floor",
+        Rounding::Ceil => "ceil",
+        Rounding::NearestEven | Rounding::TowardZero => "round_nearest_even",
+    }
+}
+
+/// IEEE 754-2019 `maximum` / `minimum` of `a` and `b` (raw encodings of `fmt`) around a less-than
+/// core of `cf`: DAZ, NaN if either is NaN, `-0 < +0` among zeros, else the core's order.
+#[allow(clippy::too_many_arguments)]
+fn max_min(
+    r: &mut Rtl,
+    fmt: Format,
+    cf: Format,
+    core: &CoreInstance,
+    a: &str,
+    b: &str,
+    max: bool,
+    mutation: Mutation,
+) -> Res<String> {
+    let x = r.daz(fmt, a);
+    let y = r.daz(fmt, b);
+    let wx = r.widen(fmt, cf, &x)?;
+    let wy = r.widen(fmt, cf, &y)?;
+    let (_, lt) = r.core(core, &[wx, wy], cf.bits(), 1)?;
+    let nx = r.is_nan(fmt, &x);
+    let ny = r.is_nan(fmt, &y);
+    let zx = r.is_zero(fmt, &x);
+    let zy = r.is_zero(fmt, &y);
+    let sx = r.sign(fmt, &x);
+    let (pick, zpick) = if max {
+        (
+            r.wire(fmt.bits(), format!("{lt} ? {y} : {x}")),
+            r.wire(fmt.bits(), format!("{sx} ? {y} : {x}")),
+        )
+    } else {
+        (
+            r.wire(fmt.bits(), format!("{lt} ? {x} : {y}")),
+            r.wire(fmt.bits(), format!("{sx} ? {x} : {y}")),
+        )
+    };
+    let ordered = if mutation == Mutation::NoZeroOrder {
+        pick
+    } else {
+        r.wire(fmt.bits(), format!("({zx} & {zy}) ? {zpick} : {pick}"))
+    };
+    Ok(if mutation == Mutation::NoNanCase {
+        ordered
+    } else {
+        r.wire(
+            fmt.bits(),
+            format!("({nx} | {ny}) ? {} : {ordered}", Rtl::nan_literal(fmt)),
+        )
+    })
+}
+
+/// StableHLO `reduce_precision` of an IEEE value of `f` to `eb` exponent and `mb` significand bits, on
+/// its bit pattern after DAZ (`cc_smt::ops`' definition): ties to even by adding `2^(k-1) - 1` and the
+/// kept least significant bit and clearing the `k = m - mb` low bits; an exponent above the reduced
+/// range gives infinity, below it zero, both with the sign; NaN and infinities are kept.
+fn reduce_precision(r: &mut Rtl, f: Format, a: &str, eb: u32, mb: u32) -> Res<String> {
+    if f.flavour != Flavour::Ieee || mb > f.m || eb > f.e || eb < 2 {
+        return Err(FloatError::Glue(format!(
+            "no reduce_precision of {} to ({eb}, {mb})",
+            f.name()
+        )));
+    }
+    let w = f.bits();
+    let x = r.daz(f, a);
+    let k = f.m - mb;
+    let rounded = if k == 0 {
+        x.clone()
+    } else {
+        let half = (1u128 << (k - 1)) - 1;
+        let sum = r.wire(w, format!("{x} + {w}'d{half} + {{{}'d0, {x}[{k}]}}", w - 1));
+        let mask = !((1u128 << k) - 1) & ((1u128 << w) - 1);
+        r.wire(w, format!("{sum} & {w}'d{mask}"))
+    };
+    let rbias = (1i64 << (eb - 1)) - 1;
+    let hi = (rbias + f.bias()) as u128;
+    let lo = (1 - rbias + f.bias()) as u128;
+    let ex = format!("{rounded}[{}:{}]", f.e + f.m - 1, f.m);
+    let over = r.wire(1, format!("{ex} > {}'d{hi}", f.e));
+    let under = r.wire(1, format!("{ex} < {}'d{lo}", f.e));
+    let s = r.sign(f, &x);
+    let inf = r.wire(w, format!("{{{s}, {}'d{}}}", w - 1, ((1u128 << f.e) - 1) << f.m));
+    let zero = r.wire(w, format!("{{{s}, {}'d0}}", w - 1));
+    let n = r.is_nan(f, &x);
+    let i = r.is_inf(f, &x);
+    Ok(r.wire(
+        w,
+        format!("({n} | {i}) ? {x} : ({over} ? {inf} : ({under} ? {zero} : {rounded}))"),
+    ))
 }
 
 /// `to` holds every value of `from` exactly (an IEEE `to` with at least `from`'s exponent and
@@ -528,6 +777,25 @@ pub fn standard(formats: &[Format]) -> Vec<Glue> {
                 out.push(Glue::Convert { from: f, to: g });
             }
         }
+        out.push(Glue::Clamp { fmt: f });
+        for (signed, w) in [(true, 32), (true, 8), (false, 8)] {
+            out.push(Glue::FromInt {
+                fmt: f,
+                signed,
+                w,
+                via: int_via(f, signed, w),
+            });
+        }
+        for to_float in [true, false] {
+            out.push(Glue::Bool { fmt: f, to_float });
+        }
+        out.push(Glue::IsFinite { fmt: f });
+        for rnd in [Rounding::Floor, Rounding::Ceil, Rounding::NearestEven] {
+            out.push(Glue::Round { fmt: f, rnd });
+        }
+        if f.native() && f.e >= 5 && f.m >= 10 {
+            out.push(Glue::ReducePrecision { fmt: f, e: 5, m: 10 });
+        }
         let via = if f.flushes() {
             wide(f)
         } else if f == Format::F16 {
@@ -553,6 +821,24 @@ pub fn standard(formats: &[Format]) -> Vec<Glue> {
     out
 }
 
+/// The format of the integer-to-float core for `fmt`: the format itself, or for E4M3FN (no core has its
+/// encoding) the first of f16, f32 and an IEEE format with 8 exponent bits that holds every integer of
+/// the width exactly, so that the encoder rounds once.
+pub fn int_via(fmt: Format, signed: bool, w: u32) -> Format {
+    if fmt.flavour == Flavour::Ieee {
+        return fmt;
+    }
+    let magnitude = if signed { w - 1 } else { w };
+    [
+        Format::F16,
+        Format::F32,
+        Format::ieee(8, magnitude.saturating_sub(1).max(2)),
+    ]
+    .into_iter()
+    .find(|q| q.e >= fmt.e && q.m + 1 >= magnitude)
+    .unwrap_or(Format::F32)
+}
+
 /// A placeholder instance for a need (tests and examples): module `core_<role>_<e>_<m>`, the
 /// operands on ports `a`, `b`, the result on `z`, a rounding-mode port tied to round to nearest even.
 pub fn stand_in(n: &CoreNeed) -> CoreInstance {
@@ -561,6 +847,10 @@ pub fn stand_in(n: &CoreNeed) -> CoreInstance {
         Role::Convert { from } => format!("from_{from}"),
         Role::Less => "lt".into(),
         Role::ToInt { signed, w } => format!("to_{}{w}", if *signed { "i" } else { "ui" }),
+        Role::RoundToInt { rnd, signed, w } => {
+            format!("to_{}{w}_{rnd}", if *signed { "i" } else { "ui" })
+        }
+        Role::FromInt { signed, w } => format!("from_{}{w}", if *signed { "i" } else { "ui" }),
     };
     let mut ports = std::collections::BTreeMap::new();
     for (j, p) in ["a", "b"].into_iter().take(n.arity).enumerate() {

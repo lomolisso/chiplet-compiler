@@ -366,7 +366,7 @@ fn compose_spec(c: &mut Ctx, rec: Recipe, f: Format, q: u32, args: &[Val]) -> Re
     let xneg = is(c, Op::FpIsNegative, x)?;
     let ax = c.op1(Op::FpAbs, x)?;
     Ok(match rec {
-        Recipe::Power => {
+        Recipe::Power | Recipe::PowerCore => {
             let y = xs[1];
             let ynan = is(c, Op::FpIsNaN, y)?;
             let yinf = is(c, Op::FpIsInfinite, y)?;
@@ -412,9 +412,13 @@ fn compose_spec(c: &mut Ctx, rec: Recipe, f: Format, q: u32, args: &[Val]) -> Re
             // Core path on |x| and y.
             let xq = enc_q(c, ax)?;
             let yq = enc_q(c, y)?;
-            let lg = uf(c, 0, &[xq])?;
-            let t = uf(c, 1, &[yq, lg])?;
-            let ex2 = uf(c, 2, &[t])?;
+            let ex2 = if rec == Recipe::PowerCore {
+                uf(c, 0, &[xq, yq])?
+            } else {
+                let lg = uf(c, 0, &[xq])?;
+                let t = uf(c, 1, &[yq, lg])?;
+                uf(c, 2, &[t])?
+            };
             let mag = round(c, ex2)?;
             let negr = c.and(&[xneg, yodd])?;
             let path = copysign(c, mag, negr)?;
@@ -589,8 +593,15 @@ pub fn query(b: &Built, yosys: &str) -> Res<Query> {
 
     // The spec's operands (raw encodings) and their DAZ values.
     let mut args = Vec::new();
-    for &x in &ins {
-        args.push(fval(&mut c, f, x)?);
+    for (j, &x) in ins.iter().enumerate() {
+        args.push(match g.input_ty(j) {
+            Ty::Bool => {
+                let one = c.bv(1, 1);
+                Val::new(Ty::Bool, c.eq(x, one)?)
+            }
+            ty @ Ty::Int { .. } => Val::new(ty, x),
+            _ => fval(&mut c, f, x)?,
+        });
     }
     let exact = exact_value_form(g);
     let v = if exact.is_some() {
@@ -663,6 +674,49 @@ pub fn query(b: &Built, yosys: &str) -> Res<Query> {
                 let nan = c.op1(Op::FpIsNaN, xf)?;
                 let eq = c.eq(*z, r.t)?;
                 hyps.push(c.or(&[nan, eq])?);
+            }
+            Role::RoundToInt { rnd, signed, w } => {
+                let rm = match rnd.as_str() {
+                    "rne" => Rm::Rne,
+                    "rtz" => Rm::Rtz,
+                    "floor" => Rm::Rtn,
+                    "ceil" => Rm::Rtp,
+                    other => return Err(FloatError::Proof(format!("rounding {other}"))),
+                };
+                if !*signed {
+                    return Err(FloatError::Proof("an unsigned rounding core".into()));
+                }
+                // Bound only where the glue uses it: |x| < 2^(w-2), the result in range.
+                let x = fp(&mut c, a[0], cf)?;
+                let lim = float::lit(
+                    &mut c,
+                    sort_of(cf),
+                    crate::recipe::encode(cf, 2f64.powi(*w as i32 - 2), false),
+                )?;
+                let ax = c.op1(Op::FpAbs, x)?;
+                let small = c.op2(Op::FpLt, ax, lim)?;
+                let big = c.not(small)?;
+                let conv = c.app(Op::FpToSbv { w: *w, rm }, &[x])?;
+                let eq = c.eq(*z, conv)?;
+                hyps.push(c.or(&[big, eq])?);
+            }
+            Role::FromInt { signed, w: _ } => {
+                let o = if *signed {
+                    Op::FpFromSbv {
+                        e: cf.e,
+                        s: cf.m + 1,
+                        rm: Rm::Rne,
+                    }
+                } else {
+                    Op::FpFromUbv {
+                        e: cf.e,
+                        s: cf.m + 1,
+                        rm: Rm::Rne,
+                    }
+                };
+                let want = c.app(o, &[a[0]])?;
+                let zf = fp(&mut c, *z, cf)?;
+                hyps.push(c.eq(zf, want)?);
             }
         }
     }
@@ -744,6 +798,44 @@ pub fn query(b: &Built, yosys: &str) -> Res<Query> {
                 w: *w,
             };
             (Val::new(ty, out), ops::convert(&mut c, args[0], ty)?)
+        }
+        Glue::FromInt { fmt, .. } => {
+            let got = fval(&mut c, *fmt, out)?;
+            (got, ops::convert(&mut c, args[0], Ty::Float(*fmt))?)
+        }
+        Glue::Bool { fmt, to_float: true } => {
+            let got = fval(&mut c, *fmt, out)?;
+            (got, ops::convert(&mut c, args[0], Ty::Float(*fmt))?)
+        }
+        Glue::Bool { to_float: false, .. } => {
+            let one = c.bv(1, 1);
+            let got = Val::new(Ty::Bool, c.eq(out, one)?);
+            (got, ops::convert(&mut c, args[0], Ty::Bool)?)
+        }
+        Glue::IsFinite { .. } => {
+            let one = c.bv(1, 1);
+            let got = Val::new(Ty::Bool, c.eq(out, one)?);
+            (got, ops::apply(&mut c, "is_finite", &attrs, &args, Ty::Bool)?)
+        }
+        Glue::Round { fmt, rnd } => {
+            let got = fval(&mut c, *fmt, out)?;
+            let name = crate::glue::round_op(*rnd);
+            (got, ops::apply(&mut c, name, &attrs, &args, Ty::Float(*fmt))?)
+        }
+        Glue::ReducePrecision { fmt, e, m } => {
+            let got = fval(&mut c, *fmt, out)?;
+            let a = Attrs {
+                precision: Some((*e, *m)),
+                ..Attrs::default()
+            };
+            (
+                got,
+                ops::apply(&mut c, "reduce_precision", &a, &args, Ty::Float(*fmt))?,
+            )
+        }
+        Glue::Clamp { fmt } => {
+            let got = fval(&mut c, *fmt, out)?;
+            (got, ops::apply(&mut c, "clamp", &attrs, &args, Ty::Float(*fmt))?)
         }
         Glue::Compose { recipe, fmt, q } => {
             let got = bits_value(&mut c, *fmt, out)?;

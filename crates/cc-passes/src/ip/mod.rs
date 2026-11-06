@@ -8,6 +8,7 @@
 pub mod designware;
 pub mod flopoco;
 pub mod hardfloat;
+pub mod plan;
 pub mod routes;
 pub mod xls_math;
 

@@ -1,26 +1,28 @@
 //! The primitive set (docs/passes/characterize.md §4.1): every element-wise op of the op table at every
 //! configured type for which `cc_smt::ops` defines its semantics, plus the structural primitives the
 //! merged units add (multiplexers, registers, accumulators, split multipliers). Each primitive carries its
-//! RTL source: DSLX mirroring the SMT semantics, or a small Verilog template; float RTL comes from XLS's
-//! `apfloat` library and is provisional; an op without an RTL source is pending.
+//! RTL source: DSLX mirroring the SMT semantics, or a small Verilog template; a float op is a wrapper
+//! (`cc_float` glue) around the IP cores of the flow's providers (`crate::ip::plan`), and the cores whose
+//! RTL is generated are primitives of their own (kind `core`, no rows); a float op without a route is
+//! pending with its reason.
 
 use std::collections::BTreeSet;
 
-use cc_core::adapters::Generator;
+use cc_core::adapters::{CoreSource, Encoding, Generator, IpProvider};
+use cc_core::config::NumericsConfig;
+use cc_float::rtl::Mutation;
 use cc_ir::ops::{Arity, ElemRule, TABLE};
-use cc_smt::float::{Flavour, Format};
+use cc_smt::float::Format;
 use cc_smt::ops::{Attrs, Ty};
 use cc_smt::term::Ctx;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::config::CharacterizeConfig;
+use crate::ip::plan::{Plan, Planner, Resolved, RouteKind, wrapper_instance};
 
 /// Bump when a generator's output changes (enters the cache key through `catalog.json`).
-pub const CATALOG_VERSION: u32 = 3;
-
-/// Why a primitive has no RTL yet.
-pub const PENDING_SOFTFLOAT: &str = "softfloat: no apfloat function for this op";
+pub const CATALOG_VERSION: u32 = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -38,6 +40,9 @@ pub enum Kind {
     /// The fixed-point requantization primitive (`cc_smt::ops::rescale`): an integer times an f32 scale
     /// by an exact integer multiply and a rounding shift, back to f32.
     Rescale,
+    /// The RTL of an IP core (generated in the RTL step) or of the adapter around one, which float
+    /// primitives instantiate; not a design of its own (no rows).
+    Core,
 }
 
 /// The RTL of a primitive.
@@ -87,8 +92,8 @@ pub struct Primitive {
     /// The width that trends are taken over: result bits (the source width for `convert`; the input
     /// count `n` of a mux is part of its op name).
     pub width: u32,
-    /// The RTL is a stand-in until the soft-float library replaces it (XLS `apfloat`, which flushes
-    /// subnormals and has IEEE special values for every format).
+    /// The RTL is a stand-in for what the primitive will be (the requantization primitive's float
+    /// conversion as characterized); no float op is provisional any more.
     pub provisional: bool,
     /// Why there is no RTL yet (no rows are measured).
     pub pending: Option<String>,
@@ -193,8 +198,24 @@ fn defined(op: &str, attrs: &Attrs, args: &[T], ret: T) -> bool {
     cc_smt::ops::apply(&mut c, op, attrs, &vals, ret.0).is_ok()
 }
 
-/// The whole catalog, in a deterministic order.
-pub fn catalog(cfg: &CharacterizeConfig) -> Result<Vec<Primitive>, String> {
+/// The whole catalog of the configured flow (`tool`, its `providers`) under the budgets of
+/// `[numerics]`, in a deterministic order.
+pub fn catalog(cfg: &CharacterizeConfig, numerics: &NumericsConfig) -> Result<Vec<Primitive>, String> {
+    let providers = cfg.providers_of(&cfg.tool)?;
+    catalog_with(cfg, &providers, numerics)
+}
+
+/// [`catalog`] with the float ops' cores from `providers`, in order.
+pub fn catalog_with(
+    cfg: &CharacterizeConfig,
+    providers: &[&'static dyn IpProvider],
+    numerics: &NumericsConfig,
+) -> Result<Vec<Primitive>, String> {
+    let planner = Planner { providers, numerics };
+    let mut cores = Cores::default();
+    let mut op_primitive = |op: &str, variant: Option<&str>, args: &[T], t: T, ret: T, width: u32| {
+        op_primitive(&planner, &mut cores, op, variant, args, t, ret, width)
+    };
     let tys = types(cfg)?;
     let mut out: Vec<Primitive> = Vec::new();
     let bool_t = T(Ty::Bool);
@@ -289,7 +310,6 @@ pub fn catalog(cfg: &CharacterizeConfig) -> Result<Vec<Primitive>, String> {
         }
         out.push(split(w, n));
     }
-    // After every other primitive, so that adding them keeps the earlier job batches.
     let conv = "convert_i32_f32";
     if out.iter().any(|p| p.id == conv && p.pending.is_none()) {
         for &t in &tys {
@@ -300,6 +320,8 @@ pub fn catalog(cfg: &CharacterizeConfig) -> Result<Vec<Primitive>, String> {
             }
         }
     }
+    // The cores the float primitives instantiate, in the order of first use.
+    out.extend(cores.list);
     let mut seen = BTreeSet::new();
     for p in &out {
         if !seen.insert(p.id.clone()) {
@@ -321,7 +343,179 @@ fn ident(s: &str) -> String {
         .collect()
 }
 
-fn op_primitive(op: &str, variant: Option<&str>, args: &[T], t: T, ret: T, width: u32) -> Primitive {
+/// The core primitives met so far, in the order of first use.
+#[derive(Default)]
+struct Cores {
+    list: Vec<Primitive>,
+    ids: BTreeSet<String>,
+}
+
+impl Cores {
+    fn add(&mut self, p: Primitive) {
+        if self.ids.insert(p.id.clone()) {
+            self.list.push(p);
+        }
+    }
+}
+
+fn core_primitive(id: &str, types: Vec<String>, width: u32, deps: Vec<String>, source: Source) -> Primitive {
+    Primitive {
+        key: format!("core@{id}"),
+        id: id.into(),
+        kind: Kind::Core,
+        op: "core".into(),
+        variant: None,
+        family: "float".into(),
+        types,
+        width,
+        provisional: false,
+        pending: None,
+        deps,
+        libraries: Vec::new(),
+        clocked: false,
+        source: Some(source),
+    }
+}
+
+/// The primitive a resolved core needs (`None`: a vendor library's), with its own dependencies: a
+/// generated core, or for a core in FloPoCo's encoding the IEEE adapter around it, its converters and
+/// the core.
+fn core_dep(r: &Resolved, cores: &mut Cores) -> Option<String> {
+    let o = &r.offer;
+    let CoreSource::Generated { generator } = &o.source else {
+        return None;
+    };
+    let fname = crate::ip::plan::format_name(r.asked);
+    let width = r.asked.bits();
+    let gen_prim = |id: &str, g: &Generator| {
+        core_primitive(
+            id,
+            vec![fname.clone()],
+            width,
+            Vec::new(),
+            Source::Generated(g.clone()),
+        )
+    };
+    match o.encoding {
+        Encoding::Ieee => {
+            cores.add(gen_prim(&o.instance.module, generator));
+            Some(o.instance.module.clone())
+        }
+        Encoding::Flopoco => {
+            let conv = |op: &str| {
+                crate::ip::PROVIDERS
+                    .by_name(r.provider)
+                    .ok()
+                    .and_then(|p| p.core(op, r.asked.e, r.asked.m))
+            };
+            let (Some(fin), Some(fout)) = (conv("from_ieee"), conv("to_ieee")) else {
+                return None;
+            };
+            let mut deps = Vec::new();
+            for c in [&fin, o, &fout] {
+                if let CoreSource::Generated { generator } = &c.source {
+                    cores.add(gen_prim(&c.instance.module, generator));
+                    deps.push(c.instance.module.clone());
+                }
+            }
+            let inst = wrapper_instance(r);
+            let iw = r.asked.bits();
+            let fw = r.asked.e + r.asked.m + 3;
+            let arity = r.op.arity();
+            let mut v = format!("module {}(", inst.module);
+            let mut ports: Vec<String> = (0..arity)
+                .map(|j| format!("input wire [{}:0] a{j}", iw - 1))
+                .collect();
+            ports.push(format!("output wire [{}:0] z", iw - 1));
+            v.push_str(&ports.join(", "));
+            v.push_str(");\n");
+            for j in 0..arity {
+                v.push_str(&format!("  wire [{}:0] x{j};\n", fw - 1));
+            }
+            v.push_str(&format!("  wire [{}:0] r;\n", fw - 1));
+            for j in 0..arity {
+                v.push_str(&format!(
+                    "  {}\n",
+                    crate::ip::verilog_instance(&fin.instance, &format!("u_in{j}"), |x| {
+                        if x == "a0" {
+                            format!("a{j}")
+                        } else {
+                            format!("x{j}")
+                        }
+                    })
+                ));
+            }
+            v.push_str(&format!(
+                "  {}\n",
+                crate::ip::verilog_instance(&o.instance, "u_op", |x| match x {
+                    "z" => "r".to_string(),
+                    a => format!("x{}", a.trim_start_matches('a')),
+                })
+            ));
+            v.push_str(&format!(
+                "  {}\n",
+                crate::ip::verilog_instance(&fout.instance, "u_out", |x| {
+                    if x == "a0" {
+                        "r".to_string()
+                    } else {
+                        "z".to_string()
+                    }
+                })
+            ));
+            v.push_str("endmodule\n");
+            cores.add(core_primitive(
+                &inst.module,
+                vec![fname.clone()],
+                width,
+                deps,
+                Source::Verilog(v),
+            ));
+            Some(inst.module)
+        }
+    }
+}
+
+/// The Verilog of a float primitive: the `cc_float` wrapper (module `<id>_glue`, ports `a0..`, `z`)
+/// around the plan's cores and the primitive's module `<id>` with the ports the templates use (`a`, `b`,
+/// `c`, `out`).
+fn wrapper_rtl(id: &str, plan: &Plan) -> Result<String, String> {
+    let g = plan.glue.as_ref().ok_or("no wrapper")?;
+    let instances: Vec<_> = plan.cores.iter().map(wrapper_instance).collect();
+    let built = g.build(&instances, Mutation::None).map_err(|e| e.to_string())?;
+    let glue_name = format!("{id}_glue");
+    let text = built.rtl.verilog().replacen(
+        &format!("module {} (", built.rtl.name()),
+        &format!("module {glue_name} ("),
+        1,
+    );
+    let mut ports = Vec::new();
+    let mut conns = Vec::new();
+    for (p, n) in built.rtl.inputs().iter().zip(ARGS) {
+        ports.push(format!("input wire [{}:0] {n}", p.width - 1));
+        conns.push(format!(".{}({n})", p.name));
+    }
+    for p in built.rtl.outputs() {
+        ports.push(format!("output wire [{}:0] out", p.width - 1));
+        conns.push(format!(".{}(out)", p.name));
+    }
+    Ok(format!(
+        "{text}\nmodule {id}({});\n  {glue_name} u_glue({});\nendmodule\n",
+        ports.join(", "),
+        conns.join(", ")
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn op_primitive(
+    planner: &Planner,
+    cores: &mut Cores,
+    op: &str,
+    variant: Option<&str>,
+    args: &[T],
+    t: T,
+    ret: T,
+    width: u32,
+) -> Primitive {
     let types: Vec<String> = if op == "convert" {
         vec![t.name(), ret.name()]
     } else {
@@ -338,10 +532,45 @@ fn op_primitive(op: &str, variant: Option<&str>, args: &[T], t: T, ret: T, width
         types.join("_")
     ));
     let float = args.iter().chain([&ret]).any(|x| x.is_float());
-    let body = dslx_body(op, variant, args, ret);
-    let (source, pending) = match body {
-        Some(b) => (Some(Source::Dslx(dslx_module(&id, args, ret, &b))), None),
-        None => (None, Some(PENDING_SOFTFLOAT.to_string())),
+    let mut deps = Vec::new();
+    let mut libraries = Vec::new();
+    let (source, pending) = match float.then(|| planner.plan(op, variant, &types)).flatten() {
+        // A multiplexer on the encodings needs no core: the DSLX select.
+        Some(_) if op == "select" => match dslx_body(op, variant, args, ret) {
+            Some(b) => (Some(Source::Dslx(dslx_module(&id, args, ret, &b))), None),
+            None => (None, Some("gap: no select".to_string())),
+        },
+        Some(plan) => match plan.kind {
+            RouteKind::Excluded => (None, Some(format!("excluded: {}", plan.note))),
+            RouteKind::Gap => (None, Some(format!("gap: {}", plan.note))),
+            _ => match wrapper_rtl(&id, &plan) {
+                Ok(v) => {
+                    for r in &plan.cores {
+                        match core_dep(r, cores) {
+                            Some(d) => {
+                                if !deps.contains(&d) {
+                                    deps.push(d);
+                                }
+                            }
+                            None => {
+                                if let CoreSource::Library { name } = &r.offer.source
+                                    && !libraries.contains(name)
+                                {
+                                    libraries.push(name.clone());
+                                }
+                            }
+                        }
+                    }
+                    (Some(Source::Verilog(v)), None)
+                }
+                Err(e) => (None, Some(format!("gap: {e}"))),
+            },
+        },
+        None if float => (None, Some("gap: not a float op of the routes".to_string())),
+        None => match dslx_body(op, variant, args, ret) {
+            Some(b) => (Some(Source::Dslx(dslx_module(&id, args, ret, &b))), None),
+            None => (None, Some("no RTL for this op".to_string())),
+        },
     };
     Primitive {
         key,
@@ -352,10 +581,10 @@ fn op_primitive(op: &str, variant: Option<&str>, args: &[T], t: T, ret: T, width
         family: t.family().into(),
         types,
         width,
-        provisional: float && pending.is_none(),
+        provisional: false,
         pending,
-        deps: Vec::new(),
-        libraries: Vec::new(),
+        deps,
+        libraries,
         clocked: false,
         source,
     }
@@ -455,101 +684,19 @@ fn dslx_body(op: &str, variant: Option<&str>, args: &[T], ret: T) -> Option<Stri
                 _ => return None,
             })
         }
-        Ty::Float(f) => {
-            let (e, m) = (f.e, f.m);
-            let zero = "a.bexp == bits[E]:0 && a.fraction == bits[M]:0"
-                .replace("[E]", &format!("[{e}]"))
-                .replace("[M]", &format!("[{m}]"));
-            line(match (op, variant) {
-                ("add", _) => "apfloat::add(a, b)".into(),
-                ("subtract", _) => "apfloat::sub(a, b)".into(),
-                ("multiply", _) => "apfloat::mul(a, b)".into(),
-                ("negate", _) => "apfloat::negate(a)".into(),
-                ("abs", _) => "apfloat::abs(a)".into(),
-                // IEEE 754 maximum/minimum (spec): NaN propagates, -0 < +0.
-                ("maximum", _) => float_max("a", "b"),
-                ("minimum", _) => float_min("a", "b"),
-                ("clamp", _) => format!("let lo = {};\n    {}", float_max("b", "a"), float_min("lo", "c")),
-                ("compare", Some("EQ")) => "apfloat::eq_2(a, b)".into(),
-                ("compare", Some("NE")) => "!apfloat::eq_2(a, b)".into(),
-                ("compare", Some("LT")) => "apfloat::lt_2(a, b)".into(),
-                ("compare", Some("LE")) => "apfloat::lte_2(a, b)".into(),
-                ("sign", _) => format!(
-                    "if apfloat::is_nan(a) || ({zero}) {{ a }} else {{ apfloat::one<u32:{e}, u32:{m}>(a.sign) }}"
-                ),
-                ("floor", _) => "apfloat::floor_with_denorms(a)".into(),
-                ("ceil", _) => "apfloat::ceil_with_denorms(a)".into(),
-                ("round_nearest_even", _) => "apfloat::round(a)".into(),
-                ("is_finite", _) => "!(apfloat::is_nan(a) || apfloat::is_inf(a))".into(),
-                _ => return None,
-            })
-        }
-        Ty::Complex(_) => None,
+        Ty::Float(_) | Ty::Complex(_) => None,
     }
 }
 
-fn float_max(a: &str, b: &str) -> String {
-    format!(
-        "if apfloat::is_nan({a}) {{ {a} }} else if apfloat::is_nan({b}) {{ {b} }} else if apfloat::lt_2({a}, {b}) || (apfloat::eq_2({a}, {b}) && {a}.sign == u1:1) {{ {b} }} else {{ {a} }}"
-    )
-}
-
-fn float_min(a: &str, b: &str) -> String {
-    format!(
-        "if apfloat::is_nan({a}) {{ {a} }} else if apfloat::is_nan({b}) {{ {b} }} else if apfloat::lt_2({a}, {b}) || (apfloat::eq_2({a}, {b}) && {a}.sign == u1:1) {{ {a} }} else {{ {b} }}"
-    )
-}
-
-/// `convert` from `a` to `b` (spec `convert`; integer conversions wrap, float conversions round to
-/// nearest even, float to integer as `apfloat`'s saturating casts, bool is `x != 0`).
+/// `convert` between integers and bool (spec `convert`: integer conversions wrap, bool is `x != 0`); float
+/// conversions are wrappers around cores.
 fn convert_body(a: T, b: T) -> Option<String> {
     Some(match (a.0, b.0) {
         (Ty::Bool, Ty::Int { .. }) => format!("a as {}", b.dslx()),
         (Ty::Int { .. }, Ty::Bool) => format!("a != {}:0", a.dslx()),
         (Ty::Int { .. }, Ty::Int { .. }) => format!("a as {}", b.dslx()),
-        (Ty::Bool, Ty::Float(f)) => format!(
-            "if a {{ apfloat::one<u32:{e}, u32:{m}>(u1:0) }} else {{ apfloat::zero<u32:{e}, u32:{m}>(u1:0) }}",
-            e = f.e,
-            m = f.m
-        ),
-        (Ty::Float(f), Ty::Bool) => {
-            format!("!(a.bexp == bits[{}]:0 && a.fraction == bits[{}]:0)", f.e, f.m)
-        }
-        (Ty::Int { signed: true, .. }, Ty::Float(f)) => {
-            format!("apfloat::cast_from_fixed_using_rne<u32:{}, u32:{}>(a)", f.e, f.m)
-        }
-        (Ty::Int { signed: false, w }, Ty::Float(f)) => format!(
-            "apfloat::cast_from_fixed_using_rne<u32:{}, u32:{}>(a as sN[{}])",
-            f.e,
-            f.m,
-            w + 1
-        ),
-        (Ty::Float(_), Ty::Int { signed: true, w }) => {
-            format!("apfloat::to_int<{}, u32:{w}>(a)", float_params(a))
-        }
-        (Ty::Float(_), Ty::Int { signed: false, w }) => format!("apfloat::to_uint<u32:{w}>(a)"),
-        (Ty::Float(f), Ty::Float(g)) => {
-            if g.e >= f.e && g.m >= f.m {
-                format!("apfloat::upcast_with_denorms<u32:{}, u32:{}>(a)", g.e, g.m)
-            } else if g.e <= f.e && g.m <= f.m {
-                format!("apfloat::downcast_rne<u32:{}, u32:{}>(a)", g.m, g.e)
-            } else {
-                // Neither contains the other: widen exactly to Float32, then round once.
-                format!(
-                    "apfloat::downcast_rne<u32:{}, u32:{}>(apfloat::upcast_with_denorms<u32:8, u32:23>(a))",
-                    g.m, g.e
-                )
-            }
-        }
         _ => return None,
     })
-}
-
-fn float_params(t: T) -> String {
-    match t.0 {
-        Ty::Float(f) => format!("u32:{}, u32:{}", f.e, f.m),
-        _ => String::new(),
-    }
 }
 
 fn mux(n: u32, w: u32) -> Primitive {
@@ -774,14 +921,4 @@ endmodule
         clocked: false,
         source: Some(Source::Verilog(v)),
     }
-}
-
-/// The pending float ops of a catalog, by op.
-pub fn pending(cat: &[Primitive]) -> Vec<&Primitive> {
-    cat.iter().filter(|p| p.pending.is_some()).collect()
-}
-
-/// The float flavour note for E4M3FN-like formats (no infinities) that `apfloat` does not model.
-pub fn finite_nan(f: Format) -> bool {
-    f.flavour == Flavour::FiniteNan
 }

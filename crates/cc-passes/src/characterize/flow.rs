@@ -15,7 +15,7 @@ use cc_pipeline::{PassContext, PassError};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::catalog::{Primitive, Source};
+use super::catalog::{Kind, Primitive, Source};
 use super::config::CharacterizeConfig;
 use super::json::{KitInfo, Row};
 use crate::eda::{self, Design, Kit, parse};
@@ -150,13 +150,51 @@ pub fn design(p: &Primitive, cat: &BTreeMap<&str, &Primitive>) -> Design {
     }
 }
 
-/// The designs of every primitive of `cat` with RTL, in catalog order.
+/// The designs of every primitive of `cat` with RTL, in catalog order (a core is a dependency, not a
+/// design).
 pub fn designs(cat: &[Primitive]) -> Vec<Design> {
     let by_id: BTreeMap<&str, &Primitive> = cat.iter().map(|p| (p.id.as_str(), p)).collect();
     cat.iter()
-        .filter(|p| p.source.is_some())
+        .filter(|p| p.source.is_some() && p.kind != Kind::Core)
         .map(|p| design(p, &by_id))
         .collect()
+}
+
+/// The batch group of a primitive: its op and (first) type, so that a change to one op at one type
+/// (a new core, a new template) touches only the jobs of that group.
+pub fn batch_group(p: &Primitive) -> String {
+    let t = p.types.first().map(String::as_str).unwrap_or("");
+    match p.kind {
+        Kind::Op => format!("{}@{t}", p.op),
+        Kind::Mux => format!("mux@{t}"),
+        Kind::Accumulator => format!("accumulator@{t}"),
+        Kind::Register => "register".into(),
+        Kind::Split => "split".into(),
+        Kind::Rescale => "rescale".into(),
+        Kind::Core => "core".into(),
+    }
+}
+
+/// The designs of `cat` in batches: per [`batch_group`], in the order of the groups' first primitive,
+/// each group in chunks of `batch` designs.
+pub fn batches(cat: &[Primitive], batch: usize) -> Vec<Vec<Design>> {
+    let groups: BTreeMap<&str, String> = cat.iter().map(|p| (p.id.as_str(), batch_group(p))).collect();
+    let mut order: Vec<String> = Vec::new();
+    let mut by_group: BTreeMap<String, Vec<Design>> = BTreeMap::new();
+    for d in designs(cat) {
+        let g = groups[d.id.as_str()].clone();
+        if !by_group.contains_key(&g) {
+            order.push(g.clone());
+        }
+        by_group.entry(g).or_default().push(d);
+    }
+    let mut out = Vec::new();
+    for g in order {
+        for chunk in by_group[&g].chunks(batch.max(1)) {
+            out.push(chunk.to_vec());
+        }
+    }
+    out
 }
 
 /// The DSLX part of the RTL script; [`RTL_DONE`] ends it, after the generated sources' lines.
@@ -204,8 +242,10 @@ pub fn generator_line(id: &str, g: &Generator) -> String {
             args(a),
             fail("HardFloat generation")
         ),
+        // FloPoCo names sub-entities by a counter of its run (`..._uid4`): each gets the core's name as
+        // a prefix, so two cores of one design never define one entity twice.
         Generator::Flopoco { args: a } => format!(
-            "flopoco {} name={id} outputFile={id}.vhdl > {id}.err 2>&1{}",
+            "{{ flopoco {} name={id} outputFile={id}.vhdl > {id}.err 2>&1 && for e in $(sed -n 's/^entity \\([A-Za-z0-9_]*\\) is.*/\\1/p' {id}.vhdl); do [ \"$e\" = {id} ] || sed -i \"s/\\b$e\\b/{id}_$e/g\" {id}.vhdl; done; }}{}",
             args(a),
             fail("FloPoCo")
         ),
@@ -356,13 +396,13 @@ pub fn jobs(
     ctx: &PassContext,
     cfg: &CharacterizeConfig,
     kits: &[(Kit, KitInfo)],
-    designs: &[Design],
+    batches: &[Vec<Design>],
     rtl_dir: &Path,
 ) -> Result<Vec<Job>, PassError> {
     job_list(
         cfg,
         kits,
-        designs,
+        batches,
         rtl_dir,
         ctx.dir().path(),
         &image(ctx),
@@ -372,11 +412,12 @@ pub fn jobs(
 }
 
 /// [`jobs`] of the pass directory `pass_dir` (the job directories are `pass_dir/eda/…`, DC's library
-/// analysis `pass_dir/alib`), the image `image` and the session caps `caps`.
+/// analysis `pass_dir/alib`), the image `image` and the session caps `caps`; one job per batch
+/// ([`batches`]), kit and target.
 pub fn job_list(
     cfg: &CharacterizeConfig,
     kits: &[(Kit, KitInfo)],
-    designs: &[Design],
+    batches: &[Vec<Design>],
     rtl_dir: &Path,
     pass_dir: &Path,
     image: &str,
@@ -389,7 +430,7 @@ pub fn job_list(
     for (ki, (kit, info)) in kits.iter().enumerate() {
         for target in &cfg.targets {
             let period = cfg.period_ps(info.clock_ps, target)?;
-            for chunk in designs.chunks(cfg.batch) {
+            for chunk in batches {
                 let job = SynthJob {
                     kit,
                     designs: chunk,
@@ -910,7 +951,7 @@ echo "@@done"
         assert!(s.contains("shopt -s nullglob") && s.ends_with("echo \"@@done\"\n"));
         assert!(s.contains("hardfloat-gen add --exp 5 --sig 10 --module hf --out hf.v > hf.err 2>&1 || echo \"Error: HardFloat generation failed on hf\"\n"));
         assert!(s.contains(
-            "flopoco FPExp wE=5 wF=10 frequency=0 name=fe outputFile=fe.vhdl > fe.err 2>&1 || echo"
+            "{ flopoco FPExp wE=5 wF=10 frequency=0 name=fe outputFile=fe.vhdl > fe.err 2>&1 && for e in $(sed -n 's/^entity \\([A-Za-z0-9_]*\\) is.*/\\1/p' fe.vhdl); do [ \"$e\" = fe ] || sed -i \"s/\\b$e\\b/fe_$e/g\" fe.vhdl; done; } || echo"
         ));
         assert!(
             s.contains("--top=fp_sin_32 \"$XLS_DSLX_PATH\"/third_party/xls_go_math/fp_sincos_32.x > xs.ir")

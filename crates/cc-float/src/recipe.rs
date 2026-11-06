@@ -30,6 +30,7 @@ pub fn op_name(r: Recipe) -> &'static str {
         Recipe::LogPlusOne => "log_plus_one",
         Recipe::Rsqrt => "rsqrt",
         Recipe::Wider => "wider",
+        Recipe::PowerCore => "power",
     }
 }
 
@@ -43,18 +44,24 @@ fn arith(op: &str, q: Format, arity: usize) -> CoreNeed {
 }
 
 fn approx(op: &str, q: Format) -> CoreNeed {
+    approx_n(op, q, 1)
+}
+
+fn approx_n(op: &str, q: Format, arity: usize) -> CoreNeed {
     CoreNeed {
         role: Role::Approx { op: op.into() },
         exp_width: q.e,
         sig_width: q.m,
-        arity: 1,
+        arity,
     }
 }
 
 /// The cores of a composition, in order (the last one rounds to the format, except for E4M3FN, which
 /// the encoder rounds).
 pub fn needs(r: Recipe, f: Format, q: u32) -> Res<Vec<CoreNeed>> {
-    if q <= f.m + 1 && r != Recipe::Wider {
+    // One power core may run at the format's own precision (rounding it again changes nothing there).
+    let min = if r == Recipe::PowerCore { f.m } else { f.m + 1 };
+    if q <= min && r != Recipe::Wider {
         return Err(FloatError::Compose(format!(
             "{}: {q} inner bits do not exceed {}'s {}",
             op_name(r),
@@ -65,6 +72,7 @@ pub fn needs(r: Recipe, f: Format, q: u32) -> Res<Vec<CoreNeed>> {
     let qf = inner(f, q);
     let mut v = match r {
         Recipe::Power => vec![approx("log2", qf), arith("mul", qf, 2), approx("exp2", qf)],
+        Recipe::PowerCore => vec![approx_n("pow", qf, 2)],
         Recipe::Tanh => vec![
             arith("mul", qf, 2),
             arith("mul", qf, 2),
@@ -204,7 +212,7 @@ pub fn build(
         }
     };
     let out = match rec {
-        Recipe::Power => {
+        Recipe::Power | Recipe::PowerCore => {
             let yd = &xd[1];
             let sy = r.sign(f, yd);
             let nany = r.is_nan(f, yd);
@@ -217,9 +225,13 @@ pub fn build(
             let (yint, yodd) = int_odd(r, f, yd);
             let xq = r.widen(f, qf, &ax)?;
             let yq = r.widen(f, qf, yd)?;
-            let lg = core(r, &[xq], qb)?;
-            let t = core(r, &[yq, lg], qb)?;
-            let ex = core(r, &[t], qb)?;
+            let ex = if rec == Recipe::PowerCore {
+                core(r, &[xq, yq], qb)?
+            } else {
+                let lg = core(r, &[xq], qb)?;
+                let t = core(r, &[yq, lg], qb)?;
+                core(r, &[t], qb)?
+            };
             let mag = round(r, &mut core, &ex)?;
             let neg = r.wire(1, format!("{sx} & {yodd}"));
             let path = r.wire(w, format!("{{{neg}, {mag}[{}:0]}}", w - 2));

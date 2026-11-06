@@ -386,10 +386,7 @@ fn well_formed(p: &dyn IpProvider, op: &str, e: u32, s: u32, o: &CoreOffer) {
     );
     assert_eq!((o.instance.exp_width, o.instance.sig_width), (e, s), "{what}");
     let operands: Vec<String> = (0..core.arity()).map(|i| format!("a{i}")).collect();
-    let mut results: Vec<&str> = core.results().to_vec();
-    if core == CoreOp::Compare {
-        results.push("unordered");
-    }
+    let results: Vec<&str> = core.results().to_vec();
     let handshake = ["clk", "rst", "start", "done"];
     for (port, to) in &o.instance.ports {
         let ok = to.is_empty()
@@ -482,7 +479,7 @@ fn documented(provider: &str, op: &str, e: u32, s: u32) -> bool {
         },
         "flopoco" => match core {
             CoreOp::Exp | CoreOp::Pow => fl_exp,
-            CoreOp::Ln | CoreOp::FromIeee | CoreOp::ToIeee => fl,
+            CoreOp::Div | CoreOp::Sqrt | CoreOp::Ln | CoreOp::FromIeee | CoreOp::ToIeee => fl,
             _ => false,
         },
         "xls_math" => matches!(core, CoreOp::Sin | CoreOp::Cos) && (e, s) == (8, 23),
@@ -499,7 +496,7 @@ fn documented_contract(provider: &str, core: CoreOp) -> (Accuracy, Subnormals, E
         ("designware", CoreOp::Ln) => (Accuracy::Ulp { ulp: 1.0 }, Subnormals::Ieee, Encoding::Ieee),
         ("designware", CoreOp::Sin | CoreOp::Cos) => (Accuracy::Unbounded, Subnormals::Ieee, Encoding::Ieee),
         ("designware" | "hardfloat", _) => (Accuracy::CorrectlyRounded, Subnormals::Ieee, Encoding::Ieee),
-        ("flopoco", CoreOp::FromIeee | CoreOp::ToIeee) => {
+        ("flopoco", CoreOp::FromIeee | CoreOp::ToIeee | CoreOp::Div | CoreOp::Sqrt) => {
             (Accuracy::CorrectlyRounded, Subnormals::Flush, Encoding::Flopoco)
         }
         ("flopoco", _) => (Accuracy::Faithful, Subnormals::Flush, Encoding::Flopoco),
@@ -517,6 +514,19 @@ fn documented_contract(provider: &str, core: CoreOp) -> (Accuracy, Subnormals, E
 #[test]
 fn ip_providers_conform() {
     let mut offered = 0;
+    // Every model name an offer gives is a model of `python/cc_float/models.py` (its `MODEL_NAMES`).
+    let py = std::fs::read_to_string(tests::repo_root().join("python/cc_float/models.py")).unwrap();
+    let names = py
+        .split_once("MODEL_NAMES = (")
+        .and_then(|(_, rest)| rest.split_once(')'))
+        .map(|(body, _)| body)
+        .unwrap();
+    let models: std::collections::BTreeSet<&str> = names
+        .split(',')
+        .map(|n| n.trim().trim_matches('"'))
+        .filter(|n| !n.is_empty())
+        .collect();
+    assert!(models.len() > 10, "{models:?}");
     for p in IP_PROVIDERS.iter() {
         let caps = p.capabilities();
         assert!(
@@ -541,6 +551,12 @@ fn ip_providers_conform() {
                 );
                 let Some(o) = o else { continue };
                 offered += 1;
+                assert!(
+                    models.contains(o.model.as_str()),
+                    "{} {op}: model {} is not in python/cc_float/models.py",
+                    p.name(),
+                    o.model
+                );
                 well_formed(p, &op, e, s, &o);
                 let core: CoreOp = op.parse().unwrap();
                 let (acc, sub, enc) = documented_contract(p.name(), core);

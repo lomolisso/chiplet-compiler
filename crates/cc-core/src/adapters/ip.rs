@@ -11,7 +11,7 @@
 //! | `add`, `sub`, `mul`, `div` | `a0`, `a1` → `z` | |
 //! | `sqrt`, `rsqrt`, `exp`, `exp2`, `ln`, `log2`, `sin`, `cos` | `a0` → `z` | radians |
 //! | `pow` | `a0` (base), `a1` (exponent) → `z` | |
-//! | `compare` | `a0`, `a1` → `lt`, `eq`, `gt` (a provider may add `unordered`) | quiet |
+//! | `compare` | `a0`, `a1` → `z` = `a0 < a1` (one bit) | quiet (IEEE `compareQuietLess`) |
 //! | `to_int.<rnd>.<s\|u><w>` | `a0` → `z`, a `w`-bit integer rounded per `rnd` | saturating |
 //! | `from_int.<s\|u><w>` | `a0`, a `w`-bit integer → `z`, rounded to nearest even | |
 //! | `convert.e<E>m<M>` | `a0` → `z` in the format with `E` exponent and `M` significand bits | nearest even |
@@ -118,12 +118,9 @@ impl CoreOp {
         }
     }
 
-    /// The op's result names (`z`, or the compare outputs).
+    /// The op's result names (every op has one result, `z`; compare's is the less-than bit).
     pub fn results(&self) -> &'static [&'static str] {
-        match self {
-            CoreOp::Compare => &["lt", "eq", "gt"],
-            _ => &["z"],
-        }
+        &["z"]
     }
 
     /// The exact operations of design §6.4 (arithmetic, conversions, compare): a core for them must be

@@ -251,6 +251,7 @@ version = "0.3.0"
 dependencies = [
  "blake3",
  "cc-core",
+ "cc-float",
  "cc-ir",
  "cc-pipeline",
  "cc-smt",

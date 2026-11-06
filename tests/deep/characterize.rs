@@ -211,7 +211,7 @@ fn characterize_job_keys_match_the_standing_library() {
     assert!(!cfg.lec && cfg.tool == "dc", "the default configuration");
     let d = &lc.config.tools.docker;
     let image = format!("{}:{}", d.image, d.tag);
-    let cat = catalog::catalog(&cfg).unwrap();
+    let cat = catalog::catalog(&cfg, &lc.config.numerics).unwrap();
     let rtl_dir = eda.join(flow::rtl_dir_name(&image, &cat));
     assert!(
         rtl_dir.join("rtl.done").is_file(),
@@ -225,11 +225,11 @@ fn characterize_job_keys_match_the_standing_library() {
         .collect();
     let env = cc_core::ArtifactStore::new(build.clone()).pass_dir(cc_pipeline::env::doctor::ENV_DIR);
     let kits = flow::kits_of(&env, &pdks, &cfg).unwrap();
-    let designs = flow::designs(&cat);
+    let batches = flow::batches(&cat, cfg.batch);
     let jobs = flow::job_list(
         &cfg,
         &kits,
-        &designs,
+        &batches,
         &rtl_dir,
         &build.join(".characterize"),
         &image,
@@ -314,9 +314,11 @@ fn rescale_rtl_matches_its_reference() {
     let lc = env.config("[models]\nkeys = []\n", &[&format!("tools.docker.tag={tag}")]);
     let dir = env.root().join("rescale");
     std::fs::create_dir_all(&dir).unwrap();
-    let cat =
-        cc_passes::characterize::catalog::catalog(&cc_passes::characterize::CharacterizeConfig::default())
-            .unwrap();
+    let cat = cc_passes::characterize::catalog::catalog(
+        &cc_passes::characterize::CharacterizeConfig::default(),
+        &cc_core::config::NumericsConfig::default(),
+    )
+    .unwrap();
     let runner = cc_core::runner::BoundRunner::new(
         Runners::from_config(&lc).docker,
         cc_core::runner::Caps {
@@ -638,7 +640,7 @@ fn ip_cores_generate_and_synthesize_in_their_flows() {
                 fp.files
             );
         }
-        let jobs = flow::job_list(&cfg, &kits, &designs, &rtl_dir, &pass_dir, &image, caps).unwrap();
+        let jobs = flow::job_list(&cfg, &kits, &[designs], &rtl_dir, &pass_dir, &image, caps).unwrap();
         let out_root = build.join(format!("out-{tool}"));
         for j in &jobs {
             if tool == "dc" {
