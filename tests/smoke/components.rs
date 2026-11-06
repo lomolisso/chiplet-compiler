@@ -11,11 +11,11 @@ use cc_core::CheckStatus;
 use cc_core::runner::Runners;
 use cc_ir::Module;
 use cc_ir::absgraph::PortLabel;
-use cc_passes::components::algo::graph::ADim;
+use cc_passes::components::algo::graph::{ADim, Kind};
 use cc_passes::components::json::{InstanceKind, InstancesFile, StoredComponent};
 use cc_passes::export::json::{GraphFile, SymbolsFile};
 use cc_passes::import::ImportConfig;
-use cc_passes::import::algo::{build, size_tag};
+use cc_passes::import::algo::{build, const_tag, size_tag};
 use cc_pipeline::{Pipeline, RunOptions, RunStatus};
 use proptest::prelude::*;
 use tests::{Env, ExportReplay, repo_root};
@@ -180,6 +180,21 @@ fn abstracts_and_verifies_the_toy() {
         postcard::from_bytes(&std::fs::read(s.out(&format!("components/{}.postcard", blocks[0]))).unwrap())
             .unwrap();
     assert_eq!(block.height, 1);
+    // The block divides by its sequence length: `S` converted and broadcast is constant computation,
+    // one `const_in` node read by the divide.
+    let const_in: Vec<usize> = (0..block.graph.nodes.len())
+        .filter(|&i| block.graph.nodes[i].kind == Kind::ConstIn)
+        .collect();
+    assert_eq!(const_in.len(), 1);
+    let readers: Vec<&Kind> = block.graph.out[const_in[0]]
+        .iter()
+        .map(|(v, _)| &block.graph.nodes[*v as usize].kind)
+        .collect();
+    assert!(
+        matches!(readers.as_slice(), [Kind::Op { name, .. }] if name == "stablehlo.divide"),
+        "{readers:?}"
+    );
+    assert!(block.graph.nodes.iter().all(|n| n.kind != Kind::SizeIn));
     assert!(
         block
             .graph
@@ -266,6 +281,19 @@ fn recoverability_fails_on_a_swapped_port() {
             .position(|o| o.name == "stablehlo.dot_general")
             .unwrap();
         m.ops[i].operands.swap(0, 1);
+    });
+    assert_fails(&s, "recoverability");
+}
+
+#[test]
+fn recoverability_fails_on_a_dropped_constant_tag() {
+    let s = fresh();
+    s.edit_module(|m| {
+        for o in &mut m.ops {
+            if o.constant && !o.size && o.name == "stablehlo.dynamic_broadcast_in_dim" {
+                o.constant = false;
+            }
+        }
     });
     assert_fails(&s, "recoverability");
 }
@@ -384,6 +412,7 @@ fn components_of(g: &GraphFile, syms: &SymbolsFile) -> (BTreeMap<(String, String
     use cc_passes::components::algo;
     let mut m = build::build(g, syms, &ImportConfig::default()).unwrap().module;
     size_tag::tag(&mut m);
+    const_tag::tag(&mut m);
     let out = algo::phase(&m, 64).unwrap();
     let (comps, members) = algo::dedup::dedup(std::slice::from_ref(&out), 1 << 24).unwrap();
     let id = |gi: Option<u32>| gi.map(|g| comps[members[0][g as usize].comp as usize].id.clone());

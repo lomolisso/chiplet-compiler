@@ -15,7 +15,7 @@ module serializes with serde (postcard on disk) and is deterministic. Graph algo
 | `Module` | `model`, `phase`, `config`; `symbols` (sorted) and `constraints` of the symbolic scope; `entry`; the arenas `funcs`, `regions`, `ops`, `values`; `locs` (interned source locations) |
 | `Func` | `name`, `kind` (`entry`, `decomposition` of a component composite, `computation` of a custom call), `body`, `results` (types) |
 | `Region` | `owner` (a function or an op), `args`, `ops` in program order (one block; the terminator last) |
-| `Op` | `name`, `target` (custom-call target), `operands` (the port is the position), `results`, typed `attrs`, `regions`, `callee`, `parent` region, `size` (size computation), `dim_as_data` (ports where a dimension enters compute), `prov` |
+| `Op` | `name`, `target` (custom-call target), `operands` (the port is the position), `results`, typed `attrs`, `regions`, `callee`, `parent` region, `size` (size computation), `constant` (constant computation, size computation included; design §4.2), `dim_as_data` (ports where a dimension enters compute), `prov` |
 | `Value` | `ty`, `def` (`arg {region, index}` or `result {op, index}`), `dim_var` (the symbol of a dimension-variable argument), `src` (its value id in `graph.json`) |
 | `Provenance` | `graph.json` function and op id, interned location, `inlined_from` (the inlined call sites, outermost first) |
 

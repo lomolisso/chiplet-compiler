@@ -19,6 +19,7 @@ All notable changes to this project are listed here. The format follows
 - `merge` pass: configurable functional units by datapath merging (compatibility graph and maximum-weight clique, agglomerated under a depth bound) and parameterized arrays for template classes, every configuration proven equal to its datapath.
 - `merge` fixed requantization (`requant_variant = "fixed"`): rescaling chains become one integer `rescale` block (exact multiply by the scale's significand, rounding shift), proven within 1 of fp32, with its RTL in the `characterize` library.
 - `iteration_space` pass and the op table's iteration semantics: per class its affine accesses proven against the spec, dependences, the embedding relation, and routing of uniform contractions to systolic templates by a proven space-time mapping.
+- `import` tags constant computation (ops no data argument reaches: position and rotary tables, masks from `iota`, sizes as floats); `components` leaves it out of the graphs and reads its values as `const_in` inputs, so it never becomes a kernel.
 
 ### Changed
 

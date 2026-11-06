@@ -55,7 +55,7 @@ impl Role {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum BoundaryKind {
-    /// `input`, `output`, `size_in`.
+    /// `input`, `output`, `size_in`, `const_in`.
     Interface,
     /// A composite call: its child component has kernels of its own.
     Call,

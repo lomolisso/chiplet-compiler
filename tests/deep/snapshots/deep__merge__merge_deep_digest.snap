@@ -3,7 +3,7 @@ source: tests/deep/merge.rs
 expression: digest
 ---
 {
-  "checks": 248,
+  "checks": 268,
   "families": [
     {
       "family": "map",
@@ -11,717 +11,567 @@ expression: digest
         [
           "z7e0393e4c84187e3",
           "za00b14b4cc3053bb",
-          165
+          140
         ],
         [
           "z2d348b63894385ec",
           "z7e0393e4c84187e3",
-          164
+          139
         ],
         [
-          "z6da7e62c817bf66b",
-          "zaf52768b9d88c9a6",
-          163
-        ],
-        [
-          "z4878e32eacb61249",
-          "z6da7e62c817bf66b",
-          162
-        ],
-        [
-          "z2fd49a2f840e1d24",
-          "z4b76229d70b8aeef",
-          161
+          "z85661412204427b0",
+          "zaa1bf28d83aca763",
+          138
         ],
         [
           "z24e918e4078a110a",
           "z2d348b63894385ec",
-          160
+          137
         ],
         [
-          "z47b0ec0fed98bfd8",
-          "z9ac56cc631bd2265",
-          159
-        ],
-        [
-          "z7dfa581d8578629c",
-          "z47b0ec0fed98bfd8",
-          158
+          "z31589fc3f7b2a462",
+          "z8ad77e91d1bc9198",
+          136
         ],
         [
           "z9077129bc774bc37",
           "z24e918e4078a110a",
-          157
-        ],
-        [
-          "z1b0028ee94d7d97e",
-          "z9077129bc774bc37",
-          156
+          135
         ],
         [
           "z2072f4f5f5830292",
           "z27ca5dad04f9f845",
-          155
+          134
         ],
         [
           "zfbb2df811222ea43",
           "z2072f4f5f5830292",
-          154
+          133
         ],
         [
           "z2e776013462da1ae",
           "z8c06880a255e454b",
-          153
-        ],
-        [
-          "z9ed5b4b50e8c3bac",
-          "z2e776013462da1ae",
-          152
+          132
         ],
         [
           "z624a1fc58204dae1",
+          "z9077129bc774bc37",
+          131
+        ],
+        [
           "zd31fd0a4df111891",
-          151
-        ],
-        [
-          "z1b0028ee94d7d97e",
           "z624a1fc58204dae1",
-          150
+          130
         ],
         [
           "z19b4e33f031eaf14",
           "zd761a834358b4df0",
-          149
+          129
         ],
         [
           "z0ae08f49bc07dec6",
-          "z1b0028ee94d7d97e",
-          148
+          "zd31fd0a4df111891",
+          128
         ],
         [
           "zca0786a92478a25a",
-          "z2fd49a2f840e1d24",
-          147
+          "z85661412204427b0",
+          127
         ],
         [
           "z172e005fa9a1180d",
           "z7eb1756f0d7c629c",
-          146
+          126
         ],
         [
-          "zcf9fba220a7ca2c4",
+          "z39a61cffd3608696",
           "z172e005fa9a1180d",
-          145
+          125
         ],
         [
-          "z7dfa581d8578629c",
+          "z31589fc3f7b2a462",
           "zca0786a92478a25a",
-          144
+          124
         ],
         [
           "zf87d507dcea4cff8",
           "z19b4e33f031eaf14",
-          143
+          123
         ],
         [
-          "z51ad949a7a203d10",
-          "zcf9fba220a7ca2c4",
-          142
+          "z2112c30afca5cadc",
+          "z39a61cffd3608696",
+          122
         ],
         [
-          "zf254ab28cd0df6b3",
-          "z9ed5b4b50e8c3bac",
-          141
-        ],
-        [
-          "ze4419260a761787f",
-          "zfd345a2b12588ded",
-          140
-        ],
-        [
-          "z3cd1314f2036ed95",
-          "ze4419260a761787f",
-          139
+          "zd8e753cf3f6e333e",
+          "z2e776013462da1ae",
+          121
         ],
         [
           "zc2d5625cda83b35a",
           "zec075138126bb5fb",
-          138
-        ],
-        [
-          "zd8e753cf3f6e333e",
-          "zf254ab28cd0df6b3",
-          137
+          120
         ],
         [
           "zfbb2df811222ea43",
           "zc2d5625cda83b35a",
-          136
+          119
         ],
         [
           "z16094aa2c6fd7bcd",
           "z74308927d261314f",
-          135
+          118
         ],
         [
           "z74cb717ecb42a058",
           "za27d0a3db93bbeb4",
-          134
+          117
         ],
         [
           "z16094aa2c6fd7bcd",
           "z74cb717ecb42a058",
-          133
-        ],
-        [
-          "zdb6947e4b365964a",
-          "zf87d507dcea4cff8",
-          132
-        ],
-        [
-          "z378d9c75cc53d5ed",
-          "za6cfb7d5ba8a40c6",
-          131
-        ],
-        [
-          "zb554abaafdbb4cff",
-          "zeeffd11c4cc8fd69",
-          130
-        ],
-        [
-          "z378d9c75cc53d5ed",
-          "zb554abaafdbb4cff",
-          129
-        ],
-        [
-          "zb52d49f36c2d58f9",
-          "zd8e753cf3f6e333e",
-          128
-        ],
-        [
-          "z51ad949a7a203d10",
-          "z378d9c75cc53d5ed",
-          127
-        ],
-        [
-          "z2b490bdd72a445d7",
-          "zc7c36324cb2a624d",
-          126
-        ],
-        [
-          "z44c81c80ccf4e852",
-          "zb72312de5454b4c2",
-          125
-        ],
-        [
-          "z2b490bdd72a445d7",
-          "z44c81c80ccf4e852",
-          124
-        ],
-        [
-          "zb52d49f36c2d58f9",
-          "z2b490bdd72a445d7",
-          123
-        ],
-        [
-          "z0493dba8ab3268de",
-          "z183eec193cb26eac",
-          122
-        ],
-        [
-          "zac52d2a9c58a93f3",
-          "zae88bdf59e972bf3",
-          121
-        ],
-        [
-          "z0493dba8ab3268de",
-          "zac52d2a9c58a93f3",
-          120
-        ],
-        [
-          "z583927023059a418",
-          "z9773c9d6c6879b67",
-          119
-        ],
-        [
-          "zfbb2df811222ea43",
-          "z583927023059a418",
-          118
-        ],
-        [
-          "zdb8e6251d2f9fe9a",
-          "zfbb2df811222ea43",
-          117
-        ],
-        [
-          "z1ca767097f30c940",
-          "z7dfa581d8578629c",
           116
         ],
         [
-          "z0d6b98b5a2f15ca0",
-          "z17ff6facbd23a62b",
+          "zf254ab28cd0df6b3",
+          "zd8e753cf3f6e333e",
           115
         ],
         [
-          "z2c282eaf6e30a5f3",
-          "z471ed2d7ec49f549",
+          "zdb6947e4b365964a",
+          "z0ae08f49bc07dec6",
           114
         ],
         [
-          "z439b3365ee5a41ca",
-          "zc2d54dd92d7e0491",
+          "z0278359bc26914b7",
+          "z728344d7061e5cfc",
           113
         ],
         [
-          "z76502fdfde009651",
-          "zbf8866fb581d5533",
+          "z897cae560d2a1965",
+          "zfb9fea44a99f91c3",
           112
         ],
         [
-          "z78aee78d4677a99d",
-          "zf3776eb839fe65d8",
+          "z0278359bc26914b7",
+          "z897cae560d2a1965",
           111
         ],
         [
-          "z51ad949a7a203d10",
-          "z0d6b98b5a2f15ca0",
+          "z2112c30afca5cadc",
+          "z0278359bc26914b7",
           110
         ],
         [
-          "z0493dba8ab3268de",
-          "z76502fdfde009651",
+          "zbf33c597571c184c",
+          "zfdca73803d74369d",
           109
         ],
         [
-          "z2c282eaf6e30a5f3",
-          "z51ad949a7a203d10",
+          "z621328cdbc2e3e2f",
+          "z94114a727d1b8e07",
           108
         ],
         [
-          "z4878e32eacb61249",
-          "z78aee78d4677a99d",
+          "z30ce8fb07b759e8b",
+          "z621328cdbc2e3e2f",
           107
         ],
         [
-          "zdce4f44d792b05b3",
-          "zfeeb1bfcf2e81d4d",
+          "ze42c78ebc5cec062",
+          "z30ce8fb07b759e8b",
           106
         ],
         [
-          "z3aba4ba5fa059ae9",
+          "z5494e44f435517e1",
           "zdce4f44d792b05b3",
           105
         ],
         [
-          "z543c11528f99b2cd",
-          "zd50f5bc8cce0dc67",
+          "z0493dba8ab3268de",
+          "z183eec193cb26eac",
           104
         ],
         [
-          "z3e0a4cff6078ea19",
-          "zf811530642501ef7",
+          "zac52d2a9c58a93f3",
+          "zae88bdf59e972bf3",
           103
         ],
         [
-          "za6f7f45175b0d22c",
-          "z3e0a4cff6078ea19",
+          "z0493dba8ab3268de",
+          "zac52d2a9c58a93f3",
           102
         ],
         [
-          "z4878e32eacb61249",
-          "z543c11528f99b2cd",
+          "z583927023059a418",
+          "z9773c9d6c6879b67",
           101
         ],
         [
-          "z9afeb8be284a806a",
-          "z3cd1314f2036ed95",
+          "z2112c30afca5cadc",
+          "ze42c78ebc5cec062",
           100
         ],
         [
-          "z93c91c9a972e97c3",
-          "z9afeb8be284a806a",
+          "zfbb2df811222ea43",
+          "z583927023059a418",
           99
         ],
         [
-          "ze2332e321be15bda",
-          "zeca300c38d5f7c80",
+          "zdb8e6251d2f9fe9a",
+          "zfbb2df811222ea43",
           98
         ],
         [
-          "z4878e32eacb61249",
-          "ze2332e321be15bda",
+          "z1ca767097f30c940",
+          "zdb6947e4b365964a",
           97
         ],
         [
-          "z164c0b798cc8c144",
-          "zfd9b8bf7078d496a",
+          "zbc5894077c6ece44",
+          "z31589fc3f7b2a462",
           96
         ],
         [
-          "z2ea36606cb90008f",
-          "z3e0a4cff6078ea19",
+          "z0d6b98b5a2f15ca0",
+          "z17ff6facbd23a62b",
           95
         ],
         [
-          "z717aa202a631bb6b",
-          "zdb6947e4b365964a",
+          "z2c282eaf6e30a5f3",
+          "z471ed2d7ec49f549",
           94
         ],
         [
-          "zbae5fa5406eefcee",
-          "z717aa202a631bb6b",
+          "z439b3365ee5a41ca",
+          "z59d86aa9f1e70d7e",
           93
         ],
         [
-          "z85db92483889a78b",
-          "z2ea36606cb90008f",
+          "z4e05f5d4d6d6deba",
+          "z0493dba8ab3268de",
           92
         ],
         [
-          "zdc5f586e672b84e8",
-          "z85db92483889a78b",
+          "zb2a93ad0c4a1dd5e",
+          "zc2d54dd92d7e0491",
           91
         ],
         [
-          "z4d7a882d628a3ef5",
-          "z164c0b798cc8c144",
+          "zf3776eb839fe65d8",
+          "z439b3365ee5a41ca",
           90
         ],
         [
-          "z91a34645bef009ec",
-          "z93c91c9a972e97c3",
+          "z2112c30afca5cadc",
+          "z0d6b98b5a2f15ca0",
           89
         ],
         [
-          "zd168e6f9211cd985",
-          "z4878e32eacb61249",
+          "z2c282eaf6e30a5f3",
+          "z2112c30afca5cadc",
           88
-        ],
-        [
-          "za810cdaf14d9db51",
-          "zc37f7123809dffb5",
-          87
-        ],
-        [
-          "zd168e6f9211cd985",
-          "za810cdaf14d9db51",
-          86
-        ],
-        [
-          "z0fcead5845e47174",
-          "z744fe537042a9d3c",
-          85
-        ],
-        [
-          "z76d88b7d2f5e1742",
-          "zbae5fa5406eefcee",
-          84
-        ],
-        [
-          "zf70692b6d7956699",
-          "z0fcead5845e47174",
-          83
-        ],
-        [
-          "z1613be008c1f80c9",
-          "z7418bb5b00269b7b",
-          82
-        ],
-        [
-          "z91a34645bef009ec",
-          "z76d88b7d2f5e1742",
-          81
-        ],
-        [
-          "z1613be008c1f80c9",
-          "z91a34645bef009ec",
-          80
-        ],
-        [
-          "za65a80f2766aeb93",
-          "zbe40f6861518e92d",
-          79
-        ],
-        [
-          "z22f6558209be27ae",
-          "z85db92483889a78b",
-          78
-        ],
-        [
-          "z248462ea5e172480",
-          "z8a62750ced1b61b3",
-          77
-        ],
-        [
-          "za6f7f45175b0d22c",
-          "z248462ea5e172480",
-          76
-        ],
-        [
-          "zef6c8728306c43ab",
-          "z22f6558209be27ae",
-          75
-        ],
-        [
-          "z22f6558209be27ae",
-          "zef6c8728306c43ab",
-          74
-        ],
-        [
-          "z3f5e945d6ca55d49",
-          "z4d7a882d628a3ef5",
-          73
-        ],
-        [
-          "z2025dc5d80d41568",
-          "z22f6558209be27ae",
-          72
-        ],
-        [
-          "z3700419432d36f59",
-          "z62ddced2a64b798e",
-          71
-        ],
-        [
-          "ze1bf6ed56799b549",
-          "z3700419432d36f59",
-          70
-        ],
-        [
-          "zb52d49f36c2d58f9",
-          "zdc5f586e672b84e8",
-          69
-        ],
-        [
-          "z1613be008c1f80c9",
-          "ze1bf6ed56799b549",
-          68
-        ],
-        [
-          "za65a80f2766aeb93",
-          "z1613be008c1f80c9",
-          67
-        ],
-        [
-          "z693e6f2fd46d2e2a",
-          "zfd5bb8e6ab8d4f48",
-          66
-        ],
-        [
-          "zbf06ff896cf37d3c",
-          "za65a80f2766aeb93",
-          65
-        ],
-        [
-          "z895a4658b40b257d",
-          "z693e6f2fd46d2e2a",
-          64
-        ],
-        [
-          "z95bcef552047d7e7",
-          "z895a4658b40b257d",
-          63
-        ],
-        [
-          "zbf06ff896cf37d3c",
-          "z95bcef552047d7e7",
-          62
-        ],
-        [
-          "z87c0ad74361f63a9",
-          "zbf06ff896cf37d3c",
-          61
-        ],
-        [
-          "z8fd9957bc4a239e0",
-          "zccdf13bbadabf22d",
-          60
-        ],
-        [
-          "zf186c92a6d6068c1",
-          "zd168e6f9211cd985",
-          59
-        ],
-        [
-          "z5fcc8850c7cdffa4",
-          "z87c0ad74361f63a9",
-          58
-        ],
-        [
-          "zb52d49f36c2d58f9",
-          "z8fd9957bc4a239e0",
-          57
-        ],
-        [
-          "z985a4622d26e26af",
-          "zc0dd388138168556",
-          56
-        ],
-        [
-          "z0d1d3bc525b7d6a2",
-          "zf4eb97d0f126d662",
-          55
-        ],
-        [
-          "zf186c92a6d6068c1",
-          "z985a4622d26e26af",
-          54
-        ],
-        [
-          "z4c3e695df5e903fd",
-          "z5fcc8850c7cdffa4",
-          53
-        ],
-        [
-          "z0d1d3bc525b7d6a2",
-          "z4c3e695df5e903fd",
-          52
-        ],
-        [
-          "z0993ef684255df6c",
-          "z3700419432d36f59",
-          51
-        ],
-        [
-          "z62ddced2a64b798e",
-          "z0d1d3bc525b7d6a2",
-          50
-        ],
-        [
-          "z6bfe03b3dfba7b0b",
-          "zbce12cd3467d326e",
-          49
-        ],
-        [
-          "ze1bf6ed56799b549",
-          "z0993ef684255df6c",
-          48
-        ],
-        [
-          "z62ddced2a64b798e",
-          "z6bfe03b3dfba7b0b",
-          47
-        ],
-        [
-          "zd6b9e15c3a7afdb1",
-          "z1ca767097f30c940",
-          46
-        ],
-        [
-          "zccdf13bbadabf22d",
-          "za6f7f45175b0d22c",
-          45
-        ],
-        [
-          "z11a4bd9c2bb4f8ca",
-          "z13bfb7bb639e3360",
-          44
-        ],
-        [
-          "zd6b9e15c3a7afdb1",
-          "z62ddced2a64b798e",
-          43
-        ],
-        [
-          "z40928e5a4555926c",
-          "z3f5e945d6ca55d49",
-          42
-        ],
-        [
-          "zfc838aec599afaf3",
-          "zf186c92a6d6068c1",
-          41
-        ],
-        [
-          "z675edb4abe554f17",
-          "z0ae08f49bc07dec6",
-          40
-        ],
-        [
-          "za352b8f5a1736f05",
-          "zd6b9e15c3a7afdb1",
-          39
-        ],
-        [
-          "z3700419432d36f59",
-          "z2025dc5d80d41568",
-          38
-        ],
-        [
-          "ze1bf6ed56799b549",
-          "z3700419432d36f59",
-          37
-        ],
-        [
-          "z675edb4abe554f17",
-          "z675edb4abe554f17",
-          36
-        ],
-        [
-          "z675edb4abe554f17",
-          "z675edb4abe554f17",
-          35
-        ],
-        [
-          "zccdf13bbadabf22d",
-          "za352b8f5a1736f05",
-          34
         ],
         [
           "z3f5f574e4341896c",
           "zbc5894077c6ece44",
-          33
+          87
+        ],
+        [
+          "zfeeb1bfcf2e81d4d",
+          "z1ca767097f30c940",
+          86
+        ],
+        [
+          "z3e0a4cff6078ea19",
+          "zf811530642501ef7",
+          85
+        ],
+        [
+          "za6f7f45175b0d22c",
+          "z3e0a4cff6078ea19",
+          84
+        ],
+        [
+          "zdc5f586e672b84e8",
+          "z2c282eaf6e30a5f3",
+          83
+        ],
+        [
+          "z2ea36606cb90008f",
+          "zdc5f586e672b84e8",
+          82
+        ],
+        [
+          "z164c0b798cc8c144",
+          "zfd9b8bf7078d496a",
+          81
+        ],
+        [
+          "z3e0a4cff6078ea19",
+          "z2ea36606cb90008f",
+          80
+        ],
+        [
+          "z717aa202a631bb6b",
+          "zf87d507dcea4cff8",
+          79
+        ],
+        [
+          "zbae5fa5406eefcee",
+          "z717aa202a631bb6b",
+          78
+        ],
+        [
+          "z85db92483889a78b",
+          "z3e0a4cff6078ea19",
+          77
+        ],
+        [
+          "z4d7a882d628a3ef5",
+          "z55dac9d29340c510",
+          76
+        ],
+        [
+          "za810cdaf14d9db51",
+          "zd168e6f9211cd985",
+          75
+        ],
+        [
+          "z0fcead5845e47174",
+          "z5494e44f435517e1",
+          74
+        ],
+        [
+          "z76d88b7d2f5e1742",
+          "zfeeb1bfcf2e81d4d",
+          73
+        ],
+        [
+          "zf70692b6d7956699",
+          "z0fcead5845e47174",
+          72
+        ],
+        [
+          "za810cdaf14d9db51",
+          "zf70692b6d7956699",
+          71
+        ],
+        [
+          "z22f6558209be27ae",
+          "z85db92483889a78b",
+          70
+        ],
+        [
+          "z248462ea5e172480",
+          "z8a62750ced1b61b3",
+          69
+        ],
+        [
+          "za6f7f45175b0d22c",
+          "z248462ea5e172480",
+          68
+        ],
+        [
+          "zef6c8728306c43ab",
+          "z22f6558209be27ae",
+          67
+        ],
+        [
+          "z22f6558209be27ae",
+          "zef6c8728306c43ab",
+          66
+        ],
+        [
+          "z2025dc5d80d41568",
+          "z22f6558209be27ae",
+          65
+        ],
+        [
+          "z3700419432d36f59",
+          "z62ddced2a64b798e",
+          64
+        ],
+        [
+          "ze1bf6ed56799b549",
+          "z3700419432d36f59",
+          63
+        ],
+        [
+          "z3f5e945d6ca55d49",
+          "z164c0b798cc8c144",
+          62
+        ],
+        [
+          "zbae5fa5406eefcee",
+          "ze1bf6ed56799b549",
+          61
+        ],
+        [
+          "z31112a2b1e482ebe",
+          "z9d65ac336aeab990",
+          60
+        ],
+        [
+          "zf936821185a2eb96",
+          "z31112a2b1e482ebe",
+          59
+        ],
+        [
+          "z95bcef552047d7e7",
+          "zf936821185a2eb96",
+          58
+        ],
+        [
+          "z8fd9957bc4a239e0",
+          "zccdf13bbadabf22d",
+          57
+        ],
+        [
+          "zf254ab28cd0df6b3",
+          "z8fd9957bc4a239e0",
+          56
+        ],
+        [
+          "z985a4622d26e26af",
+          "za810cdaf14d9db51",
+          55
+        ],
+        [
+          "z5fcc8850c7cdffa4",
+          "zdb8e6251d2f9fe9a",
+          54
+        ],
+        [
+          "z0993ef684255df6c",
+          "z3700419432d36f59",
+          53
+        ],
+        [
+          "z62ddced2a64b798e",
+          "z85db92483889a78b",
+          52
+        ],
+        [
+          "z6bfe03b3dfba7b0b",
+          "zbae5fa5406eefcee",
+          51
+        ],
+        [
+          "zbce12cd3467d326e",
+          "zbf33c597571c184c",
+          50
+        ],
+        [
+          "ze1bf6ed56799b549",
+          "z0993ef684255df6c",
+          49
+        ],
+        [
+          "zccdf13bbadabf22d",
+          "za6f7f45175b0d22c",
+          48
+        ],
+        [
+          "z4c3e695df5e903fd",
+          "z95bcef552047d7e7",
+          47
+        ],
+        [
+          "zb529971ee1fd5b33",
+          "z985a4622d26e26af",
+          46
+        ],
+        [
+          "z45a3476fae1eb3c9",
+          "z62ddced2a64b798e",
+          45
+        ],
+        [
+          "z40928e5a4555926c",
+          "z4d7a882d628a3ef5",
+          44
         ],
         [
           "z675edb4abe554f17",
           "z3f5f574e4341896c",
+          43
+        ],
+        [
+          "z4c3e695df5e903fd",
+          "zb529971ee1fd5b33",
+          42
+        ],
+        [
+          "za352b8f5a1736f05",
+          "z4c3e695df5e903fd",
+          41
+        ],
+        [
+          "z675edb4abe554f17",
+          "z3f5e945d6ca55d49",
+          40
+        ],
+        [
+          "z3700419432d36f59",
+          "z2025dc5d80d41568",
+          39
+        ],
+        [
+          "ze1bf6ed56799b549",
+          "z3700419432d36f59",
+          38
+        ],
+        [
+          "z675edb4abe554f17",
+          "z76d88b7d2f5e1742",
+          37
+        ],
+        [
+          "z309058a8d8eae3b0",
+          "za352b8f5a1736f05",
+          36
+        ],
+        [
+          "z4e05f5d4d6d6deba",
+          "ze1bf6ed56799b549",
+          35
+        ],
+        [
+          "z197a820e8e0b3d6b",
+          "z45a3476fae1eb3c9",
+          34
+        ],
+        [
+          "z3700419432d36f59",
+          "z62ddced2a64b798e",
+          33
+        ],
+        [
+          "ze1bf6ed56799b549",
+          "z197a820e8e0b3d6b",
           32
         ],
         [
-          "z439b3365ee5a41ca",
-          "z0493dba8ab3268de",
-          31
-        ],
-        [
-          "z197a820e8e0b3d6b",
           "z3700419432d36f59",
-          30
-        ],
-        [
-          "z62ddced2a64b798e",
           "ze1bf6ed56799b549",
-          29
-        ],
-        [
-          "z197a820e8e0b3d6b",
-          "z62ddced2a64b798e",
-          28
-        ],
-        [
-          "zb52d49f36c2d58f9",
-          "z197a820e8e0b3d6b",
-          27
-        ],
-        [
-          "ze1bf6ed56799b549",
-          "z439b3365ee5a41ca",
-          26
+          31
         ]
       ],
       "stopped_by": "gain",
-      "units": 166
+      "units": 141
     },
     {
       "family": "reduce",
       "steps": [
         [
-          "z15dabc3325156f48",
           "z6952d65188e7fea1",
+          "zbca862a552bdfef3",
           31
         ],
         [
-          "z2ac68a011a1328c5",
+          "z136e136400afa8d5",
           "zb65965ba574ae777",
           30
         ],
@@ -731,13 +581,13 @@ expression: digest
           29
         ],
         [
-          "z15dabc3325156f48",
+          "z6952d65188e7fea1",
           "z6a359b89b93f496a",
           28
         ],
         [
           "z673c1102ec66b226",
-          "z2ac68a011a1328c5",
+          "z136e136400afa8d5",
           27
         ],
         [
@@ -746,7 +596,7 @@ expression: digest
           26
         ],
         [
-          "z15dabc3325156f48",
+          "z6952d65188e7fea1",
           "z673c1102ec66b226",
           25
         ],
@@ -757,7 +607,7 @@ expression: digest
         ],
         [
           "zea0f6025f68fc166",
-          "z15dabc3325156f48",
+          "z6952d65188e7fea1",
           23
         ],
         [
@@ -791,18 +641,18 @@ expression: digest
           17
         ],
         [
-          "z39c63809a109ae20",
-          "z45a4f1d8501ef8aa",
+          "z1a4eb80587b7e209",
+          "z250c09ff154824eb",
           16
         ],
         [
-          "z67d8f5d7db1e0f70",
+          "z5071dc0bc13be094",
           "zdc676f557c55a007",
           15
         ],
         [
-          "z39c63809a109ae20",
-          "z67d8f5d7db1e0f70",
+          "z1a4eb80587b7e209",
+          "z5071dc0bc13be094",
           14
         ],
         [
@@ -843,13 +693,13 @@ expression: digest
       "family": "contraction",
       "steps": [
         [
-          "zcd5b22ed0e129469",
-          "ze88b07cc8ff2ada1",
+          "z1701bc8f11b71b8b",
+          "z92e540675089dad5",
           8
         ],
         [
-          "zfb8a78dfed3ce0a0",
-          "zcd5b22ed0e129469",
+          "za253164907d2d7b5",
+          "z1701bc8f11b71b8b",
           7
         ],
         [
@@ -858,7 +708,7 @@ expression: digest
           6
         ],
         [
-          "zfb8a78dfed3ce0a0",
+          "za253164907d2d7b5",
           "z675223debe3ddfd6",
           5
         ],
@@ -885,13 +735,13 @@ expression: digest
           50
         ],
         [
-          "z11a50280f205f2a7/epilogue",
-          "z3d7f058408e90c1f/epilogue",
+          "z9cd24c8519938e53/epilogue",
+          "za7d03dd9ac2a5481/epilogue",
           49
         ],
         [
           "z100f1dab3f92cda9/epilogue",
-          "z11a50280f205f2a7/epilogue",
+          "z9cd24c8519938e53/epilogue",
           48
         ],
         [
@@ -901,7 +751,7 @@ expression: digest
         ],
         [
           "z1cbd4a79272ba109/epilogue",
-          "z84c55e7c5605a9a2/epilogue",
+          "z5d8558fe668d47a3/epilogue",
           46
         ],
         [
@@ -910,43 +760,43 @@ expression: digest
           45
         ],
         [
-          "zf82570a4a82cb44f/epilogue",
-          "z34c6d7dd1813967b/epilogue",
+          "z8fdf707fae7837f7/epilogue",
+          "z1cbd4a79272ba109/epilogue",
           44
         ],
         [
           "z0a8e23d8a0216f94/epilogue",
-          "zf82570a4a82cb44f/epilogue",
+          "z34c6d7dd1813967b/epilogue",
           43
         ],
         [
-          "z3f1107117b42779d/epilogue",
+          "z13da14dde721a4e0/epilogue",
           "z0a8e23d8a0216f94/epilogue",
           42
         ],
         [
-          "zfab55eee260f008a/epilogue",
-          "z1cbd4a79272ba109/epilogue",
+          "zf7142ffabe088e56/epilogue",
+          "z8fdf707fae7837f7/epilogue",
           41
         ],
         [
-          "z3f1107117b42779d/prologue0",
-          "za03a087f511b4f1d/prologue0",
+          "z13da14dde721a4e0/prologue0",
+          "ze57b62b0add8f30e/prologue0",
           40
         ],
         [
-          "z11a50280f205f2a7/prologue0",
-          "z3d7f058408e90c1f/prologue0",
+          "z9cd24c8519938e53/prologue0",
+          "za7d03dd9ac2a5481/prologue0",
           39
         ],
         [
-          "zb883870404cf3ff5/prologue1",
-          "zcb6672554ac07871/prologue0",
+          "z8fd15f52bf810916/prologue1",
+          "ze7331f50a029472f/prologue0",
           38
         ],
         [
-          "z84c55e7c5605a9a2/prologue0",
-          "zfab55eee260f008a/prologue0",
+          "z5d8558fe668d47a3/prologue0",
+          "zf7142ffabe088e56/prologue0",
           37
         ],
         [
@@ -960,33 +810,33 @@ expression: digest
           35
         ],
         [
-          "za03a087f511b4f1d/epilogue",
-          "zcb6672554ac07871/epilogue",
+          "ze57b62b0add8f30e/epilogue",
+          "ze7331f50a029472f/epilogue",
           34
         ],
         [
           "z53132c2a683cb1d0/epilogue",
-          "zf5420b732a717e51/epilogue",
+          "zcb2ff15530159310/epilogue",
           33
         ],
         [
-          "z11a50280f205f2a7/prologue0",
-          "zb883870404cf3ff5/prologue1",
+          "ze57b62b0add8f30e/prologue0",
+          "z13da14dde721a4e0/prologue0",
           32
         ],
         [
-          "za03a087f511b4f1d/prologue0",
-          "z11a50280f205f2a7/prologue0",
+          "z8fd15f52bf810916/prologue1",
+          "ze57b62b0add8f30e/prologue0",
           31
         ],
         [
-          "z3f1107117b42779d/prologue0",
-          "za03a087f511b4f1d/prologue0",
+          "z9cd24c8519938e53/prologue0",
+          "z8fd15f52bf810916/prologue1",
           30
         ],
         [
-          "zf82570a4a82cb44f/prologue0",
-          "z53132c2a683cb1d0/epilogue",
+          "z8fdf707fae7837f7/prologue0",
+          "z5d8558fe668d47a3/prologue0",
           29
         ],
         [
@@ -1006,7 +856,7 @@ expression: digest
         ],
         [
           "z56959defbc7254a9/prologue0",
-          "zfab55eee260f008a/epilogue",
+          "zf7142ffabe088e56/epilogue",
           25
         ],
         [
@@ -1032,9 +882,9 @@ expression: digest
   "summary": {
     "array_proofs": 42,
     "arrays": 18,
-    "classes": 228,
-    "configs": 259,
-    "covered": 228,
+    "classes": 204,
+    "configs": 234,
+    "covered": 204,
     "families": {
       "contraction": [
         9,
@@ -1042,9 +892,9 @@ expression: digest
         5
       ],
       "map": [
-        166,
-        26,
-        140
+        141,
+        31,
+        110
       ],
       "reduce": [
         32,
@@ -1057,7 +907,7 @@ expression: digest
         30
       ]
     },
-    "fus": 60,
-    "proofs": 259
+    "fus": 65,
+    "proofs": 234
   }
 }

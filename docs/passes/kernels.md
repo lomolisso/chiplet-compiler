@@ -3,7 +3,9 @@
 1. **Purpose.** Cuts every normalized component into *kernels*: convex units with at most one core (a
    contraction, a reduction or a scatter-reduce) and the element-wise ops fused around it, or *map
    kernels* of element-wise ops alone. Every other op is a boundary (layout, data movement, size
-   computation, constants, composite calls, the interface). Kernels are the unit of `kernel_classes`,
+   computation, constants, composite calls, the interface). Constant computation (design §4.2) is not
+   in the normalized graphs: its values enter as `const_in` interface nodes, so a table computed from
+   `iota` and sizes is a kernel input, never a kernel. Kernels are the unit of `kernel_classes`,
    which groups equal kernels across all models. Each partition comes with a topological order of its
    quotient graph, and each kernel is also written as a graph of its own. Position:
    `normalize → kernels → kernel_classes`.
@@ -72,7 +74,8 @@
       `broadcast_in_dim` or `dynamic_broadcast_in_dim` may be absorbed, every other layout op is a
       boundary; `data_movement` → boundary, except a `scatter` whose terminator yields a value computed
       by an op (an arithmetic update: a scatter-reduce), which is a core; `size`, `control`,
-      `irregular`, `constant`, composite calls and interface nodes → boundaries.
+      `irregular`, `constant`, composite calls and interface nodes (`input`, `output`, `size_in`,
+      `const_in`) → boundaries.
    2. *Ancestors.* One bitset per unit, in unit order: `anc(v) = ∪ (anc(p) ∪ {p})` over predecessors.
       A set S stays convex when a set C is added iff no unit x outside S ∪ C is in
       `anc(S ∪ C)` and has an ancestor in `S ∪ C`; the test walks the bits of `anc(S ∪ C) \ (S ∪ C)`.

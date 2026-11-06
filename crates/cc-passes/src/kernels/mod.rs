@@ -39,7 +39,7 @@ impl Pass for Kernels {
     }
 
     fn version(&self) -> u32 {
-        1
+        2
     }
 
     fn requires(&self) -> &[ArtifactKind] {
