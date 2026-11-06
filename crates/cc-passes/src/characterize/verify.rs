@@ -46,25 +46,54 @@ pub fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
     // RTL copies equal the sources.
     let mut rtl_bad = Vec::new();
     for p in &cat {
-        if let Some(catalog::Source::Dslx(t) | catalog::Source::Verilog(t)) = &p.source {
-            let ext = if matches!(p.source, Some(catalog::Source::Dslx(_))) {
-                "x"
-            } else {
-                "v"
-            };
+        let Some(src) = &p.source else { continue };
+        // The source as written (a generated one has none to compare), then the RTL synthesis reads.
+        let written = match src {
+            catalog::Source::Dslx(t) => Some(("x", t)),
+            catalog::Source::Verilog(t) => Some(("v", t)),
+            catalog::Source::Vhdl(t) => Some(("vhdl", t)),
+            catalog::Source::Generated(_) => None,
+        };
+        if let Some((ext, t)) = written {
             let f = out.dir().join(format!("rtl/{}.{ext}", p.id));
             if std::fs::read_to_string(&f).ok().as_deref() != Some(t.as_str()) {
                 rtl_bad.push(p.id.clone());
             }
-            if !out.dir().join(format!("rtl/{}.v", p.id)).is_file() {
-                rtl_bad.push(format!("{} (no Verilog)", p.id));
-            }
+        }
+        let rtl = out.dir().join(format!("rtl/{}", src.rtl_file(&p.id)));
+        if std::fs::metadata(&rtl).map(|m| m.len() == 0).unwrap_or(true) {
+            rtl_bad.push(format!("{} (no RTL)", p.id));
         }
     }
     rep.push(note_list(
         Check::new("rtl", rtl_bad.is_empty()).count("mismatched", rtl_bad.len() as u64),
         &rtl_bad,
     ));
+
+    // The float routes regenerate from the catalog, the providers and the budgets; gaps are listed.
+    match cfg.providers_of(&cfg.tool) {
+        Ok(providers) => {
+            let want = crate::ip::routes::routes(&cat, &cfg.tool, &providers, ctx.numerics());
+            let have: Option<crate::ip::routes::Routes> = out.read_json("routes.json").ok();
+            let same = have.as_ref() == Some(&want);
+            let mut c = Check::new("routes", same)
+                .count("float_ops", want.routes.len() as u64)
+                .count("gaps", want.gaps.len() as u64)
+                .path("out/library/routes.json")
+                .note(if same {
+                    "regenerated routes equal routes.json"
+                } else {
+                    "routes.json differs from the regenerated routes"
+                });
+            for g in want.gaps.iter().take(40) {
+                c = c.note(format!("gap: {g}"));
+            }
+            rep.push(c);
+        }
+        Err(e) => {
+            rep.push(Check::new("routes", false).note(e));
+        }
+    }
 
     let kits = match flow::kits(ctx, &cfg) {
         Ok(k) => k,

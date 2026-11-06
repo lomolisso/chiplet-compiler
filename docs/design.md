@@ -140,6 +140,7 @@ Each artifact kind has a versioned schema (a Rust type with `serde`, plus a JSON
 | `[models]` | `keys` (`"all"` or a list), `config` (`full` / `reduced`) |
 | `[testing]` | `deep_models`, `tiny_dim` (the size used for tiny instantiations) |
 | `[tools.<tool>]` | docker image and caps, tool binaries, versions |
+| `[numerics]` | the error budget of every float operator per format, in ulps (section 6.4) |
 | `[passes.<pass>]` | pass options; `[passes.<pass>.resources]` holds `threads`, `memory_gb`, `timeout_min` |
 
 ### 3.6 Tool runners
@@ -166,15 +167,15 @@ Every external resource family has one Rust trait (`cc_core::adapters`), impleme
 |---|---|---|---|
 | `SynthFlow` | Design Compiler (`dc`); Yosys (`yosys`) | `[passes.characterize] tool` | synthesize a module, parse area, delay and power; optional equivalence check (Formality; Yosys' equivalence flow) |
 | `PnrFlow` | Innovus; OpenROAD (later versions; declared, none registered) | | place and route |
-| `IpProvider` *(planned)* | Synopsys DesignWare (DC flow); Berkeley HardFloat, FloPoCo and other open cores (open flow) | | for an op, format and mode: the instantiation template, the contract (accuracy, special values, subnormal mode), a delay hint, the license, the flows that accept it, a NumPy model |
+| `IpProvider` | Synopsys DesignWare (DC flow); Berkeley HardFloat (both flows), FloPoCo and XLS's float library (open flow) | `[passes.characterize] providers` (per flow, in order) | for a core operation and operand widths: the instance (module, parameters, ports), the contract (accuracy, special values, subnormal mode), how its RTL is obtained (a vendor library the flow links, or a generator run in the image), a delay hint, the license, the flows that accept it, a bit-level model |
 | `SmtSolver` | Bitwuzla; Z3 | `[tools.smt] solver` (the lemmas: the solver that declares them, Z3) | prove and re-check queries |
 | `CliqueSolver`, `MisSolver` | exact ILP, Östergård, greedy; exact ILP, branch and bound, greedy | `[passes.merge.clique] algorithm`, `[passes.mine.mis] algorithm` | NP-hard selections of `merge` and `mine` |
 | `Miner` | GraMi | `[passes.mine] miner` | frequent subgraph mining |
 | `HlsFrontend` | Allo with XLS (a stub until `allo_emit` and `xls` exist) | `[passes.allo_emit] frontend` | unit description to RTL |
 
-- **Flows.** Two: the industry flow (Design Compiler for synthesis; Innovus for place and route in later versions) and the open flow (Yosys; OpenROAD later). A flow uses only IP cores it can synthesize *(planned)*; prices and caches are per flow and cell library.
+- **Flows.** Two: the industry flow (Design Compiler for synthesis; Innovus for place and route in later versions) and the open flow (Yosys; OpenROAD later). A flow uses only IP cores it can synthesize: each provider declares its flows, and DesignWare's synthetic library is linked only into the Design Compiler jobs that instantiate it; prices and caches are per flow and cell library.
 - **PDKs are data.** One manifest per cell library, `pdks/<kit>.toml`: its Liberty files (a pattern, with cell groups merged into one library), LEF, VT, corner, driving cell, default clock and XLS delay model, relative to a root under `paths.pdk_root`. Code names no library (docs/tools/pdks.md).
-- A configuration that names an implementation no registry has is reported before anything runs, with the available ones; a configuration whose choices do not fit together (an IP its flow cannot read, an op no provider covers) is reported likewise *(planned, with `IpProvider`)*.
+- A configuration that names an implementation no registry has is reported before anything runs, with the available ones; a provider listed for a flow it does not serve (an IP the flow cannot read) is an error likewise. A float op of the catalog that no provider of the flow covers, by a core or a composition, is a gap: `characterize` lists it in `routes.json` and its view and goes on.
 
 ## 4. The pass pipeline
 
@@ -348,8 +349,11 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
   - Generate each primitive once (DSLX → XLS → Verilog, or a small Verilog template). Float RTL comes
     from XLS's `apfloat` (provisional) until the third-party float IP cores of section 4.12 are
     integrated *(planned)*: then a float primitive is a wrapper module around the flow's IP core(s) and
-    glue, and an op no provider covers is reported as a gap. Float `remainder` has no primitive
-    *(planned)*: its only use is constant computation.
+    glue. Every float op is already mapped to the flow's cores (`routes.json`, section 4.12), and an op no
+    provider covers is reported as a gap. Float `remainder` has no primitive *(planned)*: its only use is
+    constant computation. Besides DSLX and Verilog, a source may be VHDL or RTL generated in the image's
+    RTL step (HardFloat's generator, FloPoCo, an XLS DSLX library function); a design reads its
+    dependencies' RTL transitively.
   - Synthesize through the configured `SynthFlow`: DC (Nangate45 and a merged ASAP7 `.db`, both built by
     `lc_shell` in `chipc doctor` from the kits' manifests) or Yosys with ABC on the same Liberty files, at
     two timing points: the clock target (the area) and a tight constraint (the minimum delay).
@@ -400,11 +404,19 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
 - **Purpose.** Every float operator of a unit is an instance of a third-party floating-point IP core
   (a vendor library such as Synopsys DesignWare, or an open-source core), chosen per format and EDA flow
   through the flow's `IpProvider` (section 3.7).
-- **Providers.** The DC flow uses DesignWare (`DW_fp_*`: arithmetic, divide, square root, reciprocal and
-  its square root, exponentials, logarithms, sine and cosine, conversions, compare). The open flow uses
-  Berkeley HardFloat (arithmetic, compare, conversions) and FloPoCo (exponential, logarithm, power);
-  float sine and cosine, which have no open core, come from XLS's `fp_sincos_32` under the contract of
-  section 6.4.
+- **Providers.** The DC flow uses DesignWare (`DW_fp_*`: arithmetic, divide, square root, reciprocal
+  square root, exponentials, logarithms, sine and cosine, conversions to and from integers, compare), every
+  instance IEEE compliant (`ieee_compliance = 1`) inside the flushing glue of section 6.4, and HardFloat for
+  the narrowing float conversions DesignWare lacks. The open flow uses Berkeley HardFloat (arithmetic,
+  divide and square root, compare, conversions; from its Chisel sources through our generator in the
+  image), FloPoCo (exponential, logarithm, power) and, for f32 sine and cosine, which have no other open
+  core, XLS's `fp_sincos_32` under the contract of section 6.4. A provider answers for a core operation
+  and operand widths within its documented range; the first provider of the flow's list that answers is
+  used (docs/framework/adapters.md).
+- **Routes.** Each float op of the catalog maps to one core at its format or at a wider one (exact
+  widening, one rounding back: for an exact operator only where that double rounding is innocuous, FP8
+  through f16 and f16 or bf16 through f32; for an approximate one when the bound stays within the
+  budget), to a composition of cores, to glue alone, or to a gap.
 - **Trust.** The cores are taken as verified by their makers. Proofs treat each instance as an opaque
   function with the core's documented contract; verification covers what is built around the instances.
 - **Glue.** Small bit-level logic around cores is ours and proven bit-exact by SMT: sign, absolute value
@@ -415,7 +427,8 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
   section 6.4: power as `exp2(y · log2 x)` with a wider inner logarithm, tanh from the exponential with a
   separate small-argument branch, log1p by Goldberg's formula. FP8 operators run on f16 or f32 cores
   through the wrapper.
-- **Status.** *(planned)* Until the cores are integrated, `characterize` prices floats with XLS
+- **Status.** Providers, contracts, sources and routes are in place; the primitives built from them,
+  the glue proofs and the compositions are *(planned)*. Until then, `characterize` prices floats with XLS
   `apfloat` (provisional, section 4.9).
 
 ### 4.13 `allo_emit`
@@ -519,7 +532,7 @@ Float operators are third-party IP cores (section 4.12) in FP8 E4M3FN, bf16, fp1
 | Exact operators | Arithmetic, divide, square root, compare, min/max, conversions, rounding to integral: the IEEE operation under the subnormal rule, as the core computes it (correctly rounded). |
 | Accumulation | Products and sums by f32 IP cores (multiply-add or dot-product cores) in a fixed order, recorded in the unit's certificate; an FP8 × FP8 product is exact in f32 *(planned: cores)*. |
 | Reductions | The order the hardware uses (ω: `seq` or a tree), recorded in the datapath certificate when it binds, plus an error bound against any other order in `datapaths`' `verify.json` (docs/framework/smt.md). |
-| Approximate operators | exponentials, logarithms, tanh, reciprocal square root, sine, cosine, power: an error budget per operator and format in `config.toml`, loose by default *(planned)*. A single core is accepted at its documented guarantee; a composition (section 4.12) is sized to the budget. Full input range by default. In the open flow, f32 sine and cosine come from XLS's `fp_sincos_32` under an absolute-error contract, \|error\| ≤ 2^-22; bf16, f16 and FP8 sine and cosine computed through it (widened exactly, one rounding back) are within 0.51 ulp, measured over every input of those formats by a bit-level emulation of the core (the absolute bound alone would not give it near zero). |
+| Approximate operators | exponentials, logarithms, tanh, reciprocal square root, sine, cosine, power: an error budget per operator and format in ulps (`[numerics]`), by default the accelerator reference, NVIDIA's CUDA math library table, for f32 (exponential 2, log 1, log1p 1, sine and cosine 2, tanh 2, rsqrt 2, power 4, ...) and 1 ulp for f16, bf16 and FP8 (CUDA computes them through f32 and rounds once). A single core is accepted at its documented guarantee; a composition (section 4.12) is sized to the budget, which also decides when a narrow format runs through a wider core. Full input range by default. In the open flow, f32 sine and cosine come from XLS's `fp_sincos_32` under an absolute-error contract, \|error\| ≤ 2^-22; bf16, f16 and FP8 sine and cosine computed through it (widened exactly, one rounding back) are within 0.51 ulp, measured over every input of those formats by a bit-level emulation of the core (the absolute bound alone would not give it near zero). |
 | Special values | One canonical NaN; infinities and the special cases of C11 Annex F; an E4M3FN arithmetic result beyond 448 is NaN. |
 | FP8 conversions | Round to nearest even, saturating to ±max with NaN kept (the OCP OFP8 saturating mode, Rev 1.1); the ports clip to ±448 before converting, so the two agree on model data. |
 
@@ -571,7 +584,7 @@ models/        the 25 quantized JAX ports (input)
 verify/        pre-framework Python checks of the ports (dtype audit, census, unit tests)
 docker/        Dockerfile, build and self-test scripts of the toolchain image
 scripts/       on-build-host, build-area (build host helpers)
-third_party/   git submodules: grami, allo, xls (shallow)
+third_party/   git submodules: grami, allo, xls, hardfloat (shallow)
 tests/         smoke/, deep/, fixtures/
 docs/          design.md, development.md, testing.md, framework/, passes/, tools/, schemas/, toolchain-image.md
 build/         (ignored) build/.<pass>/ artifacts
@@ -688,7 +701,9 @@ build/         (ignored) build/.<pass>/ artifacts
 | Conversions into FP8 saturate to ±max, NaN kept | Non-saturating conversion (overflow to NaN or infinity, ml_dtypes' default) | OCP OFP8's saturating mode; the ports clip to ±448 before converting, so the clip and the convert agree on model data |
 | Open-flow f32 sine and cosine: XLS `fp_sincos_32` under \|error\| ≤ 2^-22 *(planned)* | A ulp-bounded open soft macro; reporting a gap | No open core with a ulp guarantee exists; narrower formats computed through it stay within 0.51 ulp on every input (exhaustive emulation) |
 | Accumulation by f32 IP cores in a recorded order *(planned)* | An exact integer FP8 accumulator; block-fused alignment as in GPU matrix units | Cores only; a recorded order keeps the proof bit-exact |
-| Approximate operators: a configurable error budget, loose by default; a core at its documented guarantee *(planned)* | At most 1 ulp everywhere | Precision beyond what the workload keeps costs area; a core's guarantee does not depend on the target |
+| Approximate operators: a configurable error budget, by default NVIDIA's CUDA table (f32) and 1 ulp (f16, bf16, FP8); a core at its documented guarantee | At most 1 ulp everywhere | Precision beyond what the workload keeps costs area; a core's guarantee does not depend on the target |
 | E4M3FN through a bit-level wrapper around f16 or f32 cores *(planned)* | A native FP8 core | No core implements E4M3FN's encoding without infinities |
+| DesignWare cores IEEE compliant (`ieee_compliance = 1`) inside the same flushing glue as HardFloat | DesignWare's own `ieee_compliance = 0` | Mode 0 maps NaN to infinity and does not document where it flushes; one glue serves both flows |
+| HardFloat from its Chisel sources (pinned submodule) through our generator and firtool in the image | Hauser's Verilog Release 1 | The maintained source; any width from one generator, in plain Verilog every flow reads |
 | External modules through an `hls_extern_verilog` attribute in `xlscc` (pinned patch) | Annotating the IR after `xlscc`; Allo's HLS backends | XLS IR already instantiates foreign functions; the attribute makes it a front-end feature, checked where the C++ is parsed |
 | Array units delivered as their PE plus a description; grids in later versions *(planned)* | A fixed-size array per unit | The PE does not depend on the grid size, which is chosen together with the memory system |

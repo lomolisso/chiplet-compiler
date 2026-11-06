@@ -141,4 +141,27 @@ yosys -q -m ghdl -p 'ghdl --std=08 -fsynopsys fpexp.vhdl -e; hierarchy -check; t
 grep -q 'cells' fpexp.stat
 pass flopoco_ghdl
 
+step "HardFloat generator -> Verilog -> yosys, iverilog"
+hardfloat-gen add --exp 5 --sig 10 --module hf_add_f16 --out hf_add_f16.v
+yosys -q -p 'read_verilog hf_add_f16.v; hierarchy -check -top hf_add_f16; synth -top hf_add_f16 -flatten; tee -q -o hf_add_f16.stat stat'
+grep -q 'cells' hf_add_f16.stat
+cat > hf_add_f16_tb.v <<'EOF3'
+module tb;
+  reg [15:0] a, b;
+  wire [15:0] z;
+  wire [4:0] flags;
+  hf_add_f16 dut(.a(a), .b(b), .rnd(3'd0), .z(z), .flags(flags));
+  initial begin
+    a = 16'h3c00; b = 16'h4000; #1;  // 1 + 2 = 3
+    if (z !== 16'h4200) begin $display("FAIL 1+2 = %h", z); $finish; end
+    a = 16'h0001; b = 16'h0001; #1;  // two smallest subnormals: exact
+    if (z !== 16'h0002) begin $display("FAIL subnormal sum = %h", z); $finish; end
+    $display("PASS");
+  end
+endmodule
+EOF3
+iverilog -o hf_add_f16.vvp hf_add_f16_tb.v hf_add_f16.v
+vvp -n hf_add_f16.vvp | grep -q '^PASS'
+pass hardfloat
+
 step "ok"

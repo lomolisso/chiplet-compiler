@@ -22,6 +22,7 @@ caller's problem type.
 | `Miner` | `directed`, `vertex_bound`, `mni_support` | `grami` (`mine::algo::grami::MINERS`) | `[passes.mine] miner` |
 | `HlsFrontend` | `implemented`, `external_modules`, `targets` | `allo` (a stub: `implemented = false`) | `[passes.allo_emit] frontend` (planned pass) |
 | `PnrFlow` | `licensed`, `synth_flow` | none yet (Innovus, OpenROAD in later versions) | none |
+| `IpProvider` | `flows`, `licence`, `ops` (core operation families) | `designware`, `hardfloat`, `flopoco`, `xls_math` (`cc_passes::ip::PROVIDERS`) | `[passes.characterize] providers` (per flow, in order) |
 
 - `Registry<T>` holds a family's implementations in a fixed order; `by_name` returns the one a config
   names, or `CoreError::UnknownAdapter` with the available names (`synthesis flow `genus` is not
@@ -47,6 +48,7 @@ caller's problem type.
   cached; returns the patterns in the same format, or `Timeout`.
 - **`HlsFrontend`, `PnrFlow`.** Declared for the passes that will use them; the Allo stub answers with an
   error that says it is not implemented yet.
+- **`IpProvider`** (design §4.12; below).
 
 ## Conformance suites
 
@@ -61,6 +63,57 @@ answer class.
 | `MisSolver` | unit `mine::algo::mis::tests::every_registered_solver_conforms` | independent sets; every exact one of maximum size, claimed optimal, a heuristic no larger, its bound no smaller |
 | `Miner` | deep `adapters::miners_conform` | GraMi's two-path fixture at support 2: exactly the three frequent patterns; a second call reuses the run |
 | `HlsFrontend`, `PnrFlow` | smoke `adapters::declared_families_refuse_what_they_do_not_implement` | names unique, capabilities declared; the stub refuses to generate; no place-and-route flow is registered |
+| `IpProvider` | smoke `adapters::ip_providers_conform`; deep `characterize::ip_cores_generate_and_synthesize_in_their_flows` | every probed op at every probed width (the catalog's formats, wide inner formats, the edges of each documented range): an offer exactly within the documented range, from a declared op family; the requested widths; each operand and result connected once, nothing but operands, results, constants and an iterative core's handshake; a source the provider's flows can use; the contract of the documentation (exact ops correctly rounded). Deep: the generated cores (HardFloat, FloPoCo, XLS) come out of the RTL step, and wrappers around them and around DesignWare synthesize in their flows with every cheap check green |
+
+## Float IP cores (`IpProvider`)
+
+`cc_core::adapters::ip` and `contract`; implementations in `cc_passes::ip` (data: tables of components,
+parameters and contracts from the vendors' documentation, listed in each module).
+
+- **Lookup.** `core(op, exp_width, sig_width) -> Option<CoreOffer>`: by core operation and operand widths
+  (stored significand bits, without the hidden bit), never by format name. `None` outside the provider's
+  documented range. Core operations (`CoreOp`, written as strings):
+
+  | Op | Operands → results |
+  |---|---|
+  | `add`, `sub`, `mul`, `div`, `pow` | `a0`, `a1` → `z` |
+  | `sqrt`, `rsqrt`, `exp`, `exp2`, `ln`, `log2`, `sin`, `cos` | `a0` → `z` |
+  | `compare` | `a0`, `a1` → `lt`, `eq`, `gt` (DesignWare also `unordered`); quiet |
+  | `to_int.<rne\|rtz\|floor\|ceil>.<s\|u><w>` | `a0` → `z`, a `w`-bit integer, saturating |
+  | `from_int.<s\|u><w>` | `a0` (integer) → `z`, nearest even; the widths are the result's |
+  | `convert.e<E>m<M>` | `a0` → `z` in the (E, M) format, nearest even |
+  | `from_ieee`, `to_ieee` | between IEEE bits and a core's own encoding (FloPoCo) |
+
+- **Offer.** `CoreOffer`: the `CoreInstance` (module, parameters as Verilog literals, port → `a0`/`a1`, a
+  result, a constant such as `3'b000`, or empty for an open output; an iterative core adds `clk`, `rst`,
+  `start`, `done`), the `Contract` (accuracy: correctly rounded, faithful, n ulps, an absolute bound or
+  unbounded; IEEE special values; subnormals IEEE or flushed), a delay hint (none yet: `characterize`
+  measures), the bit-level Python model (`ieee.<op>`: the IEEE operation correctly rounded at the instance's
+  widths under its subnormal mode; `reference.<op>`: the real function correctly rounded, within every
+  contract here; `flopoco.<op>` for FloPoCo's encoding changes), the source (`Library { name }`: a vendor
+  library the flow links; `Generated { generator }`: a generator run in the RTL step), the encoding (IEEE or
+  FloPoCo's) and the timing (combinational, or iterative with a cycle bound). A generated core's module is
+  `<provider>_e<E>m<M>_<op>`; the primitive that holds it carries that id.
+  `cc_passes::ip::verilog_instance` writes the instantiation.
+- **Implementations.**
+
+  | Provider | Flows | Ops | Contract | Source |
+  |---|---|---|---|---|
+  | `designware` | dc | add, sub, mul, div, sqrt, rsqrt (correctly rounded); exp, exp2 (2 ulps); ln (1 ulp), log2 (2 ulps), with `extra_prec = sig_width`, so `sig_width` ≤ 29; sin, cos (radians, unbounded relative error); compare; to_int (signed), from_int | IEEE subnormals (`ieee_compliance = 1`) | DesignWare (`dw_foundation.sldb`) |
+  | `hardfloat` | dc, yosys | add, sub, mul, div and sqrt (iterative, at most p + 2 cycles), compare, to_int, from_int, convert; correctly rounded | IEEE subnormals | `hardfloat-gen` (Verilog) |
+  | `flopoco` | yosys | exp, ln, pow (faithful), from_ieee, to_ieee | subnormals flushed | `flopoco` (VHDL) |
+  | `xls_math` | yosys | f32 sin, cos: \|error\| ≤ 2^-22 | subnormals flushed | `fp_sin_32`, `fp_cos_32` of `fp_sincos_32.x` |
+
+  Ranges: DesignWare `exp_width` 3-31, `sig_width` 2-253 (exp 57, exp2 58, ln and log2 29, sin and cos 32;
+  integer sizes 3-512); HardFloat w ≥ 3, p = sig_width + 1 ≥ 3, p ≤ 2^(w-2) + 3; FloPoCo the widths its unit
+  tests run (`wE` 5-11, `wF` 5-52; exp and pow also `wF + 4 ≤ 2^(wE-1) - 1`); XLS f32 only. Round to integral
+  is not a core anywhere: `to_int` with the mode and `from_int` with glue (`routes`).
+- **Selection and fit checks.** `[passes.characterize] providers` lists the providers of each flow in order
+  (default `dc = ["designware", "hardfloat"]`, `yosys = ["hardfloat", "flopoco", "xls_math"]`); the first
+  that answers is used. A provider listed for a flow it does not serve, or an unknown one, is a configuration
+  error. `cc_passes::ip::routes` maps every float op of the catalog to a core (native, or through a wider
+  format within the `[numerics]` budget), a composition, glue, an exclusion or a gap
+  (docs/passes/characterize.md §4.1).
 
 ## PDK manifests (`cc_core::pdk`)
 

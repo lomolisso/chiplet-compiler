@@ -47,13 +47,29 @@ impl Kit {
     }
 }
 
-/// One design of a job: its top module and its Verilog files (relative to the job's `rtl/`).
+/// One design of a job: its top module and its RTL files (relative to the job's `rtl/`; `.v` Verilog,
+/// `.vhdl` VHDL), dependencies first.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Design {
     pub id: String,
     pub files: Vec<String>,
     /// Has a `clk` port.
     pub clocked: bool,
+    /// Vendor libraries its RTL instantiates cells of (`designware`); only a flow that links them can
+    /// synthesize it.
+    pub libraries: Vec<String>,
+}
+
+impl Design {
+    /// Its Verilog files.
+    pub fn verilog(&self) -> impl Iterator<Item = &String> {
+        self.files.iter().filter(|f| !f.ends_with(".vhdl"))
+    }
+
+    /// Its VHDL files.
+    pub fn vhdl(&self) -> impl Iterator<Item = &String> {
+        self.files.iter().filter(|f| f.ends_with(".vhdl"))
+    }
 }
 
 /// Area, delay and leakage of one design as the synthesis reports state them.

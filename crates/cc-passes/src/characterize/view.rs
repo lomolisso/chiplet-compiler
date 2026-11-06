@@ -4,6 +4,8 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
+use crate::ip::routes::{RouteKind, Routes};
+
 use super::json::{Coverage, Library, Status, Summary};
 use super::sanity;
 
@@ -14,7 +16,7 @@ fn f(x: Option<f64>, digits: usize) -> String {
     x.map_or("-".into(), |v| format!("{v:.digits$}"))
 }
 
-pub fn view(lib: &Library, cov: &Coverage, s: &Summary) -> String {
+pub fn view(lib: &Library, cov: &Coverage, s: &Summary, routes: &Routes) -> String {
     let mut o = String::new();
     let _ = writeln!(o, "# Primitive library\n");
     let lec = match &lib.lec_tool {
@@ -157,6 +159,20 @@ pub fn view(lib: &Library, cov: &Coverage, s: &Summary) -> String {
     let _ = writeln!(o, "## Pending ({})\n", pending.len());
     if !pending.is_empty() {
         let _ = writeln!(o, "{}\n", pending.join(", "));
+    }
+    let _ = writeln!(
+        o,
+        "## Float IP routes ({}: {})\n\n{} float ops, {} gaps (`routes.json`).\n",
+        routes.flow,
+        routes.providers.join(", "),
+        routes.routes.len(),
+        routes.gaps.len()
+    );
+    for r in routes.routes.iter().filter(|r| r.kind == RouteKind::Gap) {
+        let _ = writeln!(o, "- gap `{}`: {}", r.key, r.note);
+    }
+    if !routes.gaps.is_empty() {
+        let _ = writeln!(o);
     }
     o
 }

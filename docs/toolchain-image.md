@@ -24,7 +24,7 @@ scripts/on-build-host chipc doctor             # then check it (image.pins, imag
 - **Another host** gets a copy streamed, not rebuilt: `docker save chiplet-compiler/toolchain:<tag> | ssh <host> docker load`. The build-stage cache is not copied, so the next image change on that host rebuilds every stage once (~75 min).
 - **Old tags** are removed by name (`docker rmi chiplet-compiler/toolchain:<old>`) once a new tag is verified; never prune globally.
 
-- **Tag.** The image is `chiplet-compiler/toolchain:<tools.docker.tag>`, currently `0.5.0`: the release in which the image inputs last changed. Bump it (to the upcoming release's version) whenever `docker/`, `[tools.docker.build]`, `[tools.xls]`, `[tools.allo]`, `[tools.grami]` or `third_party/patches/` changes.
+- **Tag.** The image is `chiplet-compiler/toolchain:<tools.docker.tag>`, currently `0.6.0`: the release in which the image inputs last changed. Bump it (to the upcoming release's version) whenever `docker/`, `[tools.docker.build]`, `[tools.xls]`, `[tools.allo]`, `[tools.grami]`, `[tools.hardfloat]` or `third_party/patches/` changes.
 - **Pins.** `build.sh` gets every pin from `chipc doctor --build-args`, so `config.toml` is the only place they are written. It also checks that `third_party/` sits at the pinned commits.
 
 | Pinned | How |
@@ -32,8 +32,9 @@ scripts/on-build-host chipc doctor             # then check it (image.pins, imag
 | base images | `ubuntu:24.04@sha256:…` (final), `ubuntu:22.04@sha256:…` (XLS Bazel stage) |
 | apt packages | every `apt-get` reads one `snapshot.ubuntu.com` date (`apt_snapshot`). `ca-certificates` comes first from the regular archive, because the snapshot service is https-only. `--error-on=any` turns a failed index download into a build failure |
 | PyPI | `UV_EXCLUDE_NEWER=pypi_exclude_newer`: uv resolves as of that date |
-| downloads | uv, bazelisk, the XLS release tarball, z3, bitwuzla: version + sha256 |
-| sources | XLS, Allo and GraMi from the submodules, with `third_party/patches/<name>/*.patch` applied; LLVM fetched at Allo's gitlink inside the build; FloPoCo fetched at `flopoco_tag`, which must resolve to `flopoco_commit`, with `docker/patches/flopoco/*.patch` applied |
+| downloads | uv, bazelisk, the XLS release tarball, z3, bitwuzla, firtool, sbt: version + sha256 |
+| Maven Central | Chisel and Scala for the HardFloat generator, at `chisel_version` and `scala_version`; sbt resolves them (coursier checks each artifact's checksum) |
+| sources | XLS, Allo, GraMi and HardFloat from the submodules, with `third_party/patches/<name>/*.patch` applied; LLVM fetched at Allo's gitlink inside the build; FloPoCo fetched at `flopoco_tag`, which must resolve to `flopoco_commit`, with `docker/patches/flopoco/*.patch` applied |
 
 - **Caps.** `docker build --memory = --memory-swap = tools.docker.build.memory_gb` (64 GB) and `--cpu-quota` = 16 CPUs. These apply to every RUN step and are hard limits: the kernel OOM-kills inside the step's cgroup. Inside the steps:
   - `ninja -j16` with `LLVM_PARALLEL_LINK_JOBS=2`;
@@ -49,9 +50,10 @@ scripts/on-build-host chipc doctor             # then check it (image.pins, imag
 | `solvers` | base | z3 (glibc-2.39 build) and bitwuzla. The "static" bitwuzla binary still needs `libgmp10` and `libmpfr6` |
 | `grami` | base + JDK 17 | GraMi with `third_party/patches/grami/*.patch` applied (Java 17 imports; the `maxNodes` bound in the directed tree); both `*_SUBGRAPHS` trees compiled |
 | `flopoco` | build | FloPoCo 5.1 (CMake, Ninja) against the snapshot's Sollya, GMP, MPFR, MPFI, Boost and LAPACK, without PAGSuite and ScaLP (`docs/third-party.md`), installed in `/opt/flopoco` |
+| `hardfloat` | base + JDK 17 | firtool (CIRCT) and sbt downloads; Berkeley HardFloat's Chisel sources (`third_party/hardfloat`) and our generator (`docker/hardfloat/`: `Generate.scala`, `build.sbt`, the `hardfloat-gen` launcher) compiled against Chisel; the run-time classpath (jars) in `/opt/hardfloat/lib`, firtool in `/opt/firtool`. A smoke generation of an f16 adder ends the stage |
 | `llvm-allo` | build | LLVM `6b09f739` (clang, mlir, openmp; cmake flags from Allo's setup docs), then `third_party/patches/allo/*.patch` and Allo installed editable into `/opt/cc/venv` |
 | `xls-bazel` | 22.04 | `xlscc`, `eval_ir_main` and `check_ir_equivalence_main` from the same XLS commit; `synth_only` + `ac_datatypes` headers. Built as a non-root user, as upstream does. A second step applies `third_party/patches/xls/*.patch`, rebuilds incrementally and runs the patches' Bazel tests, so the unpatched build stays a cached layer |
-| `final` | base | runtime libraries, JRE 17, yosys / iverilog / verilator, GHDL and the ghdl-yosys plugin, FloPoCo's runtime libraries, a compiler (Verilator needs one), the copied stage outputs and XLS's DSLX float libraries. The Allo patches' tests run, then `cc-selftest`, then `cc-probe` writes `versions.json` |
+| `final` | base | runtime libraries, JRE 17, yosys / iverilog / verilator, GHDL and the ghdl-yosys plugin, FloPoCo's runtime libraries, the HardFloat generator and firtool, a compiler (Verilator needs one), the copied stage outputs and XLS's DSLX float libraries. The Allo patches' tests run, then `cc-selftest`, then `cc-probe` writes `versions.json` |
 
 Layout and environment of the final image:
 - `PATH=/opt/cc/bin:/opt/cc/venv/bin:/opt/xls/bin:/opt/solvers/bin:/opt/llvm-project/build/bin:…`
@@ -61,6 +63,16 @@ Layout and environment of the final image:
 - `XLS_DSLX_PATH=/opt/xls/share`: the root for `import third_party.xls_go_math.fp_sincos_32` and the other DSLX
   float libraries (`--dslx_path`), copied from the pinned XLS commit (`docs/third-party.md`).
 - `/opt/flopoco/bin` on `PATH` (`flopoco`); `yosys -m ghdl` loads the GHDL plugin.
+- `/opt/hardfloat/bin` and `/opt/firtool/bin` on `PATH`: `hardfloat-gen <op> --exp E --sig S [--int W --signed 0|1]
+  [--out-exp E --out-sig S] --module NAME --out FILE` writes one Verilog module around a Berkeley HardFloat core
+  with an IEEE interface (ops `add`, `sub`, `mul`, `div`, `sqrt`, `compare`, `to_int`, `from_int`, `convert`;
+  widths as DesignWare counts them, the significand without its hidden bit). HardFloat computes on its recoded
+  format; the module converts operands and result with HardFloat's `recFNFromFN` and `fNFromRecFN`. Chisel
+  elaborates it, firtool lowers it (`-disable-all-randomization -strip-debug-info`,
+  `--lowering-options=disallowLocalVariables,disallowPackedArrays,locationInfoStyle=none`) to Verilog that
+  Yosys, iverilog and Design Compiler read as plain Verilog, and every module but the top is renamed
+  `<top>__<name>`, so cores of several widths can share one design. Java runs in a scratch directory, which
+  takes Chisel's side files; one core takes about a second.
 - `GRAMI_DIRECTED_CP`, `GRAMI_UNDIRECTED_CP`
 - `HOME=/tmp/home` (mode 1777): containers run as the host uid.
 
@@ -89,6 +101,13 @@ FloPoCo about 2 min, Allo with its patches about 2 min, the patched `xlscc` with
 more actions, mostly the test's dependencies), the JAX venv, the final stage with the Allo patches' tests (8 s)
 and `cc-selftest` (10 s on 2 CPUs, 7.7 s of it the three new steps). Peak resident memory of those steps 9.1 GiB (10.1 GiB
 with page cache). Final image 3.72 GB.
+
+Image 0.6.0 (iacoma231, 2026-11-05, same caps, with the stage cache of earlier images on that host): about
+20 min in two invocations of `docker/build.sh` (the first stopped at the generator's first version): the
+`flopoco` stage, which that host had not built, about 8 min; the `hardfloat` stage (sbt resolving Chisel and
+compiling HardFloat and the generator) about 2 min; the patched `xlscc` step again, the final stage and
+`cc-selftest`. Peak resident memory of a step 8.7 GiB (14.4 GiB with page cache). Final image 3.75 GB.
+`hardfloat-gen` takes about 1 s per core (JVM start, elaboration, firtool).
 
 The image was first built across several invocations of `docker/build.sh` on 2026-10-31. Each invocation fixed one step and resumed from the layer cache, so every layer above was built by this command from an empty cache. The time above is the sum of the runs.
 

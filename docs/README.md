@@ -14,7 +14,7 @@
 | [framework/smt.md](framework/smt.md) | `cc-smt`: SMT-LIB scripts and the solver runner |
 | [passes/](passes/) | One document per pass: `export`, `export-frontend` (the Python side), `import`, `components`, `normalize`, `kernels`, `kernel_classes`, `iteration_space`, `datapaths`, `characterize`, `mine`, `merge`, `selftest` |
 | [toolchain-image.md](toolchain-image.md) | The Docker toolchain image: build, pins, cache, measurements |
-| [third-party.md](third-party.md) | The submodules (GraMi, Allo, XLS) and their pins |
+| [third-party.md](third-party.md) | The submodules (GraMi, Allo, XLS, HardFloat) and their pins |
 | [model-verification.md](model-verification.md) | Python checks of the model ports (`verify/`) |
 | [tools/](tools/README.md) | Reference notes on the external tools the passes call |
 | [schemas/](schemas/README.md) | JSON Schemas of every artifact kind |
