@@ -160,19 +160,46 @@ rounding toward zero, an E4M3FN multiply without the overflow case, maximum with
 minimum without the signed-zero order, float to integer without NaN to 0, and the compositions without
 their NaN case.
 
-Measured (deep test, iacoma227, Z3 5.3.3 and Bitwuzla 0.9.1 in image 0.5.0, 2026-11-05): 83 wrappers of
-the standard set over f32, bf16, f16 and E4M3FN plus three E5M2 conversions, every one `unsat`; most
-answer in about a second including a container start; the slowest are bf16 divide (Z3, 35 s), bf16
-multiply (11 s), bf16 sum and difference (6 s) and f32 sum and difference (Bitwuzla, 5 s).
+Measured (deep test, iacoma227, Z3 5.3.3 and Bitwuzla 0.9.1 in image 0.5.0, an empty answer cache,
+2026-11-05): 80 wrappers of the standard set over f32, bf16, f16 and E4M3FN, three conversions into
+E5M2 and 16 compositions (four recipes, four formats), every one `unsat`; the 11 negative controls
+`sat`. Median 0.6 s per query including a container start; the slowest wrappers are bf16 divide (Z3,
+33 s) and multiply (11 s), the slowest compositions E4M3FN power (106 s) and tanh (46 s); 345 s of
+solver time in total, 130 s wall on 8 parallel calls.
 
 **Compositions** are measured, not proven: `python -m cc_float.sampler` models each core at its contract
 (a correctly rounded core rounds the float64 reference; an `e`-ulp core is moved `e - 1/2` ulps to one
 side first, both sides and every combination for two cores) at precision `q` with an unbounded exponent,
-over every value of the 16-bit and 8-bit formats (every pair for power), and over every f32 binade with
+over every value of the 16-bit and 8-bit formats (for power every positive `x` with every non-zero `y`
+whose exact result lies in the format's range: a negative `x` is `|x|` and the sign glue, the rest
+special values), and over every f32 binade with
 seeded random significands plus each recipe's hard cases (pairs for power: log-uniform, `x` near 1 with
 `|y log2 x|` near `tau`, integer `y`). Errors are taken before the flush of a flushing format (the flush
 is glue). At the `k` the formula gives for correctly rounded, faithful and 2-ulp cores, every composition
-is within the default budget; the exact numbers per row are in the sampler's JSON.
+is within the default budget (sampler run of 2026-11-05, iacoma227, 4 minutes on 12 processes):
+
+| op | format | budget | k (CR / faithful / 2 ulp) | max error, ulps (CR / faithful / 2 ulp) | inputs |
+|---|---|---|---|---|---|
+| power | f32 | 4 | 6 / 7 / 7 | 2.111 / 1.871 / 3.221 | stratified, 514,796 |
+| tanh | f32 | 2 | 6 / 7 / 7 | 0.732 / 0.740 / 0.981 | stratified, 139,258 |
+| log_plus_one | f32 | 1 | 3 / 4 / 4 | 0.712 / 0.635 / 0.777 | stratified, 98,189 |
+| rsqrt | f32 | 2 | 0 / 1 / 2 | 0.843 / 1.160 / 1.083 | stratified, 65,532 |
+| power | bf16 | 1 | 9 / 10 / 10 | 0.719 / 0.681 / 0.842 | exhaustive, 1,060,599,911 |
+| tanh | bf16 | 1 | 4 / 4 / 5 | 0.612 / 0.612 / 0.612 | exhaustive, 65,024 |
+| log_plus_one | bf16 | 1 | 3 / 4 / 4 | 0.684 / 0.625 / 0.778 | exhaustive, 48,640 |
+| rsqrt | bf16 | 1 | 2 / 3 / 4 | 0.614 / 0.637 / 0.621 | exhaustive, 32,512 |
+| power | f16 | 1 | 6 / 7 / 7 | 0.735 / 0.696 / 0.863 | exhaustive, 1,089,723,731 |
+| tanh | f16 | 1 | 5 / 5 / 6 | 0.642 / 0.642 / 0.642 | exhaustive, 63,486 |
+| log_plus_one | f16 | 1 | 3 / 4 / 4 | 0.714 / 0.629 / 0.780 | exhaustive, 47,102 |
+| rsqrt | f16 | 1 | 2 / 3 / 4 | 0.704 / 0.644 / 0.632 | exhaustive, 31,743 |
+| power | f8e4m3fn | 1 | 5 / 6 / 7 | 0.655 / 0.637 / 0.672 | exhaustive, 17,005 |
+| tanh | f8e4m3fn | 1 | 3 / 3 / 4 | 0.533 / 0.533 / 0.482 | exhaustive, 252 |
+| log_plus_one | f8e4m3fn | 1 | 3 / 4 / 4 | 0.600 / 0.577 / 0.776 | exhaustive, 181 |
+| rsqrt | f8e4m3fn | 1 | 2 / 3 / 4 | 0.552 / 0.552 / 0.552 | exhaustive, 126 |
+
+Through one f32 core (`k = 24 - p`) exponential, log, log1p, tanh, rsqrt, sine and cosine stay within
+0.5000 ulp (bf16), 0.5002 ulp (f16) and 0.4998 ulp (E4M3FN) for every core class; E4M3FN `+ - * / sqrt`
+through f16 cores are correctly rounded on all 64,516 pairs.
 
 **Sine and cosine** (`python -m cc_float.sincos`): XLS's `fp_sincos_32` IR (`ir_converter_main`,
 `opt_main` from `third_party/xls_go_math/fp_sincos_32.x` in the image) evaluated by `eval_ir_main` on
@@ -184,8 +211,9 @@ results each not correctly rounded; below `2^-4` at most 0.4999 ulp (f16) and 0.
 ## 7. Resource behaviour
 
 Wrappers are a few hundred lines of Verilog. A proof is one Yosys call (all wrappers in one container)
-and one solver call per wrapper, in parallel within the prover's caps; the deep set takes about a minute
-of solver time when nothing is cached. The sampler is numpy on float64 carriers: power over every pair
+and one solver call per wrapper, in parallel within the prover's caps; the deep set takes about six
+minutes of solver time when nothing is cached (two minutes wall on 8 calls), and none once the shared
+cache holds the answers. The sampler is numpy on float64 carriers: power over every pair
 of a 16-bit format is about 2 · 10^9 evaluations per core mode, in parallel processes (`--jobs`); the
 whole run takes a few minutes on 12 processes.
 
