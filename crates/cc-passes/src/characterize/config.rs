@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use cc_core::adapters::{LecOptions, SynthFlow};
+use cc_core::adapters::{IpProvider, LecOptions, SynthFlow};
 use serde::Deserialize;
 
 /// `[passes.characterize]`.
@@ -47,6 +47,9 @@ pub struct CharacterizeConfig {
     pub batch: usize,
     /// Cores per licensed tool session.
     pub cores: u32,
+    /// The float IP providers (`ip::PROVIDERS`) per synthesis flow, in the order a core is looked for: the
+    /// first that offers it wins (docs/framework/adapters.md, `IpProvider`).
+    pub providers: BTreeMap<String, Vec<String>>,
     /// Write `views/library.md`.
     pub views: bool,
 }
@@ -73,6 +76,13 @@ impl Default for CharacterizeConfig {
             lec_strategies: Vec::new(),
             batch: 24,
             cores: 2,
+            providers: BTreeMap::from([
+                ("dc".to_string(), vec!["designware".to_string(), "hardfloat".to_string()]),
+                (
+                    "yosys".to_string(),
+                    vec!["hardfloat".to_string(), "flopoco".to_string(), "xls_math".to_string()],
+                ),
+            ]),
             views: true,
         }
     }
@@ -103,8 +113,35 @@ impl CharacterizeConfig {
         })
     }
 
+    /// The IP providers of `flow`, in order; a provider that does not serve the flow is an error (an IP
+    /// the flow cannot read).
+    pub fn providers_of(&self, flow: &str) -> Result<Vec<&'static dyn IpProvider>, String> {
+        let names = self.providers.get(flow).map(Vec::as_slice).unwrap_or_default();
+        names
+            .iter()
+            .map(|n| {
+                let p = crate::ip::PROVIDERS
+                    .by_name(n)
+                    .map_err(|e| format!("providers.{flow}: {e}"))?;
+                if !p.capabilities().flows.contains(&flow) {
+                    return Err(format!(
+                        "providers.{flow}: `{n}` does not serve the {flow} flow (it serves {})",
+                        p.capabilities().flows.join(", ")
+                    ));
+                }
+                Ok(p)
+            })
+            .collect()
+    }
+
     pub fn check(&self) -> Result<(), String> {
         self.flow()?;
+        for flow in self.providers.keys() {
+            crate::eda::FLOWS
+                .by_name(flow)
+                .map_err(|e| format!("providers: {e}"))?;
+            self.providers_of(flow)?;
+        }
         for t in &self.targets {
             self.period_ps(1.0, t)?;
         }

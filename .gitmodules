@@ -10,3 +10,7 @@
 	path = third_party/xls
 	url = https://github.com/google/xls.git
 	shallow = true
+[submodule "third_party/hardfloat"]
+	path = third_party/hardfloat
+	url = https://github.com/ucb-bar/berkeley-hardfloat.git
+	shallow = true

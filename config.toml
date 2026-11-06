@@ -41,7 +41,7 @@ watchdog_interval_s = 0.5        # RSS sampling period of the process-group watc
 
 [tools.docker]                   # DockerRunner
 image = "chiplet-compiler/toolchain"
-tag = "0.5.0"                    # the release in which the image inputs ([tools.docker.build], the pins below,
+tag = "0.6.0"                    # the release in which the image inputs ([tools.docker.build], the pins below,
                                  # docker/) last changed; bump it with them
 memory_gb = 16                   # ceiling of one container (--memory and --memory-swap); a pass's
 cpus = 8.0                       # containers share its declared memory_gb and threads, each at most this
@@ -62,6 +62,12 @@ bitwuzla_version = "0.9.1"       # static Linux binary
 bitwuzla_sha256 = "057f1546ae2068df57beb178f3eeab1678f0e5f0c378787a05b7bb294617c9c6"
 flopoco_tag = "flopoco-5.1"      # FloPoCo release tag, fetched from gitlab.com/flopoco/flopoco
 flopoco_commit = "8aa634812d2c9959ed33718d16648d7afcf7fa23"  # the commit the tag must resolve to
+chisel_version = "5.0.0"         # Chisel (Maven Central) for the HardFloat generator; HardFloat's CI tests it
+scala_version = "2.13.10"        # the Scala release that Chisel version and HardFloat build with
+firtool_version = "1.40.0"       # CIRCT firtool release Chisel 5.0.0 is tested with (Chisel's versioning table)
+firtool_sha256 = "9a090bf1a6033a1683482bcf3cb89a9585541cdfeb4eff0f6ea7c8e9ecc1dd98"  # firrtl-bin-ubuntu-20.04.tar.gz
+sbt_version = "1.9.9"            # Scala build tool, builds the generator only (not in the final image)
+sbt_sha256 = "c57cae60c2122ca1bba77184dfb4d0d25fc6c18805394ab36ab6208b0c0f262f"  # = the release's .sha256
 memory_gb = 64                   # docker build --memory = --memory-swap (hard cap of every RUN step)
 cpus = 16                        # docker build CPU quota; also ninja -j and Bazel --jobs
 link_jobs = 2                    # LLVM_PARALLEL_LINK_JOBS (links are the LLVM memory peak)
@@ -78,6 +84,9 @@ llvm_commit = "6b09f739c4d085dc39eb9ff220c786bc3aa8c7fb"  # = Allo's externals/l
 
 [tools.grami]                    # third_party/grami is checked out at `commit`
 commit = "d2875ae80afa2f141323a3f6b89a387787fcda38"
+
+[tools.hardfloat]                # third_party/hardfloat (Berkeley HardFloat, Chisel) is checked out at `commit`
+commit = "c1105e6ac6a0dd90fc80893efc4830ab609005d3"
 
 [tools.eda]                      # host tools via eda-run
 max_licenses = 2                 # concurrent EDA invocations (one shared semaphore)
@@ -99,6 +108,114 @@ timeout_s = 60                   # per query
 runner = "docker"                # "docker": the solvers of [tools.docker]'s image | "host": the paths below
 z3 = "z3"                        # host binaries (runner = "host"), resolved on PATH unless absolute
 bitwuzla = "bitwuzla"
+
+[numerics]                       # error budget per float op and format (design §6.4), in ulps of the result
+# format over the full input range; 0 = correctly rounded. A single IP core is accepted at its documented
+# guarantee; the budget sizes compositions (power, tanh, log_plus_one, an open-flow rsqrt) and decides when a
+# narrow format runs through a wider core. Ops: StableHLO names plus exp2 and log2 (inner cores of power).
+# f32 is NVIDIA's CUDA math library table (single precision, full range); CUDA computes f16 and bf16 through
+# f32 and rounds once, and FP8 through f32 cores is correctly rounded: 1 ulp for their approximate ops.
+# The exact operators (add, subtract, multiply, divide, sqrt) are correctly rounded in every format.
+[numerics.budget.f32]
+add = 0
+subtract = 0
+multiply = 0
+divide = 0
+sqrt = 0
+exponential = 2
+exp2 = 2
+exponential_minus_one = 1
+log = 1
+log2 = 1
+log_plus_one = 1
+sine = 2
+cosine = 2
+tan = 4
+tanh = 2
+rsqrt = 2
+cbrt = 1
+atan2 = 3
+power = 4
+[numerics.budget.f16]
+add = 0
+subtract = 0
+multiply = 0
+divide = 0
+sqrt = 0
+exponential = 1
+exp2 = 1
+exponential_minus_one = 1
+log = 1
+log2 = 1
+log_plus_one = 1
+sine = 1
+cosine = 1
+tan = 1
+tanh = 1
+rsqrt = 1
+cbrt = 1
+atan2 = 1
+power = 1
+[numerics.budget.bf16]
+add = 0
+subtract = 0
+multiply = 0
+divide = 0
+sqrt = 0
+exponential = 1
+exp2 = 1
+exponential_minus_one = 1
+log = 1
+log2 = 1
+log_plus_one = 1
+sine = 1
+cosine = 1
+tan = 1
+tanh = 1
+rsqrt = 1
+cbrt = 1
+atan2 = 1
+power = 1
+[numerics.budget.f8e4m3fn]
+add = 0
+subtract = 0
+multiply = 0
+divide = 0
+sqrt = 0
+exponential = 1
+exp2 = 1
+exponential_minus_one = 1
+log = 1
+log2 = 1
+log_plus_one = 1
+sine = 1
+cosine = 1
+tan = 1
+tanh = 1
+rsqrt = 1
+cbrt = 1
+atan2 = 1
+power = 1
+[numerics.budget.f8e5m2]
+add = 0
+subtract = 0
+multiply = 0
+divide = 0
+sqrt = 0
+exponential = 1
+exp2 = 1
+exponential_minus_one = 1
+log = 1
+log2 = 1
+log_plus_one = 1
+sine = 1
+cosine = 1
+tan = 1
+tanh = 1
+rsqrt = 1
+cbrt = 1
+atan2 = 1
+power = 1
 
 # ---------------------------------------------------------------------------------------------
 # Passes. Section name == pass name == build/.<pass>/ directory.
@@ -236,6 +353,10 @@ lec_strategies = []              # Formality alternate strategies (s2, s3, …) 
                                  # none proved a wide divider (s2, s3, s1 on divide@ui32), so none by default
 batch = 24                       # designs per tool session (a job directory, reused by a rerun)
 cores = 2                        # cores per Design Compiler session
+# Float IP providers per flow, in the order a core is looked for (docs/framework/adapters.md, IpProvider):
+# DesignWare in Design Compiler, HardFloat where it lacks a core (narrowing conversions); HardFloat, FloPoCo
+# and XLS's float library in the open flow. out/library/routes.json maps every float op to its cores or a gap.
+providers = { dc = ["designware", "hardfloat"], yosys = ["hardfloat", "flopoco", "xls_math"] }
 views = true                     # write views/library.md
 [passes.characterize.resources]
 threads = 2                      # parallel tool sessions (each also holds one of tools.eda.max_licenses)

@@ -20,6 +20,7 @@ pub struct Config {
     pub models: ModelsConfig,
     pub testing: TestingConfig,
     pub tools: ToolsConfig,
+    pub numerics: NumericsConfig,
     pub passes: BTreeMap<String, toml::Table>,
 }
 
@@ -191,6 +192,88 @@ impl Default for TestingConfig {
     }
 }
 
+/// The float formats `[numerics]` budgets name.
+pub const NUMERICS_FORMATS: [&str; 5] = ["f32", "f16", "bf16", "f8e4m3fn", "f8e5m2"];
+
+/// The operations `[numerics]` budgets name: StableHLO's op names, plus `exp2` and `log2`, which
+/// compositions use (design §4.12). The first five are exact operators (design §6.4).
+pub const NUMERICS_OPS: [&str; 19] = [
+    "add",
+    "subtract",
+    "multiply",
+    "divide",
+    "sqrt",
+    "exponential",
+    "exp2",
+    "exponential_minus_one",
+    "log",
+    "log2",
+    "log_plus_one",
+    "sine",
+    "cosine",
+    "tan",
+    "tanh",
+    "rsqrt",
+    "cbrt",
+    "atan2",
+    "power",
+];
+
+/// `[numerics]` (design §6.4): the error budget of every float operator, in units in the last place of
+/// the result format, over the full input range; 0 means correctly rounded. A single core is accepted at
+/// its documented guarantee; the budget sizes compositions and decides when a narrow format runs through
+/// a wider core.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct NumericsConfig {
+    /// Format -> op -> ulps.
+    pub budget: BTreeMap<String, BTreeMap<String, f64>>,
+}
+
+impl Default for NumericsConfig {
+    /// NVIDIA's CUDA math library accuracy table (CUDA C++ Programming Guide, "Mathematical Functions",
+    /// single precision, full range) for f32; 1 ulp for every approximate op of f16, bf16 and FP8; the
+    /// exact operators correctly rounded everywhere.
+    fn default() -> Self {
+        let f32: [(&str, f64); 14] = [
+            ("exponential", 2.0),
+            ("exp2", 2.0),
+            ("exponential_minus_one", 1.0),
+            ("log", 1.0),
+            ("log2", 1.0),
+            ("log_plus_one", 1.0),
+            ("sine", 2.0),
+            ("cosine", 2.0),
+            ("tan", 4.0),
+            ("tanh", 2.0),
+            ("rsqrt", 2.0),
+            ("cbrt", 1.0),
+            ("atan2", 3.0),
+            ("power", 4.0),
+        ];
+        let mut budget = BTreeMap::new();
+        for f in NUMERICS_FORMATS {
+            let mut m: BTreeMap<String, f64> = NUMERICS_OPS[..5].iter().map(|o| (o.to_string(), 0.0)).collect();
+            for (op, ulp) in f32 {
+                m.insert(op.to_string(), if f == "f32" { ulp } else { 1.0 });
+            }
+            budget.insert(f.to_string(), m);
+        }
+        Self { budget }
+    }
+}
+
+impl NumericsConfig {
+    /// The budget of `op` in `format`, in ulps: 0 (correctly rounded) for an op without one.
+    pub fn budget(&self, format: &str, op: &str) -> f64 {
+        self.budget
+            .get(format)
+            .and_then(|m| m.get(op))
+            .copied()
+            .unwrap_or(0.0)
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct ToolsConfig {
@@ -201,6 +284,7 @@ pub struct ToolsConfig {
     pub xls: XlsPins,
     pub allo: AlloPins,
     pub grami: GramiPins,
+    pub hardfloat: HardFloatPins,
     /// Replaced by the PDK manifests: rejected with a message that says so (`validate`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pdk: Option<toml::Value>,
@@ -227,6 +311,13 @@ pub struct AlloPins {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct GramiPins {
+    pub commit: String,
+}
+
+/// Berkeley HardFloat's Chisel sources (`third_party/hardfloat`), built into the image's generator.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct HardFloatPins {
     pub commit: String,
 }
 
@@ -287,6 +378,13 @@ pub struct DockerBuildConfig {
     pub bitwuzla_sha256: String,
     pub flopoco_tag: String,
     pub flopoco_commit: String,
+    /// The HardFloat generator: Chisel and its Scala release, firtool, and the Scala build tool.
+    pub chisel_version: String,
+    pub scala_version: String,
+    pub firtool_version: String,
+    pub firtool_sha256: String,
+    pub sbt_version: String,
+    pub sbt_sha256: String,
     pub memory_gb: u32,
     pub cpus: u32,
     pub link_jobs: u32,
@@ -310,6 +408,12 @@ impl Default for DockerBuildConfig {
             bitwuzla_sha256: String::new(),
             flopoco_tag: String::new(),
             flopoco_commit: String::new(),
+            chisel_version: String::new(),
+            scala_version: String::new(),
+            firtool_version: String::new(),
+            firtool_sha256: String::new(),
+            sbt_version: String::new(),
+            sbt_sha256: String::new(),
             memory_gb: 64,
             cpus: 16,
             link_jobs: 2,
@@ -694,6 +798,25 @@ fn validate(c: &Config) -> Result<()> {
     }
     if c.tools.eda.max_licenses == 0 {
         return bad("tools.eda.max_licenses must be >= 1");
+    }
+    for (f, ops) in &c.numerics.budget {
+        if !NUMERICS_FORMATS.contains(&f.as_str()) {
+            return bad(&format!(
+                "numerics.budget.{f}: unknown format (one of {})",
+                NUMERICS_FORMATS.join(", ")
+            ));
+        }
+        for (op, ulp) in ops {
+            if !NUMERICS_OPS.contains(&op.as_str()) {
+                return bad(&format!(
+                    "numerics.budget.{f}.{op}: unknown op (one of {})",
+                    NUMERICS_OPS.join(", ")
+                ));
+            }
+            if !(ulp.is_finite() && *ulp >= 0.0) {
+                return bad(&format!("numerics.budget.{f}.{op} must be a finite number >= 0"));
+            }
+        }
     }
     let p = &c.paths;
     let old: Vec<&str> = [

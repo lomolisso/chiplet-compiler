@@ -133,6 +133,49 @@ RUN git init -q /src/flopoco && cd /src/flopoco \
  && rm -rf /src/flopoco /tmp/t.vhdl
 
 # ---------------------------------------------------------------------------------------------
+# Berkeley HardFloat (Chisel, the pinned submodule) and our generator (docker/hardfloat): Chisel from Maven
+# Central at the pinned release, built with the pinned sbt on the snapshot's JDK 17; firtool (CIRCT) at
+# the release that Chisel version is tested with. The runtime is the jars plus firtool; the final image
+# has the JRE.
+# ---------------------------------------------------------------------------------------------
+FROM base AS hardfloat
+LABEL chiplet-compiler.stage=hardfloat
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ARG SBT_VERSION
+ARG SBT_SHA256
+ARG FIRTOOL_VERSION
+ARG FIRTOOL_SHA256
+ARG CHISEL_VERSION
+ARG SCALA_VERSION
+RUN apt-get update --error-on=any \
+ && apt-get install -y --no-install-recommends openjdk-17-jdk-headless \
+ && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSLo /tmp/firtool.tgz "https://github.com/llvm/circt/releases/download/firtool-${FIRTOOL_VERSION}/firrtl-bin-ubuntu-20.04.tar.gz" \
+ && echo "${FIRTOOL_SHA256}  /tmp/firtool.tgz" | sha256sum -c - \
+ && mkdir -p /opt/firtool && tar -xzf /tmp/firtool.tgz -C /opt/firtool --strip-components=1 \
+ && /opt/firtool/bin/firtool --version && rm /tmp/firtool.tgz \
+ && curl -fsSLo /tmp/sbt.tgz "https://github.com/sbt/sbt/releases/download/v${SBT_VERSION}/sbt-${SBT_VERSION}.tgz" \
+ && echo "${SBT_SHA256}  /tmp/sbt.tgz" | sha256sum -c - \
+ && tar -xzf /tmp/sbt.tgz -C /opt && rm /tmp/sbt.tgz
+COPY docker/hardfloat /src/hfgen
+COPY third_party/hardfloat/hardfloat/src/main/scala /src/hfgen/hardfloat-src
+COPY third_party/hardfloat/LICENSE /opt/hardfloat/LICENSE
+# sbt's caches live under /tmp/sbt and are dropped; the generator's run-time classpath (Chisel, Scala,
+# HardFloat and our classes, as jars) goes to /opt/hardfloat/lib.
+RUN cd /src/hfgen && mkdir -p project && echo "sbt.version=${SBT_VERSION}" > project/build.properties \
+ && export HOME=/tmp/sbt/home CHISEL_VERSION SCALA_VERSION \
+ && /opt/sbt/bin/sbt -batch -no-colors -J-Xmx3g -Dsbt.boot.directory=/tmp/sbt/boot \
+      -Dsbt.global.base=/tmp/sbt/global -Dsbt.ivy.home=/tmp/sbt/ivy "export Runtime/fullClasspathAsJars" \
+      | tee /tmp/sbt.log | tail -n 1 > /tmp/classpath.txt \
+ && mkdir -p /opt/hardfloat/lib /opt/hardfloat/bin \
+ && tr ':' '\n' < /tmp/classpath.txt | grep '\.jar$' | xargs -I{} cp {} /opt/hardfloat/lib/ \
+ && ls /opt/hardfloat/lib | grep -q '^chisel_' && ls /opt/hardfloat/lib | grep -q '^hardfloat-gen' \
+ && install -m 0755 hardfloat-gen /opt/hardfloat/bin/hardfloat-gen \
+ && PATH=/opt/firtool/bin:$PATH /opt/hardfloat/bin/hardfloat-gen add --exp 5 --sig 10 --module hf_add_f16 --out /tmp/t.v \
+ && grep -q '^module hf_add_f16' /tmp/t.v \
+ && rm -rf /tmp/sbt /tmp/t.v /tmp/sbt.log /tmp/classpath.txt /opt/sbt /src/hfgen
+
+# ---------------------------------------------------------------------------------------------
 # LLVM at Allo's pin (cmake flags from Allo's setup docs) + Allo, editable, into /opt/cc/venv.
 # Caps: ninja -j${JOBS}, LLVM_PARALLEL_LINK_JOBS (links are the memory peak), docker --memory.
 # ---------------------------------------------------------------------------------------------
@@ -286,6 +329,8 @@ COPY --from=xls-bazel /home/xls/out/include /opt/xls/include
 COPY --from=solvers /opt/solvers /opt/solvers
 COPY --from=grami /opt/grami /opt/grami
 COPY --from=flopoco /opt/flopoco /opt/flopoco
+COPY --from=hardfloat /opt/hardfloat /opt/hardfloat
+COPY --from=hardfloat /opt/firtool /opt/firtool
 # XLS's DSLX float libraries (sine/cosine, exponential and their imports) from the pinned XLS commit;
 # imported as `third_party.xls_go_math.<file>` with --dslx_path=$XLS_DSLX_PATH.
 COPY third_party/xls/third_party/xls_go_math/*.x third_party/xls/third_party/xls_go_math/LICENSE \
@@ -300,7 +345,7 @@ COPY docker/cc-probe.py /opt/cc/bin/cc-probe
 COPY docker/selftest.sh /opt/cc/bin/cc-selftest
 # DockerRunner runs as the host uid with HOME=/tmp/home (docs/tools/docker_resources.md §3).
 RUN mkdir -p /tmp/home && chmod 1777 /tmp/home && chmod 0755 /opt/cc/bin/cc-probe /opt/cc/bin/cc-selftest
-ENV PATH=/opt/cc/bin:/opt/cc/venv/bin:/opt/xls/bin:/opt/solvers/bin:/opt/flopoco/bin:/opt/llvm-project/build/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+ENV PATH=/opt/cc/bin:/opt/cc/venv/bin:/opt/xls/bin:/opt/solvers/bin:/opt/flopoco/bin:/opt/hardfloat/bin:/opt/firtool/bin:/opt/llvm-project/build/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     VIRTUAL_ENV=/opt/cc/venv \
     LLVM_BUILD_DIR=/opt/llvm-project/build \
     XLS_STDLIB=/opt/xls/share/xls/dslx/stdlib \
@@ -316,6 +361,10 @@ ARG ALLO_COMMIT
 ARG LLVM_COMMIT
 ARG GRAMI_COMMIT
 ARG FLOPOCO_COMMIT
+ARG HARDFLOAT_COMMIT
+ARG CHISEL_VERSION
+ARG FIRTOOL_VERSION
+ARG SBT_VERSION
 ARG Z3_VERSION
 ARG BITWUZLA_VERSION
 ARG UV_VERSION
@@ -330,7 +379,8 @@ RUN cc-selftest \
  && cc-probe --write /opt/cc/versions.json \
       --pin image_tag="${IMAGE_TAG}" --pin xls_tag="${XLS_TAG}" --pin xls_commit="${XLS_COMMIT}" \
       --pin allo_commit="${ALLO_COMMIT}" --pin llvm_commit="${LLVM_COMMIT}" --pin grami_commit="${GRAMI_COMMIT}" \
-      --pin flopoco_commit="${FLOPOCO_COMMIT}" \
+      --pin flopoco_commit="${FLOPOCO_COMMIT}" --pin hardfloat_commit="${HARDFLOAT_COMMIT}" \
+      --pin chisel_version="${CHISEL_VERSION}" --pin firtool_version="${FIRTOOL_VERSION}" --pin sbt_version="${SBT_VERSION}" \
       --pin z3_version="${Z3_VERSION}" --pin bitwuzla_version="${BITWUZLA_VERSION}" \
       --pin uv_version="${UV_VERSION}" --pin bazelisk_version="${BAZELISK_VERSION}" \
       --pin apt_snapshot="${APT_SNAPSHOT}" --pin pypi_exclude_newer="${PYPI_EXCLUDE_NEWER}" \

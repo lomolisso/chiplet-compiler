@@ -35,6 +35,8 @@ PROBES = [
     ("ghdl", ["ghdl", "--version"]),
     ("ghdl-yosys-plugin", ["dpkg-query", "-W", "-f=yosys-plugin-ghdl ${Version}\\n", "yosys-plugin-ghdl"]),
     ("flopoco", ["test", "-x", "/opt/flopoco/bin/flopoco"]),
+    ("firtool", ["firtool", "--version"]),
+    ("hardfloat-gen", ["test", "-x", "/opt/hardfloat/bin/hardfloat-gen"]),
     ("iverilog", ["iverilog", "-V"]),
     ("verilator", ["verilator", "--version"]),
     ("z3", ["z3", "--version"]),

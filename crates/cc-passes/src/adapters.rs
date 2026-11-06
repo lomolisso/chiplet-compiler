@@ -11,6 +11,7 @@
 //! | frequent subgraph miner | [`MINERS`] | `[passes.mine] miner` |
 //! | HLS front end | [`HLS_FRONTENDS`] | `[passes.allo_emit] frontend` (planned pass) |
 //! | place and route | [`PNR_FLOWS`] | none yet (later versions) |
+//! | float IP cores | [`IP_PROVIDERS`] | `[passes.characterize] providers` (per flow, in order) |
 
 use std::path::Path;
 
@@ -19,6 +20,7 @@ use cc_core::runner::BoundRunner;
 use cc_core::{CoreError, Result};
 
 pub use crate::eda::FLOWS as SYNTH_FLOWS;
+pub use crate::ip::PROVIDERS as IP_PROVIDERS;
 pub use crate::merge::algo::clique::SOLVERS as CLIQUE_SOLVERS;
 pub use crate::mine::algo::grami::MINERS;
 pub use crate::mine::algo::mis::SOLVERS as MIS_SOLVERS;
