@@ -3,6 +3,7 @@
 //! `hello_a`, `hello_b`, `hello_c` are the framework's self-test passes: they exercise the DAG,
 //! caching, parallel branches, tool runners and verification without touching any model.
 
+pub mod adapters;
 pub mod characterize;
 pub mod components;
 pub mod datapaths;

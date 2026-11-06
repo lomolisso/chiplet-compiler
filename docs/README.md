@@ -8,6 +8,7 @@
 | [framework/core.md](framework/core.md) | `cc-core`: configuration, artifact store, cache keys, tool runners |
 | [framework/pipeline.md](framework/pipeline.md) | `cc-pipeline`: pass contract, DAG, scheduler, admission, resume; how to add a pass |
 | [framework/environment.md](framework/environment.md) | `chipc doctor` and the Liberty `.db` files |
+| [framework/adapters.md](framework/adapters.md) | External resources behind adapters (flows, solvers, miner, HLS, place and route), PDK manifests, conformance suites |
 | [framework/cli.md](framework/cli.md) | `chipc` commands |
 | [framework/ir.md](framework/ir.md) | `cc-ir`: the IR, symbolic dimensions, the op-semantics table, graphs for matching |
 | [framework/smt.md](framework/smt.md) | `cc-smt`: SMT-LIB scripts and the solver runner |

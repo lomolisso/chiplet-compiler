@@ -3,6 +3,7 @@
 //! its instance table, with the order freedom of its combiner (docs/passes/datapaths.md).
 
 pub mod algo;
+pub mod bound;
 pub mod config;
 pub mod eval;
 pub mod json;
@@ -15,7 +16,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use cc_core::{ArtifactKind, CoreError, LoadedConfig, PassSection, VerifyReport};
 use cc_pipeline::{Pass, PassContext, PassError};
-use cc_smt::{Solver, Verdict};
+use cc_smt::Verdict;
 use rayon::prelude::*;
 
 pub use config::{Allowed, DatapathsConfig};
@@ -41,7 +42,7 @@ impl Pass for Datapaths {
     }
 
     fn version(&self) -> u32 {
-        1
+        2
     }
 
     fn requires(&self) -> &[ArtifactKind] {
@@ -134,7 +135,7 @@ impl Pass for Datapaths {
         let lemma_answers = cc_smt::solve_cached(
             &runner,
             &location,
-            Solver::Z3,
+            cc_smt::lemma_solver(),
             &out.path("lemmas")?,
             &lemmas,
             cfg.lemma_timeout_s,
@@ -155,9 +156,15 @@ impl Pass for Datapaths {
                 let (version, verdict) = answers.get(&q.file).cloned().unwrap_or_else(none);
                 let mut allow = None;
                 if q.order {
+                    let free = verdict.is_unsat();
                     order.push(OrderFree {
                         tuple: q.tuple.clone(),
-                        free: verdict.is_unsat(),
+                        free,
+                        hardware: if free {
+                            None
+                        } else {
+                            dp.accumulator.as_ref().and_then(|a| a.omega.clone())
+                        },
                     });
                 } else if !verdict.is_unsat() {
                     match (&verdict, allowed.get(dp.id.as_str())) {
@@ -197,7 +204,7 @@ impl Pass for Datapaths {
                     schema: RESULT_SCHEMA.into(),
                     file: f.clone(),
                     query_hash: cc_smt::query_hash(text),
-                    solver: Solver::Z3,
+                    solver: cc_smt::lemma_solver(),
                     version,
                     verdict,
                     expect: "unsat".into(),

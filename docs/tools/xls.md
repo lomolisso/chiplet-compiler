@@ -82,7 +82,7 @@ later stages get pipeline registers.
 | `smtlib_emitter_main` | IR fn → SMT-LIB2 (via its Z3 representation) | Bazel-only; lets us run bitwuzla/z3 ourselves (`cc-smt`) |
 
 Our certificate chain per FU: Allo `llvm` sim ≡ XLS IR eval (vectors) → `check_ir_equivalence_main` unopt vs opt
-IR (or bounded for procs) → RTL vs gate netlist with Formality/LEC (`synopsys.md`, `cadence.md`).
+IR (or bounded for procs) → RTL vs gate netlist with Formality, optional (`synopsys.md`; design §5).
 
 ## 6. Floating point in the DSLX stdlib (`xls/dslx/stdlib/apfloat.x`)
 
@@ -161,7 +161,8 @@ the pinned tools, 2 CPUs: `fp_sincos_32` to combinational Verilog in about 7.5 s
 - Area models: `asap7`, `sky130`, `unit`, `unit_with_default_recursive_op_handling` (`xls/estimators/area_model/models/`);
   `opt_main --area_model` (default `asap7`) is used by resource-sharing decisions (tools doc). `benchmark_main`
   reports delay/area metrics (Bazel-only).
-- No FreePDK45 model: for Nangate45 runs schedule with `asap7` or `unit` and take real numbers from DC/Genus.
+- No FreePDK45 model: for Nangate45 runs schedule with `asap7` or `unit` and take real numbers from the
+  synthesis flow (DC or Yosys). A kit's model is its manifest's `xls_delay_model` (`pdks/<kit>.toml`).
   Record which model scheduled each FU.
 
 ## 9. Resource notes

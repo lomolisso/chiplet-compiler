@@ -4,6 +4,8 @@ expression: digest
 ---
 {
   "bert/forward": {
+    "const_in": 485,
+    "constant_ops": 7445,
     "dim_as_data": 0,
     "funcs": 586,
     "ir_hash": "c83d697cf558d970ad75a7070c1e9287d755c31691d9194ce56f12fb5711c89c",
@@ -17,6 +19,8 @@ expression: digest
     "symbolic_values": 6609
   },
   "centerpoint/forward": {
+    "const_in": 1164,
+    "constant_ops": 15489,
     "dim_as_data": 998,
     "funcs": 203,
     "ir_hash": "1263c6e87a420f7e4dea50730f352657a6d187dde8ab456073ed57521012cf9b",
@@ -30,6 +34,8 @@ expression: digest
     "symbolic_values": 10146
   },
   "llama/decode_step": {
+    "const_in": 1088,
+    "constant_ops": 8885,
     "dim_as_data": 128,
     "funcs": 453,
     "ir_hash": "11d980aa3cf3c6b89f5ef38acbabdee105f6731e0008bae617436b58548cb3b3",
@@ -43,6 +49,8 @@ expression: digest
     "symbolic_values": 8993
   },
   "llama/prefill": {
+    "const_in": 1154,
+    "constant_ops": 12764,
     "dim_as_data": 129,
     "funcs": 453,
     "ir_hash": "9227b09fd516cfa937d611df706cccff6a0139731cfa1271e18e80d73fe98755",
@@ -56,6 +64,8 @@ expression: digest
     "symbolic_values": 9002
   },
   "mobilenetv4_conv_m/forward": {
+    "const_in": 278,
+    "constant_ops": 97877,
     "dim_as_data": 4,
     "funcs": 193,
     "ir_hash": "f49533a38acb6abc69d844f6c1a563a956efd7c3dd7868aa7e1fd319e1eb278c",
@@ -69,6 +79,8 @@ expression: digest
     "symbolic_values": 2040
   },
   "qwen3vl/decode_step": {
+    "const_in": 3666,
+    "constant_ops": 50126,
     "dim_as_data": 1222,
     "funcs": 1322,
     "ir_hash": "c1b96bfca45229e3dfe8bffd8933295e61890002c123fbac809e838c5d6c6641",
@@ -84,6 +96,8 @@ expression: digest
     "symbolic_values": 47035
   },
   "qwen3vl/prefill": {
+    "const_in": 3672,
+    "constant_ops": 69987,
     "dim_as_data": 2073,
     "funcs": 1322,
     "ir_hash": "30aa27aaf15b97a22fc35d3628b7d30fbc4733e0bf7b220bd27ea2ccecf229ec",
@@ -99,6 +113,8 @@ expression: digest
     "symbolic_values": 47060
   },
   "qwen3vl/vision_encoder": {
+    "const_in": 1,
+    "constant_ops": 6947,
     "dim_as_data": 0,
     "funcs": 238,
     "ir_hash": "fe1cfe6f0fadfaaff2e5f40c5bb420a6fc455cbe5e4f322e03a78baec5a996bc",
@@ -114,6 +130,8 @@ expression: digest
     "symbolic_values": 4586
   },
   "resnet50/forward": {
+    "const_in": 101,
+    "constant_ops": 44996,
     "dim_as_data": 4,
     "funcs": 121,
     "ir_hash": "316d199bc04a9d87a7a493321817e40df716a5785042624fc75873f3a6d78fc6",
@@ -127,6 +145,8 @@ expression: digest
     "symbolic_values": 1121
   },
   "sdxl/text_encoder_g": {
+    "const_in": 69,
+    "constant_ops": 11396,
     "dim_as_data": 2,
     "funcs": 361,
     "ir_hash": "9ee31258d690c49917f7de5b1824802af65bd704a0ef687891ec4acfc6c2af17",
@@ -142,6 +162,8 @@ expression: digest
     "symbolic_values": 7407
   },
   "sdxl/text_encoder_l": {
+    "const_in": 29,
+    "constant_ops": 1956,
     "dim_as_data": 2,
     "funcs": 140,
     "ir_hash": "840716b33fa1f7c7c8c17b26167bf3f73d4cc7f8a3551f4688bc354e79ad0c25",
@@ -155,6 +177,8 @@ expression: digest
     "symbolic_values": 1752
   },
   "sdxl/unet_step": {
+    "const_in": 2730,
+    "constant_ops": 64647,
     "dim_as_data": 184,
     "funcs": 2144,
     "ir_hash": "88ec19f58e66108befc02a0e6e761f7471bcd9ba971db6f0367e9c4cc823933b",
@@ -170,6 +194,8 @@ expression: digest
     "symbolic_values": 37333
   },
   "sdxl/vae_decode": {
+    "const_in": 96,
+    "constant_ops": 3261,
     "dim_as_data": 120,
     "funcs": 95,
     "ir_hash": "3a733aab85892d694b04b8c193096bbe819133733e3cf57ff73c8b41c938befe",

@@ -1,0 +1,16 @@
+# ASAP7 predictive 7 nm library, 7.5-track cells (asap7sc7p5t_28), NLDM timing (docs/tools/pdks.md). Paths
+# are relative to the kit's root: paths.pdks.asap7, or paths.pdk_root joined with `root`. Another VT or
+# corner is another cell library: copy this file under a new name and change `vt`, `corner` and `lef`.
+name = "asap7"
+description = "ASAP7 7.5-track library, RVT, typical corner"
+root = "asap7/asap7sc7p5t_28"
+vt = "RVT"                        # LVT | RVT | SLVT | SRAM
+corner = "TT"                     # TT | FF | SS
+groups = ["AO", "OA", "INVBUF", "SEQ", "SIMPLE"]  # all five, or the corner has no flops
+# One file per group; the date stamp differs per group, so it is matched. Time unit 1 ps.
+liberty = "LIB/NLDM/asap7sc7p5t_{group}_{vt}_{corner}_nldm_*.lib"
+merged = "asap7sc7p5t_{vt}_{corner}"   # chipc doctor merges the groups into this one library
+lef = ["LEF/asap7sc7p5t_28_R_1x_*.lef"]
+driving_cell = "BUFx2_ASAP7_75t_R"
+clock_ps = 1000                   # default clock target (1 GHz)
+xls_delay_model = "asap7"         # codegen_main --delay_model

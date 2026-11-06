@@ -40,7 +40,7 @@ impl Pass for Components {
     }
 
     fn version(&self) -> u32 {
-        1
+        2
     }
 
     fn requires(&self) -> &[ArtifactKind] {
@@ -210,6 +210,7 @@ fn write(
                 counts: Counts {
                     ops: d.ops.len() as u64,
                     size: d.size_ops,
+                    constant: d.const_ops,
                     nodes: mem.map(|x| x.map.len() as u64).unwrap_or(0),
                 },
                 component,

@@ -193,8 +193,9 @@
          Q's sign and `|R| ≥ 2^21`, so a clip narrower than that saturates both alike. "Allowed" is the
          standard bound of the two fp32 roundings (convert and multiply, each correct to half an ulp, IEEE
          754-2019 §4.3; Higham, *Accuracy and Stability of Numerical Algorithms*, 2nd ed., Thm. 2.2):
-         `|p − x·s| ≤ (|p| + |x·s|)·2^-24 + 2^-150`, or an overflow to infinity of the same sign past
-         2^127. P is a free variable (with the facts the decode gives: `|P| < 2^(n+23)`, and `P = 0` or
+         `|p − x·s| ≤ (|p| + |x·s|)·2^-24 + 2^-150`, an overflow to infinity of the same sign past
+         2^127, or a zero of either sign when `|x·s| < 2^-94`: the flush of design §6.4 (a product below
+         2^-126) and a subnormal scale read as zero (`|x·s| < 2^31 · 2^-126`). P is a free variable (with the facts the decode gives: `|P| < 2^(n+23)`, and `P = 0` or
          `|P| ≥ 2^23` for a normal scale), so the query has no multiplier: stated against the f32 multiply
          itself, the solver must relate two multipliers, which bit-blasting cannot do in practice (the
          direct form ran past 10 minutes at 8 bits; Kaufmann, Biere, Kauers, FMCAD 2019). The
@@ -227,13 +228,16 @@
    - `requant_timeout_s` (1800): the limit of one `rescale` tolerance lemma.
    - `target_units` (0): stop a family at this many units; 0 stops when no merge saves area.
    - `max_logic_depth` (0): the critical-path bound in ps; 0 derives it per family (step 7).
-   - `kit` (`"asap7"`): the library kit that prices merges.
+   - `kit` (`"asap7"` in `config.toml`): the library kit that prices merges; empty is the library's
+     first kit.
    - `contract` (true): cover units with the mined patterns first (step 2).
    - `max_compat_nodes` (4000): larger compatibility graphs go to `greedy`.
    - `certify_max_nodes` (60): steps with at most this many nodes store their graph for `verify`.
-   - `compose_timeout_s` (600): Z3's limit per composed-step proof.
+   - `compose_timeout_s` (600): the lemma solver's (Z3's, `cc_smt::lemma_solver`) limit per composed-step
+     proof.
    - `views` (true): write `views/merge.md`.
-   - `[passes.merge.clique]`: `algorithm` (`"exact_ilp"` | `"ostergard"` | `"greedy"`), `rank`
+   - `[passes.merge.clique]`: `algorithm` (`"exact_ilp"` | `"ostergard"` | `"greedy"`, the
+     `CliqueSolver` registry `algo::clique::SOLVERS`, docs/framework/adapters.md), `rank`
      (`"greedy"` | `"algorithm"`: how candidate pairs are evaluated), `node_budget` (2000), `timeout_s`
      (30, one deadline per evaluation).
 
@@ -281,17 +285,21 @@
    parallel batches of 32 (fixed, so the result does not depend on the thread count); families run in parallel. Proofs are one query per
    (unit, configuration, tuple) and per (array, class, tuple), milliseconds each except composed steps.
    With `fixed`, one tolerance lemma per integer type rescaled (one CPU: Bitwuzla 23 s at i8, 57 s at
-   i32; Z3, in `verify`, 91 s at i8, 11 minutes at i32), solved once per solver version thanks to the
+   i32; Z3, in `verify`, 91 s at i8, 11 minutes at i32; with the flush allowance of design §6.4 Z3 takes
+   about 160 s at i8), solved once per solver version thanks to the
    shared answer cache.
    Measured on the model set at `full` (2026-11-05, iacoma227): 572 s in a debug build (pass about 430 s,
    `verify` about 140 s), 165 s in a release build (`verify` 69 s). About 390 s of the debug pass are 38
    slow evaluations, most of them one pair with 13 254 vertex mappings evaluated again after every merge
    into its growing host (about 10 s each); a bound that survives the host's growth would avoid them.
+   With the numerics of design §6.4 (same day, release, every proof query new to the cache): the same
+   units and summary, 184 s (`verify` 85 s), every check passing, the sanity mutations refuted by both
+   solvers.
 
 8. **Known limitations.**
    - Float prices come from `characterize`'s provisional `apfloat` rows until the float IP cores are
-     integrated (design §4.12); the planned numerics (design §6.4: f32 and bf16 flushing to zero) will
-     change both the prices and the proofs.
+     integrated (design §4.12); the proofs already state the numerics of design §6.4 (f32 and bf16 flush
+     to zero, FP8 conversions saturate), the prices do not.
    - Merging is pairwise and greedy (Moreano Sec. VI-A); the result depends on the merge order, which the
      lazy greedy fixes by gain. A clique answered by `greedy` or out of budget is not optimal (recorded).
      With `rank = "greedy"` the order follows greedy gains; the exact solve improves only the accepted pair.
@@ -301,7 +309,10 @@
      throughput term. Units serving many classes are time-multiplexed; whether they keep up is a
      scheduling question for later passes.
    - Contraction restricts sharing: a block inside a pattern occurrence merges only with the same pattern.
-   - Floats are not widened across formats; integer widening covers the operators listed in step 3.
+   - Floats are not widened across formats; integer widening covers the operators listed in step 3. A
+     bf16 operation on an f32 block would not be exact under design §6.4: the two formats flush at
+     different thresholds (a bf16 product just below 2^-126 rounds up to it at 8 bits and is flushed at
+     24), so such a widening would fail its lemma.
    - Prices of pending float operators are estimates (`estimated`), and array element prices use the
      multiply at the accumulator type (what the semantics computes), not a narrower multiplier.
    - Composed array steps are proven by Z3 alone, as encoding lemmas are.

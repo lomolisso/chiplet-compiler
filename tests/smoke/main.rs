@@ -2,6 +2,7 @@
 //! `/bin/echo`, no Docker, seconds in total.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+mod adapters;
 mod cache;
 mod characterize;
 mod cli;

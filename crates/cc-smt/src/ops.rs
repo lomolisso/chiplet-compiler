@@ -10,7 +10,7 @@
 
 use cc_ir::Elem;
 
-use crate::float::{self, Flavour, Format};
+use crate::float::{self, Arith, Flavour, Format};
 use crate::term::{Ctx, Op, Rm, Sort, SortError, T};
 
 type Res<X> = Result<X, SortError>;
@@ -338,26 +338,28 @@ fn narrow(c: &mut Ctx, f: Format, t: T) -> Res<T> {
     }
 }
 
+/// Float ops. In a flushing format (design §6.4) every operand reads a subnormal as zero of its sign
+/// (`float::daz`), and results that can be tiny are flushed: the arithmetic in `float::arith`, the
+/// remainder (exact) when it is below `2^emin`. Approximate ops stay functions of the operands' encodings.
 fn floating(c: &mut Ctx, op: &str, a: &Attrs, args: &[Val], f: Format, ret: Ty) -> Option<Res<Val>> {
     let ty = Ty::Float(f);
-    let rounded = |c: &mut Ctx, o: Op, k: &str, args: &[Val]| -> Res<Val> {
-        let mut w = Vec::new();
-        for v in args {
-            w.push(wide(c, f, v.t)?);
-        }
-        let r = c.app(o, &w)?;
-        if !f.native() {
-            c.note(format!("{}.{k}", f.name()));
-        }
-        Ok(Val::new(ty, narrow(c, f, r)?))
+    let rounded = |c: &mut Ctx, o: Arith, args: &[Val]| -> Res<Val> {
+        let ts: Vec<T> = args.iter().map(|v| v.t).collect();
+        Ok(Val::new(ty, float::arith(c, f, o, &ts)?))
     };
+    let raw = args;
     let r = (|| -> Res<Val> {
+        let mut dz = Vec::with_capacity(raw.len());
+        for v in raw {
+            dz.push(Val::new(v.ty, float::daz(c, f, v.t)?));
+        }
+        let args = dz.as_slice();
         Ok(match (op, args) {
-            ("add", [x, y]) => rounded(c, Op::FpAdd(Rm::Rne), "add", &[*x, *y])?,
-            ("subtract", [x, y]) => rounded(c, Op::FpSub(Rm::Rne), "sub", &[*x, *y])?,
-            ("multiply", [x, y]) => rounded(c, Op::FpMul(Rm::Rne), "mul", &[*x, *y])?,
-            ("divide", [x, y]) => rounded(c, Op::FpDiv(Rm::Rne), "div", &[*x, *y])?,
-            ("sqrt", [x]) => rounded(c, Op::FpSqrt(Rm::Rne), "sqrt", &[*x])?,
+            ("add", _) if raw.len() == 2 => rounded(c, Arith::Add, raw)?,
+            ("subtract", _) if raw.len() == 2 => rounded(c, Arith::Sub, raw)?,
+            ("multiply", _) if raw.len() == 2 => rounded(c, Arith::Mul, raw)?,
+            ("divide", _) if raw.len() == 2 => rounded(c, Arith::Div, raw)?,
+            ("sqrt", _) if raw.len() == 1 => rounded(c, Arith::Sqrt, raw)?,
             // The integral value of a value of `f` is a value of `f`: no rounding back.
             ("round_nearest_even", [x]) => exact1(c, f, x.t, Op::FpRoundToIntegral(Rm::Rne))?,
             ("floor", [x]) => exact1(c, f, x.t, Op::FpRoundToIntegral(Rm::Rtn))?,
@@ -411,6 +413,13 @@ fn floating(c: &mut Ctx, op: &str, a: &Attrs, args: &[Val], f: Format, ret: Ty) 
                 let nzr = c.op1(Op::FpNeg, pz)?;
                 let sz = c.ite(un, nzr, pz)?;
                 let out = c.ite(oz, sz, out)?;
+                // Exact, so tiny exactly when below 2^emin: native formats flush when subnormal, a
+                // carrier's rounding flushes.
+                let out = if f.native() {
+                    float::flush_exact(c, f, out)?
+                } else {
+                    out
+                };
                 Val::new(ty, narrow_exact(c, f, out)?)
             }
             ("reduce_precision", [x]) => {
@@ -439,7 +448,7 @@ fn floating(c: &mut Ctx, op: &str, a: &Attrs, args: &[Val], f: Format, ret: Ty) 
                 let name = format!("{op}_{}", f.name());
                 let s = f.sort();
                 c.fun(&name, &vec![s; args.len()], s)?;
-                let ts: Vec<T> = args.iter().map(|v| v.t).collect();
+                let ts: Vec<T> = raw.iter().map(|v| v.t).collect();
                 Val::new(ty, c.app(Op::Uf(name), &ts)?)
             }
             _ => return Err(SortError(String::new())),
@@ -706,7 +715,8 @@ fn compare(c: &mut Ctx, a: &Attrs, x: Val, y: Val) -> Res<T> {
             if !matches!(ct, None | Some("FLOAT")) {
                 return Err(SortError(format!("compare_type {ct:?} on floats is not encoded")));
             }
-            let (u, v) = (wide(c, f, x.t)?, wide(c, f, y.t)?);
+            let (xd, yd) = (float::daz(c, f, x.t)?, float::daz(c, f, y.t)?);
+            let (u, v) = (wide(c, f, xd)?, wide(c, f, yd)?);
             // IEEE quiet predicates: false on NaN, except NE.
             match dir {
                 "EQ" => c.op2(Op::FpEq, u, v),
@@ -764,6 +774,11 @@ pub fn convert(c: &mut Ctx, x: Val, to: Ty) -> Res<Val> {
     if from == to {
         return Ok(x);
     }
+    // A flushing source reads a subnormal as zero of its sign (design §6.4).
+    let x = match from {
+        Ty::Float(f) => Val::new(from, float::daz(c, f, x.t)?),
+        _ => x,
+    };
     let bad = || SortError(format!("convert {} -> {}: no encoding", from.name(), to.name()));
     Ok(match (from, to) {
         (Ty::Bool, Ty::Int { w, .. }) => {
@@ -776,7 +791,7 @@ pub fn convert(c: &mut Ctx, x: Val, to: Ty) -> Res<Val> {
                 fp_one(c, f.fp_sort())?
             } else {
                 let one32 = fp_one(c, Sort::Fp { e: 8, s: 24 })?;
-                float::from_f32(c, f, one32)?
+                float::convert_from_f32(c, f, one32)?
             };
             let z = fzero(c, f)?;
             Val::new(to, c.ite(x.t, one, z)?)
@@ -807,7 +822,7 @@ pub fn convert(c: &mut Ctx, x: Val, to: Ty) -> Res<Val> {
             } else if w <= 24 {
                 // Exact in Float32: one rounding.
                 let v = c.app(o, &[x.t])?;
-                Val::new(to, float::from_f32(c, f, v)?)
+                Val::new(to, float::convert_from_f32(c, f, v)?)
             } else {
                 // Exact in Float64 (w <= 53), then one correct rounding.
                 if w > 53 {
@@ -865,9 +880,12 @@ pub fn convert(c: &mut Ctx, x: Val, to: Ty) -> Res<Val> {
             let v = wide(c, f, x.t)?;
             let f32s = Sort::Fp { e: 8, s: 24 };
             let t = if g.native() {
-                // Widening is exact; narrowing rounds to nearest even once.
+                // Widening is exact (never tiny: every narrower value is normal in a flushing format);
+                // narrowing rounds to nearest even once, with the target's subnormal rule.
                 if c.sort(v) == g.fp_sort() {
                     v
+                } else if c.sort(v) == Format::F64.fp_sort() {
+                    float::native_from_f64(c, g, v)?
                 } else {
                     c.app(
                         Op::FpToFp {
@@ -895,7 +913,7 @@ pub fn convert(c: &mut Ctx, x: Val, to: Ty) -> Res<Val> {
                     }
                     _ => return Err(bad()),
                 };
-                float::from_f32(c, g, v32)?
+                float::convert_from_f32(c, g, v32)?
             };
             Val::new(to, t)
         }

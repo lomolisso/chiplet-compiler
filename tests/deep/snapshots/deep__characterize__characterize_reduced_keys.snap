@@ -83,17 +83,12 @@ expression: digest
       "split@w16n8 nangate45 clock",
       "split@w16n8 nangate45 fast"
     ],
+    "lec": false,
     "rows": 76,
     "tool": "dc"
   },
   {
-    "inconclusive": [
-      "multiply@f32 nangate45 clock",
-      "multiply@f32 nangate45 fast",
-      "multiply@f32 asap7 fast",
-      "split@w16n8 nangate45 fast",
-      "split@w16n8 asap7 fast"
-    ],
+    "inconclusive": [],
     "keys": [
       "accumulator.add@f32 asap7 clock",
       "accumulator.add@f32 asap7 fast",
@@ -172,12 +167,17 @@ expression: digest
       "split@w16n8 nangate45 clock",
       "split@w16n8 nangate45 fast"
     ],
+    "lec": true,
     "rows": 76,
-    "tool": "genus"
+    "tool": "dc"
   },
   {
     "inconclusive": [],
     "keys": [
+      "accumulator.add@f32 asap7 clock",
+      "accumulator.add@f32 asap7 fast",
+      "accumulator.add@f32 nangate45 clock",
+      "accumulator.add@f32 nangate45 fast",
       "accumulator.add@i1 asap7 clock",
       "accumulator.add@i1 asap7 fast",
       "accumulator.add@i1 nangate45 clock",
@@ -190,6 +190,10 @@ expression: digest
       "accumulator.add@ui8 asap7 fast",
       "accumulator.add@ui8 nangate45 clock",
       "accumulator.add@ui8 nangate45 fast",
+      "accumulator.multiply@f32 asap7 clock",
+      "accumulator.multiply@f32 asap7 fast",
+      "accumulator.multiply@f32 nangate45 clock",
+      "accumulator.multiply@f32 nangate45 fast",
       "accumulator.multiply@i1 asap7 clock",
       "accumulator.multiply@i1 asap7 fast",
       "accumulator.multiply@i1 nangate45 clock",
@@ -202,6 +206,10 @@ expression: digest
       "accumulator.multiply@ui8 asap7 fast",
       "accumulator.multiply@ui8 nangate45 clock",
       "accumulator.multiply@ui8 nangate45 fast",
+      "add@f32 asap7 clock",
+      "add@f32 asap7 fast",
+      "add@f32 nangate45 clock",
+      "add@f32 nangate45 fast",
       "add@i1 asap7 clock",
       "add@i1 asap7 fast",
       "add@i1 nangate45 clock",
@@ -214,6 +222,10 @@ expression: digest
       "add@ui8 asap7 fast",
       "add@ui8 nangate45 clock",
       "add@ui8 nangate45 fast",
+      "multiply@f32 asap7 clock",
+      "multiply@f32 asap7 fast",
+      "multiply@f32 nangate45 clock",
+      "multiply@f32 nangate45 fast",
       "multiply@i1 asap7 clock",
       "multiply@i1 asap7 fast",
       "multiply@i1 nangate45 clock",
@@ -233,9 +245,14 @@ expression: digest
       "register@w8 asap7 clock",
       "register@w8 asap7 fast",
       "register@w8 nangate45 clock",
-      "register@w8 nangate45 fast"
+      "register@w8 nangate45 fast",
+      "split@w16n8 asap7 clock",
+      "split@w16n8 asap7 fast",
+      "split@w16n8 nangate45 clock",
+      "split@w16n8 nangate45 fast"
     ],
-    "rows": 56,
+    "lec": false,
+    "rows": 76,
     "tool": "yosys"
   }
 ]

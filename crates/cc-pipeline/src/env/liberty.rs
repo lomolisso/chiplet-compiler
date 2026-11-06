@@ -263,6 +263,27 @@ pub fn header(text: &str) -> Result<BTreeMap<String, String>, String> {
     Ok(attributes(text, body, end, &gs))
 }
 
+/// A Liberty `time_unit` (`"1ns"` → 1000, `"1ps"` → 1, `"10ps"` → 10) in ps.
+pub fn time_unit_ps(s: &str) -> Result<f64, String> {
+    let s = s.trim().trim_matches('"');
+    let split = s
+        .find(|c: char| c.is_ascii_alphabetic())
+        .ok_or_else(|| format!("time unit {s:?}"))?;
+    let (n, u) = s.split_at(split);
+    let n: f64 = if n.trim().is_empty() {
+        1.0
+    } else {
+        n.trim().parse().map_err(|_| format!("time unit {s:?}"))?
+    };
+    let scale = match u.trim() {
+        "ps" => 1.0,
+        "ns" => 1e3,
+        "us" => 1e6,
+        _ => return Err(format!("time unit {s:?}")),
+    };
+    Ok(n * scale)
+}
+
 /// The `capacitance` of the first input pin of `cell`, in the library's capacitance unit.
 pub fn input_capacitance(text: &str, cell: &str) -> Result<Option<f64>, String> {
     let (gs, _, _) = groups(text)?;
@@ -362,6 +383,14 @@ fn children(group: &str) -> Vec<(String, String, &str)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn time_units() {
+        assert_eq!(time_unit_ps("\"1ns\"").unwrap(), 1000.0);
+        assert_eq!(time_unit_ps("1ps").unwrap(), 1.0);
+        assert_eq!(time_unit_ps("10ps").unwrap(), 10.0);
+        assert!(time_unit_ps("1fs").is_err());
+    }
 
     const A: &str = r#"/* kit A */
 library (lib_a) {

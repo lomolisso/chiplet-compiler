@@ -450,6 +450,7 @@ impl<'g> Builder<'g> {
             callee,
             parent: region,
             size: false,
+            constant: false,
             dim_as_data: Vec::new(),
             prov: Provenance {
                 func: src.to_string(),

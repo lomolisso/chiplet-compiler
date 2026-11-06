@@ -14,9 +14,9 @@ use serde::{Deserialize, Serialize};
 use super::catalog::{Kind, Primitive};
 use crate::eda::parse::{Lec, Measured};
 
-pub const LIBRARY_SCHEMA: &str = "cc.characterize.library/1";
+pub const LIBRARY_SCHEMA: &str = "cc.characterize.library/2";
 pub const COVERAGE_SCHEMA: &str = "cc.characterize.coverage/1";
-pub const SUMMARY_SCHEMA: &str = "cc.characterize.summary/1";
+pub const SUMMARY_SCHEMA: &str = "cc.characterize.summary/2";
 
 /// A kit as the rows were measured on it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -34,6 +34,8 @@ pub struct KitInfo {
     pub driving_cell: String,
     /// Output load, in the library's capacitance unit.
     pub load: f64,
+    /// The clock target, ps (the manifest's, or `clock_ps` in the config).
+    pub clock_ps: f64,
 }
 
 /// One timing point of one kit.
@@ -63,15 +65,15 @@ pub struct Row {
     pub period_ps: f64,
     /// Area µm² (1x Liberty scale), delay and slack ps, leakage nW.
     pub measured: Measured,
-    /// `dc`, `genus` or `yosys`.
+    /// The synthesis flow: `dc` or `yosys`.
     pub estimator: String,
-    /// `formality`, `conformal` or `yosys-equiv`, and its outcome.
-    pub lec_tool: String,
-    pub lec: Lec,
+    /// With `lec`: the equivalence checker (`formality`, `yosys-equiv`) and its outcome.
+    pub lec_tool: Option<String>,
+    pub lec: Option<Lec>,
     /// The equivalence check ran out of time (`lec_timeout_min`) with no failing point; every sanity
     /// check passed.
     pub inconclusive: bool,
-    /// Design Compiler mapped arithmetic to DesignWare parts.
+    /// The flow mapped arithmetic to vendor IP blocks (Design Compiler: DesignWare).
     pub designware: bool,
     pub provisional: bool,
     /// Relative to `out/library/`.
@@ -87,7 +89,8 @@ pub struct Row {
 pub struct Library {
     pub schema: String,
     pub tool: String,
-    pub lec_tool: String,
+    /// The equivalence checker, when the check is on.
+    pub lec_tool: Option<String>,
     /// Versions of the tools that produced the rows (from `chipc doctor`'s manifest and the image).
     pub tool_versions: BTreeMap<String, String>,
     pub kits: Vec<KitInfo>,
@@ -129,6 +132,8 @@ pub struct Coverage {
 pub struct Summary {
     pub schema: String,
     pub tool: String,
+    /// The equivalence check ran.
+    pub lec: bool,
     pub primitives: u64,
     pub by_kind: BTreeMap<String, u64>,
     pub measured: u64,

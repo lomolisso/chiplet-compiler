@@ -4,15 +4,16 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use cc_core::{ArtifactStore, Check, CheckStatus, VerifyReport, canon};
+use cc_core::{ArtifactStore, Check, VerifyReport, canon};
 use cc_pipeline::{PassContext, PassError};
 
 use super::catalog::{self, Primitive};
-use super::config::{CharacterizeConfig, Tool};
+use super::config::CharacterizeConfig;
 use super::json::{Coverage, Library, Row, Status};
 use super::{LIBRARY, flow, sanity};
 use crate::datapaths::json::{Datapath, Src};
-use crate::eda::{Kit, parse};
+use crate::eda::Kit;
+use cc_core::adapters::ReportTexts;
 
 pub fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
     let cfg: CharacterizeConfig = ctx.options()?;
@@ -65,8 +66,6 @@ pub fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
         &rtl_bad,
     ));
 
-    complete(&mut rep, &cfg, &cat, &lib, &cov);
-
     let kits = match flow::kits(ctx, &cfg) {
         Ok(k) => k,
         Err(e) => {
@@ -74,11 +73,13 @@ pub fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
             return Ok(rep);
         }
     };
+    let names: Vec<String> = kits.iter().map(|(k, _)| k.name.clone()).collect();
+    complete(&mut rep, &cfg, &names, &cat, &lib, &cov);
     for (kit, info) in &kits {
         let stored = lib.kits.iter().find(|k| k.name == kit.name);
-        let ok = stored.is_some_and(|s| s.liberty_hash == info.liberty_hash && s.db_hash == info.db_hash);
+        let ok = stored.is_some_and(|s| s == info);
         rep.push(Check::new(format!("{}:libraries", kit.name), ok).note(format!(
-            "{} {} (.lib and .db hashes as recorded)",
+            "{} {} (.lib and .db hashes, driving cell, load and clock as recorded)",
             kit.lib_name, kit.corner
         )));
         for t in &cfg.targets {
@@ -91,17 +92,18 @@ pub fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
         }
     }
 
-    // Area against width: notes only.
-    let mut flags = Vec::new();
+    // Area against width: a clear violation fails, other points off the trend are notes.
+    let (mut flags, mut clear) = (Vec::new(), Vec::new());
     let series = sanity::series(&lib.rows);
     for s in &series {
         flags.extend(sanity::flags(s));
+        clear.extend(sanity::violations(s));
     }
-    let mut c = Check::new("trends", true)
-        .with_status(CheckStatus::Pass)
+    let mut c = Check::new("trends", clear.is_empty())
         .count("series", series.len() as u64)
+        .count("violations", clear.len() as u64)
         .count("flags", flags.len() as u64);
-    for f in flags.iter().take(200) {
+    for f in clear.iter().chain(&flags).take(200) {
         c = c.note(f.clone());
     }
     rep.push(c);
@@ -122,13 +124,14 @@ fn note_list(mut c: Check, items: &[String]) -> Check {
 fn complete(
     rep: &mut VerifyReport,
     cfg: &CharacterizeConfig,
+    kits: &[String],
     cat: &[Primitive],
     lib: &Library,
     cov: &Coverage,
 ) {
     let mut want = BTreeSet::new();
     for p in cat.iter().filter(|p| p.source.is_some()) {
-        for k in &cfg.pdks {
+        for k in kits {
             for t in &cfg.targets {
                 want.insert((p.key.clone(), k.clone(), t.clone()));
             }
@@ -199,6 +202,15 @@ fn per_target(
     rows: &[&Row],
     root: &std::path::Path,
 ) {
+    let pre = format!("{}:{target}", kit.name);
+    let flow = match cfg.flow() {
+        Ok(f) => f,
+        Err(e) => {
+            rep.push(Check::new(format!("{pre}:rows"), false).note(e));
+            return;
+        }
+    };
+    let caps = flow.capabilities();
     let read = |rel: &str| std::fs::read_to_string(root.join(rel)).unwrap_or_default();
     let (mut lec_bad, mut log_bad, mut val_bad) = (Vec::new(), Vec::new(), Vec::new());
     let mut proven = 0u64;
@@ -208,43 +220,46 @@ fn per_target(
         let log = read(&format!("{base}.log"));
         let (seg, lseg) = log.split_once("@@lec\n").unwrap_or((log.as_str(), ""));
         let net = read(&r.netlist);
-        let lec_text = read(&format!("{base}.lec.rpt"));
-        let lec = match cfg.tool {
-            Tool::Dc => parse::formality(&lec_text),
-            Tool::Genus => parse::conformal(&lec_text),
-            Tool::Yosys => parse::yosys_equiv(&lec_text),
-        };
-        if lec.equivalent {
-            proven += 1;
-        } else if lec.inconclusive() {
-            open_rows.push(format!(
-                "{}: {} ({} passing, {} unverified, 0 failing)",
-                r.key, lec.verdict, lec.passing, lec.aborted
-            ));
-        } else {
-            lec_bad.push(format!(
-                "{}: {} ({} failing, {} unverified)",
-                r.key, lec.verdict, lec.failing, lec.aborted
-            ));
+        let lec = cfg
+            .lec
+            .then(|| flow.equivalence(&read(&format!("{base}.lec.rpt"))));
+        if let Some(lec) = &lec {
+            if lec.equivalent {
+                proven += 1;
+            } else if lec.inconclusive() {
+                open_rows.push(format!(
+                    "{}: {} ({} passing, {} unverified, 0 failing)",
+                    r.key, lec.verdict, lec.passing, lec.aborted
+                ));
+            } else {
+                lec_bad.push(format!(
+                    "{}: {} ({} failing, {} unverified)",
+                    r.key, lec.verdict, lec.failing, lec.aborted
+                ));
+            }
         }
-        if r.inconclusive != lec.inconclusive() {
+        if r.inconclusive != lec.as_ref().is_some_and(|l| l.inconclusive()) {
             val_bad.push(format!("{}: inconclusive flag", r.key));
         }
-        let measured = match cfg.tool {
-            Tool::Dc => parse::dc(
-                &read(&format!("{base}.area.rpt")),
-                &read(&format!("{base}.qor.rpt")),
-                &read(&format!("{base}.power.rpt")),
-                kit.time_unit_ps,
-            ),
-            Tool::Genus => parse::genus(
-                &read(&format!("{base}.area.rpt")),
-                &read(&format!("{base}.timing.rpt")),
-                &read(&format!("{base}.power.rpt")),
-                &r.id,
-            ),
-            Tool::Yosys => parse::yosys(&read(&format!("{base}.area.rpt")), seg, &r.id, r.period_ps),
-        };
+        if r.estimator != flow.name() || r.lec_tool.is_some() != cfg.lec {
+            val_bad.push(format!(
+                "{}: estimator or lec_tool differs from the config",
+                r.key
+            ));
+        }
+        let measured = flow.measure(
+            &ReportTexts {
+                area: &read(&format!("{base}.area.rpt")),
+                qor: &read(&format!("{base}.qor.rpt")),
+                timing: &read(&format!("{base}.timing.rpt")),
+                power: &read(&format!("{base}.power.rpt")),
+                log: seg,
+            },
+            &r.id,
+            r.period_ps,
+            kit.time_unit_ps,
+        );
+        let clocked = matches!(r.kind, catalog::Kind::Register | catalog::Kind::Accumulator);
         let problems = flow::problems_of(
             kit,
             &flow::Evidence {
@@ -255,11 +270,10 @@ fn per_target(
                 rtl: &read(&format!("rtl/{}.v", r.id)),
                 top: &r.id,
                 flops: flow::expected_flops(r.kind, r.width),
-                need_delay: !(cfg.tool == Tool::Yosys
-                    && matches!(r.kind, catalog::Kind::Register | catalog::Kind::Accumulator)),
+                need_delay: caps.flop_only_paths || !clocked,
             },
             &measured,
-            &lec,
+            lec.as_ref(),
         );
         for p in problems.into_iter().filter(|p| !p.starts_with("equivalence")) {
             log_bad.push(format!("{}: {p}", r.key));
@@ -272,26 +286,33 @@ fn per_target(
         }
     }
     let n = rows.len() as u64;
-    let pre = format!("{}:{target}", kit.name);
-    rep.push(note_list(
-        Check::new(format!("{pre}:lec"), lec_bad.is_empty() && n > 0)
-            .count("rows", n)
-            .count("equivalent", proven)
-            .count("inconclusive", open_rows.len() as u64)
-            .note(format!(
-                "{} on every netlist against its RTL; a check that ran out of time with no failing point \
-                 passes when every sanity check does",
-                cfg.tool.lec()
-            )),
-        &[lec_bad, open_rows].concat(),
-    ));
+    if cfg.lec {
+        rep.push(note_list(
+            Check::new(format!("{pre}:lec"), lec_bad.is_empty() && n > 0)
+                .count("rows", n)
+                .count("equivalent", proven)
+                .count("inconclusive", open_rows.len() as u64)
+                .note(format!(
+                    "{} on every netlist against its RTL; a check that ran out of time with no failing point \
+                     passes when every sanity check does",
+                    caps.equivalence
+                )),
+            &[lec_bad, open_rows].concat(),
+        ));
+    } else {
+        rep.push(Check::skip(
+            format!("{pre}:lec"),
+            "equivalence check off (lec = false): the synthesis tool is trusted (design §5)",
+        ));
+    }
     rep.push(note_list(
         Check::new(format!("{pre}:sanity"), log_bad.is_empty())
             .count("rows", n)
             .count("problems", log_bad.len() as u64)
             .note(
-                "per netlist: the RTL's ports; flip-flops as the RTL describes; only library cells, no \
-                 latches; cells unless the RTL is wiring; no tool errors or unresolved references",
+                "per netlist: the RTL's ports and widths; every output bit driven; flip-flops as the RTL \
+                 describes; only library cells, no latches; cells unless the RTL is wiring; a positive area; \
+                 no tool errors or unresolved references",
             ),
         &log_bad,
     ));

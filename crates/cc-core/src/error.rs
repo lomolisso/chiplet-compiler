@@ -30,6 +30,18 @@ pub enum CoreError {
         source: postcard::Error,
     },
 
+    /// A configuration names an implementation that no registry of its family has.
+    #[error("{family} `{name}` is not available (available: {available})")]
+    UnknownAdapter {
+        family: String,
+        name: String,
+        available: String,
+    },
+
+    /// A PDK manifest or the files it names.
+    #[error("pdk {kit}: {message}")]
+    Pdk { kit: String, message: String },
+
     #[error("artifact {kind}: {message}")]
     Artifact { kind: String, message: String },
 

@@ -5,7 +5,7 @@
 `env` is not a pass in the DAG. It is the environment every pass relies on. `chipc doctor` proves that each external tool works on this machine by making it do one small real job. It compiles the Liberty files that Design Compiler needs into `.db` files, and it records the evidence in `build/.env/`, the only directory it writes.
 
 Later passes read from it:
-- `characterize` and `synth` use `build/.env/out/pdk_db/*.db` and the merged ASAP7 Liberty in `build/.env/out/pdk_lib/`;
+- `characterize` and `synth` use `build/.env/out/pdk_db/*.db` and the merged libraries of kits shipped as cell groups (ASAP7) in `build/.env/out/pdk_lib/`;
 - every Docker pass uses the image whose pins doctor checked.
 
 Run doctor after cloning, after an image rebuild, and whenever a tool or licence looks broken:
@@ -13,7 +13,7 @@ Run doctor after cloning, after an image rebuild, and whenever a tool or licence
 ```bash
 chipc doctor                 # all checks; exit 0 = green
 chipc doctor --dry           # print every command, run and write nothing
-chipc doctor --skip-licenses # no DC run and no Cadence license checks
+chipc doctor --skip-licenses # no DC run
 chipc doctor --build-args    # the docker/build.sh inputs, from config.toml
 ```
 
@@ -25,14 +25,15 @@ chipc doctor --build-args    # the docker/build.sh inputs, from config.toml
 - Liberty and `.db` files (`docs/tools/pdks.md` §4).
   - `write_lib` takes the Liberty `library (NAME)`, not the file name.
   - Design Compiler links only `.db` files.
-  - Formality, PrimeTime, Genus and Conformal can read `.lib` directly.
-- Licences and the tool-native caps used here: `docs/tools/synopsys.md`, `cadence.md`.
+  - Formality and PrimeTime can read `.lib` directly.
+- The kits are data: one PDK manifest per cell library (`pdks/<kit>.toml`, `docs/framework/adapters.md`, `docs/tools/pdks.md`).
+- Licences and the tool-native caps used here: `docs/tools/synopsys.md`.
 
 ## 3. Inputs and outputs
 
 **Inputs:**
-- `config.toml` `[tools.*]` holds the pins, `[tools.pdk]` the Liberty selection and `[tools.eda]` the licence settings.
-- `config.local.toml` `[paths]` holds the toggle script, the scratch directory and the PDK paths.
+- `config.toml` `[tools.*]` holds the pins and `[tools.eda]` the licence settings; `paths.pdk_manifests` (`pdks/`) holds one manifest per kit, which selects its Liberty files (VT, corner, groups) and LEF.
+- `config.local.toml` `[paths]` holds the toggle script, the scratch directory and the kits' root (`pdk_root`, or `pdks.<kit>` per kit).
 - The submodules, the image, the host EDA installation and the PDK files.
 
 `build/.env/` contents:
@@ -83,22 +84,18 @@ chipc doctor --build-args    # the docker/build.sh inputs, from config.toml
      - `xls_float_lib`: XLS's `fp_sincos_32` (DSLX) to combinational Verilog, read by Yosys (`hierarchy -check`);
      - `flopoco_ghdl`: FloPoCo's `FPExp` (wE=5, wF=10) read by Yosys through the GHDL plugin.
 4. **EDA versions.**
-   - `dc_shell`, `lc_shell`, `fm_shell` and `pt_shell` with `-version`, `vcs -full64 -ID`, and `genus`, `lec` and `xrun` with `-version`.
+   - `dc_shell`, `lc_shell`, `fm_shell` and `pt_shell` with `-version`, `vcs -full64 -ID`, and `xrun` with `-version`.
    - The version is the first line naming one: `… version …` or `Tool: <name> <ver>`. The exit code is ignored, because `dc_shell -version` exits 1.
-5. **PDKs and `.db`.**
-   - The Nangate45 `.lib`/`.lef` are found.
-   - The five ASAP7 files of `[tools.pdk]` VT/corner are found. Each group's date stamp is matched, not assumed; exactly one file per group, otherwise doctor fails.
+5. **PDKs and `.db`.** For every manifest in `paths.pdk_manifests` (sorted by name):
+   - Its Liberty files and LEF files are found under the kit's root: Nangate45's `stdcells.lib`/`.lef`; ASAP7's five group files of the manifest's VT/corner (each group's date stamp is matched, not assumed; exactly one file per group, otherwise doctor fails) and its 1x LEF (`pdk.<kit>`).
    - `library (NAME)` is read from the first 256 KiB of each file.
-   - The five ASAP7 files are merged into `out/pdk_lib/asap7sc7p5t_<VT>_<C>.lib`. Units and the nominal operating point must agree, a cell may appear only once, and a shared group with different text (the driver waveforms) keeps the first file's (noted). Design Compiler's library analysis needs one library with inverters and flops: on the group files alone it leaves placeholders and repeats the analysis (about 100 s) on every compile. Yosys' ABC reads one Liberty file. OpenROAD's `mergeLib.pl` merges ASAP7 the same way.
+   - A kit with cell groups is merged into its `merged` library, for ASAP7 `out/pdk_lib/asap7sc7p5t_<VT>_<C>.lib` (`pdk.<kit>_merged`). Units and the nominal operating point must agree, a cell may appear only once, and a shared group with different text (the driver waveforms) keeps the first file's (noted). Design Compiler's library analysis needs one library with inverters and flops: on the group files alone it leaves placeholders and repeats the analysis (about 100 s) on every compile. Yosys' ABC reads one Liberty file. OpenROAD's `mergeLib.pl` merges ASAP7 the same way.
    - `make_db.tcl` (`read_lib` + `write_lib NAME -format db` per file, the merged library included) runs in `lc_shell`, and the `.db` files are copied to `out/pdk_db/`.
    - LC is skipped when the previous manifest has the same `.lib` hashes and `lc_shell` version and every `.db` exists.
 6. **Synopsys licence and `.db` link.**
-   - An 8-bit adder goes through `compile_ultra` with `set_host_options -max_cores 2`, once against Nangate45 (virtual clock 2.0 ns) and once against the merged ASAP7 `.db` (1000 ps; ASAP7's time unit is ps).
+   - An 8-bit adder goes through `compile_ultra` with `set_host_options -max_cores 2` on each kit's linked library (the merged one for a kit with groups) at the kit's clock in the library's time unit, read from its Liberty header: Nangate45 2 ns, ASAP7 1000 ps.
    - Pass: no `Error` lines, `Total cell area` > 0, and the netlist was written.
-7. **Cadence licences.**
-   - Genus: `genus -batch … -execute "…; exit"` must print `Checking out license`, and its `TMPDIR is being set to …` path must lie on the scratch disk. That confirms Genus nests its temp directory under the `TMPDIR` that `EdaRunner` sets.
-   - LEC: `lec -XL -nogui -nolicwait -dofile exit.do` must print `Check out Conformal_…`. Its exit status is nonzero when no comparison ran (conformal.hlp, `EXIT`), so doctor judges it from the log.
-8. Write `verify.json` and `manifest.json`. The exit status is 0 only if no check failed.
+7. Write `verify.json` and `manifest.json`. The exit status is 0 only if no check failed.
 
 Each step is a handful of process launches. The cost is the one-time LC compilation of about 120 MB of Liberty text plus two tiny DC runs.
 
@@ -109,11 +106,11 @@ Each step is a handful of process launches. The cost is the one-time LC compilat
 | `tools.docker.{image,tag}` | `chiplet-compiler/toolchain`, `0.5.0` | the image doctor checks |
 | `tools.docker.build.*` | see `config.toml` | image-only pins and build caps (`docker/build.sh`) |
 | `tools.{xls,allo,grami}.*` | see `config.toml` | submodule and image pins |
-| `tools.pdk.{asap7_vt,asap7_corner,asap7_groups}` | `RVT`, `TT`, all five | which ASAP7 Liberty set becomes `.db` |
+| `paths.pdk_manifests` | `pdks` | the PDK manifests; each selects its kit's Liberty set (ASAP7: `RVT`, `TT`, all five groups) |
 | `tools.eda.max_licenses` | 2 | concurrent EDA calls (one semaphore) |
 | `tools.eda.license_retries`, `license_backoff_s` | 3, 30 | retry after a licence failure; the wait doubles each time |
-| `tools.eda.license_error_patterns` | Synopsys `SEC-12/21/50/85/87`, the observed Genus message | output substrings that mean "no licence" |
-| `paths.{eda_toggle,scratch_dir,nangate45_lib,nangate45_lef,asap7_nldm_dir}` | none | machine paths (`config.local.toml`) |
+| `tools.eda.license_error_patterns` | Synopsys `SEC-12/21/50/85/87`, the observed Cadence periodic-check message | output substrings that mean "no licence" |
+| `paths.{eda_toggle,scratch_dir,pdk_root}`, `paths.pdks.<kit>` | none | machine paths (`config.local.toml`); the former `nangate45_lib`, `nangate45_lef`, `asap7_root`, `asap7_nldm_dir`, `asap7_lef_dir` and `[tools.pdk]` are rejected with a pointer to the manifests |
 
 ## 6. Verification
 
@@ -129,11 +126,11 @@ Every check is computed independently of the code under test: it reads tool outp
 | `image.tools` | every tool still starts, at its recorded version | tool and mismatch counts |
 | `image.selftest.*` | each open-source tool does real work | `out/selftest/*`; GraMi pattern count |
 | `eda.version.*` | every licensed tool starts through `eda-run` | version line |
-| `pdk.nangate45`, `pdk.asap7` | the PDK files exist | paths, library count |
-| `pdk.asap7_merged` | the ASAP7 groups merge into one library | `out/pdk_lib/*.lib`, cell count, differing groups |
-| `pdk.db` | `.db` files exist for both kits | `out/pdk_db/*.db`, LC error/warning counts |
-| `dc.nangate45`, `dc.asap7` | Synopsys licence; the `.db` files link and map | `out/dc_tiny/*` (area report, netlist) |
-| `license.genus`, `license.lec` | Cadence licences reachable; Genus temp on scratch | checkout lines |
+| `pdk.manifests` | (only on failure) the manifests are readable | the error |
+| `pdk.<kit>` (`pdk.asap7`, `pdk.nangate45`) | the manifest's Liberty and LEF files exist | manifest, file paths, library count |
+| `pdk.<kit>_merged` (`pdk.asap7_merged`) | a kit's groups merge into one library | `out/pdk_lib/*.lib`, cell count, differing groups |
+| `pdk.db` | `.db` files exist for every kit | `out/pdk_db/*.db`, LC error/warning counts |
+| `dc.<kit>` (`dc.nangate45`, `dc.asap7`) | Synopsys licence; the `.db` files link and map | `out/dc_tiny/*` (area report, netlist) |
 
 ## 7. Resource behaviour
 
@@ -147,7 +144,7 @@ Every check is computed independently of the code under test: it reads tool outp
 
 ## 8. Known limitations
 
-- Licence checks show that a licence was available at that moment. Cadence licences have been seen to fail intermittently, so passes still rely on `EdaRunner`'s retry.
+- Licence checks show that a licence was available at that moment, so passes still rely on `EdaRunner`'s retry.
 - `image.tools` compares version strings only. A tool that starts but is functionally broken is caught by `image.selftest`, and only for the features the self-test exercises.
 - The `.db` cache keys on `.lib` hashes and the `lc_shell` version. A changed LC licence or setup that alters output without changing the version is not detected; delete `build/.env/out/pdk_db/` to force a rebuild.
 - Doctor relies on the EDA environment for host fixes: `lc_shell` starts only through the `~/pdks/extra_bin/lc_shell` wrapper that `setup_env.sh` puts on `PATH`. Without it, LC W-2024.09's bundled `libk5crypto` clashes with this host's `krb5-libs` 1.18.2-34. On another host, `eda.version.lc_shell` fails if such a fix is missing.

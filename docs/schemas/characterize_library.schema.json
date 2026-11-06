@@ -38,6 +38,11 @@
       "additionalProperties": false,
       "description": "A kit as the rows were measured on it.",
       "properties": {
+        "clock_ps": {
+          "description": "The clock target, ps (the manifest's, or `clock_ps` in the config).",
+          "format": "double",
+          "type": "number"
+        },
         "corner": {
           "type": "string"
         },
@@ -83,7 +88,8 @@
         "db_hash",
         "time_unit_ps",
         "driving_cell",
-        "load"
+        "load",
+        "clock_ps"
       ],
       "type": "object"
     },
@@ -147,7 +153,7 @@
             "format": "double",
             "type": "number"
           },
-          "description": "Area per direct child instance (hierarchy kept: split pieces, DesignWare parts), µm².",
+          "description": "Area per direct child instance (hierarchy kept: split pieces, IP blocks), µm².",
           "type": "object"
         },
         "delay_ps": {
@@ -196,11 +202,11 @@
           "type": "string"
         },
         "designware": {
-          "description": "Design Compiler mapped arithmetic to DesignWare parts.",
+          "description": "The flow mapped arithmetic to vendor IP blocks (Design Compiler: DesignWare).",
           "type": "boolean"
         },
         "estimator": {
-          "description": "`dc`, `genus` or `yosys`.",
+          "description": "The synthesis flow: `dc` or `yosys`.",
           "type": "string"
         },
         "family": {
@@ -223,11 +229,21 @@
           "type": "string"
         },
         "lec": {
-          "$ref": "#/$defs/Lec"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lec"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "lec_tool": {
-          "description": "`formality`, `conformal` or `yosys-equiv`, and its outcome.",
-          "type": "string"
+          "description": "With `lec`: the equivalence checker (`formality`, `yosys-equiv`) and its outcome.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "measured": {
           "$ref": "#/$defs/Measured",
@@ -292,8 +308,6 @@
         "period_ps",
         "measured",
         "estimator",
-        "lec_tool",
-        "lec",
         "inconclusive",
         "designware",
         "provisional",
@@ -337,7 +351,11 @@
       "type": "array"
     },
     "lec_tool": {
-      "type": "string"
+      "description": "The equivalence checker, when the check is on.",
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "rows": {
       "items": {
@@ -368,7 +386,6 @@
   "required": [
     "schema",
     "tool",
-    "lec_tool",
     "tool_versions",
     "kits",
     "targets",

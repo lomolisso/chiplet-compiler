@@ -276,17 +276,14 @@ impl Drop for SlotGuard<'_> {
     }
 }
 
-/// The licensed tools and their batch-mode flags and native resource caps
-/// (docs/tools/synopsys.md §2, §8; cadence.md §2, §3, §6). Passes put `cap_preamble`
-/// first in every script; the RSS watchdog stays the backstop.
+/// The licensed tools and their batch-mode flags and native resource caps (docs/tools/synopsys.md §2,
+/// §8). Passes put `cap_preamble` first in every script; the RSS watchdog stays the backstop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EdaTool {
     Dc,
     Lc,
     Fm,
     Pt,
-    Genus,
-    Lec,
 }
 
 impl EdaTool {
@@ -296,8 +293,6 @@ impl EdaTool {
             EdaTool::Lc => "lc_shell",
             EdaTool::Fm => "fm_shell",
             EdaTool::Pt => "pt_shell",
-            EdaTool::Genus => "genus",
-            EdaTool::Lec => "lec",
         }
     }
 
@@ -307,16 +302,6 @@ impl EdaTool {
             // -no_home_init: ~/.synopsys_dc.setup cannot change results (dc_shell(1)).
             EdaTool::Dc => &["-no_home_init", "-f", script],
             EdaTool::Lc | EdaTool::Fm | EdaTool::Pt => &["-f", script],
-            EdaTool::Genus => &[
-                "-batch",
-                "-no_gui",
-                "-disable_user_startup",
-                "-abort_on_error",
-                "-files",
-                script,
-            ],
-            // -XL: datapath analysis needs the XL tier; -nolicwait: fail fast, EdaRunner retries.
-            EdaTool::Lec => &["-XL", "-nogui", "-nolicwait", "-dofile", script],
         };
         v.iter().map(|s| s.to_string()).collect()
     }
@@ -334,10 +319,6 @@ impl EdaTool {
                 n.min(4),
                 (caps.memory_gb.floor() as u64).max(1)
             )],
-            // Genus defaults to 8 CPUs (genus_attref: max_cpus_per_server).
-            EdaTool::Genus => vec![format!("set_db / .max_cpus_per_server {n}")],
-            // Each LEC thread may take a license (conformal.hlp: SET PARALLEL OPTION).
-            EdaTool::Lec => vec![format!("set parallel option -threads {}", n.min(4))],
             EdaTool::Lc => Vec::new(),
         }
     }
@@ -392,19 +373,7 @@ mod tests {
             EdaTool::Fm.cap_preamble(&caps),
             ["set_host_options -max_cores 4 -max_memory 12"]
         );
-        assert_eq!(
-            EdaTool::Genus.cap_preamble(&caps),
-            ["set_db / .max_cpus_per_server 32"]
-        );
-        assert_eq!(
-            EdaTool::Lec.cap_preamble(&caps),
-            ["set parallel option -threads 4"]
-        );
-        assert!(
-            EdaTool::Lec
-                .batch_args("x.do")
-                .contains(&"-nolicwait".to_string())
-        );
+        assert_eq!(EdaTool::Dc.batch_args("x.tcl"), ["-no_home_init", "-f", "x.tcl"]);
     }
 
     #[test]

@@ -17,16 +17,18 @@ fn f(x: Option<f64>, digits: usize) -> String {
 pub fn view(lib: &Library, cov: &Coverage, s: &Summary) -> String {
     let mut o = String::new();
     let _ = writeln!(o, "# Primitive library\n");
+    let lec = match &lib.lec_tool {
+        Some(t) => format!("{} proven equivalent ({t})", s.lec_equivalent),
+        None => "equivalence check off".into(),
+    };
     let _ = writeln!(
         o,
-        "{} primitives ({} measured, {} provisional, {} pending), {} rows, {} proven equivalent ({}). Tool: {}; {} sessions run, {} reused, {:.0} s in the tools.\n",
+        "{} primitives ({} measured, {} provisional, {} pending), {} rows, {lec}. Tool: {}; {} sessions run, {} reused, {:.0} s in the tools.\n",
         s.primitives,
         s.measured,
         s.provisional,
         s.pending,
         s.rows,
-        s.lec_equivalent,
-        lib.lec_tool,
         lib.tool,
         s.jobs_run,
         s.jobs_reused,
@@ -126,11 +128,12 @@ pub fn view(lib: &Library, cov: &Coverage, s: &Summary) -> String {
         .rows
         .iter()
         .filter(|r| r.inconclusive)
-        .map(|r| {
-            format!(
+        .filter_map(|r| {
+            let l = r.lec.as_ref()?;
+            Some(format!(
                 "- {} {} {}: {} passing, {} unverified, 0 failing",
-                r.key, r.kit, r.target, r.lec.passing, r.lec.aborted
-            )
+                r.key, r.kit, r.target, l.passing, l.aborted
+            ))
         })
         .collect();
     let _ = writeln!(

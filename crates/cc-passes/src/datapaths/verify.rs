@@ -27,7 +27,7 @@ use cc_smt::{Solver, Verdict};
 use rayon::prelude::*;
 
 use super::json::{Datapath, ProofResult, Src, Stage, Summary};
-use super::{DATAPATHS, DatapathsConfig, Inputs, load, proofs};
+use super::{DATAPATHS, DatapathsConfig, Inputs, bound, load, proofs};
 use crate::components::algo::graph::Kind;
 use crate::iteration_space::json::{Direction, Route};
 use crate::kernels::json::{KNode, Role};
@@ -547,6 +547,42 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
         ));
     }
 
+    // Bound orders: the certificate records the hardware's order (ω), and the error bound against any
+    // other order of the reduction is stated here.
+    for (i, id) in ids.iter().enumerate() {
+        let Some(dp) = &dps[i] else { continue };
+        let Some(a) = &dp.accumulator else { continue };
+        let mut bad = Vec::new();
+        let mut stated = Vec::new();
+        for o in &a.order {
+            match (o.free, &o.hardware) {
+                (true, None) => {}
+                (true, Some(_)) => bad.push(format!("{}: a free order with a hardware order", o.tuple)),
+                (false, None) => bad.push(format!("{}: ω binds and no hardware order is recorded", o.tuple)),
+                (false, Some(hw)) => {
+                    if a.omega.as_ref() != Some(hw) {
+                        bad.push(format!(
+                            "{}: the hardware order is not the accumulator's ω",
+                            o.tuple
+                        ));
+                    }
+                    let t = dp.tuples.iter().find(|t| t.name == o.tuple);
+                    match t.map(|t| bound::bounds(dp, t, hw)) {
+                        Some(Ok(bs)) => stated.extend(bs.into_iter().map(|b| format!("{}: {b}", o.tuple))),
+                        Some(Err(e)) => bad.push(format!("{}: {e}", o.tuple)),
+                        None => bad.push(format!("{}: no such tuple", o.tuple)),
+                    }
+                }
+            }
+        }
+        let bound = a.order.iter().filter(|o| !o.free).count() as u64;
+        let mut c = Check::new(format!("{id}:order"), bad.is_empty()).count("bound", bound);
+        for n in bad.iter().take(20).chain(&stated) {
+            c = c.note(n.clone());
+        }
+        r.push(c);
+    }
+
     // Lemmas.
     let mut ln = Vec::new();
     let lemmas = cc_smt::float::lemmas(&used).unwrap_or_else(|e| {
@@ -577,7 +613,7 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
             Ok(p)
                 if p.verdict.is_unsat()
                     && p.query_hash == cc_smt::query_hash(text)
-                    && p.solver == Solver::Z3 => {}
+                    && p.solver == cc_smt::lemma_solver() => {}
             Ok(p) => ln.push(format!("{f}: stored {:?} {:?}", p.solver, p.verdict)),
             Err(e) => ln.push(format!("{f}: no result: {e}")),
         }
@@ -586,7 +622,7 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
     match cc_smt::run_cached(
         &runner,
         &location,
-        Solver::Z3,
+        cc_smt::lemma_solver(),
         &out.path("lemmas")?,
         &names,
         cfg.lemma_timeout_s,

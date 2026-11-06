@@ -15,7 +15,7 @@ default-filter = "not binary(deep)"
 fail-fast = false
 slow-timeout = { period = "30s", terminate-after = 4 }
 
-# The `rescale` tolerance lemma at i8: Bitwuzla about 25 s, Z3 (verify's re-check) about 90 s.
+# The `rescale` tolerance lemma at i8: Bitwuzla about 25 s, Z3 (verify's re-check) about 150 s.
 [[profile.smoke.overrides]]
 filter = "test(/fixed_requantization|rescale_lemma_holds/)"
 slow-timeout = { period = "120s", terminate-after = 4 }
@@ -29,8 +29,8 @@ slow-timeout = { period = "300s", terminate-after = 4 }
 filter = "binary(deep)"
 test-group = "heavy"
 
-# characterize on every flow: doctor, then DC + Formality, Genus + Conformal and Yosys on a reduced
-# catalog at both kits and timing points (about 45 minutes).
+# characterize on every flow: doctor, then Design Compiler (without, then with Formality) and Yosys on a
+# reduced catalog at both kits and timing points.
 [[profile.deep.overrides]]
 filter = "binary(deep) and test(characterize)"
 slow-timeout = { period = "600s", terminate-after = 9 }

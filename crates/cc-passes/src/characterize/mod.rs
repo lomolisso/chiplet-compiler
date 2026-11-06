@@ -1,6 +1,6 @@
 //! `characterize` (design §4.9): the area, delay and leakage of every hardware primitive the merged units
-//! are built from, per kit and timing point, each netlist proven equal to its RTL
-//! (docs/passes/characterize.md).
+//! are built from, per kit and timing point, through the configured synthesis flow; every netlist passes
+//! the cheap checks, and with `lec` it is also checked against its RTL (docs/passes/characterize.md).
 
 pub mod catalog;
 pub mod config;
@@ -15,7 +15,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use cc_core::{ArtifactKind, CoreError, LoadedConfig, PassSection, VerifyReport, canon};
 use cc_pipeline::{Pass, PassContext, PassError, RunnerKind, ToolSpec};
 
-pub use config::{CharacterizeConfig, Tool};
+pub use config::CharacterizeConfig;
 use json::{LIBRARY_SCHEMA, Library, Row, SUMMARY_SCHEMA, Summary, TargetInfo};
 
 /// `out/library/{library,catalog,coverage,summary}.json`, `rtl/`, `netlist/`, `reports/`.
@@ -46,7 +46,7 @@ impl Pass for Characterize {
     }
 
     fn version(&self) -> u32 {
-        1
+        2
     }
 
     fn requires(&self) -> &[ArtifactKind] {
@@ -79,7 +79,7 @@ impl Pass for Characterize {
         m.insert("image".into(), format!("{}:{}", d.image, d.tag));
         if let Some(man) = env.read_manifest()? {
             for (k, v) in &man.tool_versions {
-                if matches!(k.as_str(), "dc_shell" | "fm_shell" | "genus" | "lec" | "lc_shell") {
+                if matches!(k.as_str(), "dc_shell" | "fm_shell" | "lc_shell") {
                     m.insert(format!("tool:{k}"), v.clone());
                 }
             }
@@ -167,22 +167,28 @@ impl Pass for Characterize {
             )
         });
 
+        // Area against width: a clear violation fails the row's series.
+        for s in &sanity::series(&rows) {
+            bad.extend(sanity::violations(s));
+        }
+
+        let synth = cfg.flow().map_err(fail)?;
         let mut tool_versions = flow::eda_versions(ctx);
-        tool_versions.retain(|k, _| matches!(k.as_str(), "dc_shell" | "fm_shell" | "genus" | "lec"));
+        tool_versions.retain(|k, _| matches!(k.as_str(), "dc_shell" | "fm_shell"));
         let mut targets = Vec::new();
-        for (k, _) in &kits {
+        for (k, info) in &kits {
             for t in &cfg.targets {
                 targets.push(TargetInfo {
                     kit: k.name.clone(),
                     target: t.clone(),
-                    period_ps: cfg.period_ps(&k.name, t).map_err(fail)?,
+                    period_ps: cfg.period_ps(info.clock_ps, t).map_err(fail)?,
                 });
             }
         }
         let library = Library {
             schema: LIBRARY_SCHEMA.into(),
-            tool: cfg.tool.name().into(),
-            lec_tool: cfg.tool.lec().into(),
+            tool: synth.name().into(),
+            lec_tool: cfg.lec.then(|| synth.capabilities().equivalence.to_string()),
             tool_versions,
             kits: kits.iter().map(|(_, i)| i.clone()).collect(),
             targets,
@@ -227,14 +233,18 @@ fn summarize(
     let provisional = cat.iter().filter(|p| p.provisional).count() as u64;
     Summary {
         schema: SUMMARY_SCHEMA.into(),
-        tool: cfg.tool.name().into(),
+        tool: cfg.tool.clone(),
+        lec: cfg.lec,
         primitives: cat.len() as u64,
         by_kind,
         measured: cat.len() as u64 - pending - provisional,
         provisional,
         pending,
         rows: rows.len() as u64,
-        lec_equivalent: rows.iter().filter(|r| r.lec.equivalent).count() as u64,
+        lec_equivalent: rows
+            .iter()
+            .filter(|r| r.lec.as_ref().is_some_and(|l| l.equivalent))
+            .count() as u64,
         lec_inconclusive: rows.iter().filter(|r| r.inconclusive).count() as u64,
         designware_rows: rows.iter().filter(|r| r.designware).count() as u64,
         jobs_run: ran,

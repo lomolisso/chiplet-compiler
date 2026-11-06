@@ -1,3 +1,4 @@
-/* header-only fixture (doctor smoke test): chipc doctor reads only the library group name */
+/* header-only fixture (doctor smoke test): chipc doctor reads the library group name and its time unit */
 library (NangateOpenCellLibrary) {
+  time_unit : "1ns";
 }

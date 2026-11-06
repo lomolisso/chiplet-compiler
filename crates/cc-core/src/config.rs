@@ -69,14 +69,25 @@ pub struct PathsConfig {
     /// The solver-answer cache, shared by every pass (and by build directories that point at the same
     /// one). Default: `<build_dir>/.smt-cache`.
     pub smt_cache: Option<PathBuf>,
+    /// The PDK manifests (`<kit>.toml`, docs/tools/pdks.md).
+    pub pdk_manifests: PathBuf,
+    /// The directory every kit's manifest `root` is relative to.
     pub pdk_root: Option<PathBuf>,
-    pub nangate45_lib: Option<PathBuf>,
-    pub nangate45_lef: Option<PathBuf>,
-    pub asap7_root: Option<PathBuf>,
-    pub asap7_nldm_dir: Option<PathBuf>,
-    pub asap7_lef_dir: Option<PathBuf>,
+    /// A kit's root directly, overriding `pdk_root` joined with the manifest's `root`.
+    pub pdks: BTreeMap<String, PathBuf>,
     pub synopsys_root: Option<PathBuf>,
     pub cadence_root: Option<PathBuf>,
+    /// Replaced by the PDK manifests: rejected with a message that says so (`validate`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nangate45_lib: Option<toml::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nangate45_lef: Option<toml::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asap7_root: Option<toml::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asap7_nldm_dir: Option<toml::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asap7_lef_dir: Option<toml::Value>,
 }
 
 impl Default for PathsConfig {
@@ -88,14 +99,16 @@ impl Default for PathsConfig {
             eda_toggle: None,
             scratch_dir: None,
             smt_cache: None,
+            pdk_manifests: "pdks".into(),
             pdk_root: None,
+            pdks: BTreeMap::new(),
+            synopsys_root: None,
+            cadence_root: None,
             nangate45_lib: None,
             nangate45_lef: None,
             asap7_root: None,
             asap7_nldm_dir: None,
             asap7_lef_dir: None,
-            synopsys_root: None,
-            cadence_root: None,
         }
     }
 }
@@ -188,7 +201,9 @@ pub struct ToolsConfig {
     pub xls: XlsPins,
     pub allo: AlloPins,
     pub grami: GramiPins,
-    pub pdk: PdkConfig,
+    /// Replaced by the PDK manifests: rejected with a message that says so (`validate`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pdk: Option<toml::Value>,
 }
 
 /// XLS: one commit for the release tarball and the Bazel-built tools (`docs/tools/xls.md` §1).
@@ -213,25 +228,6 @@ pub struct AlloPins {
 #[serde(deny_unknown_fields, default)]
 pub struct GramiPins {
     pub commit: String,
-}
-
-/// Which ASAP7 Liberty set is compiled to `.db` (`docs/tools/pdks.md` §3).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, default)]
-pub struct PdkConfig {
-    pub asap7_vt: String,
-    pub asap7_corner: String,
-    pub asap7_groups: Vec<String>,
-}
-
-impl Default for PdkConfig {
-    fn default() -> Self {
-        Self {
-            asap7_vt: "RVT".into(),
-            asap7_corner: "TT".into(),
-            asap7_groups: ["AO", "OA", "INVBUF", "SEQ", "SIMPLE"].map(String::from).to_vec(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -699,6 +695,26 @@ fn validate(c: &Config) -> Result<()> {
     if c.tools.eda.max_licenses == 0 {
         return bad("tools.eda.max_licenses must be >= 1");
     }
+    let p = &c.paths;
+    let old: Vec<&str> = [
+        ("paths.nangate45_lib", p.nangate45_lib.is_some()),
+        ("paths.nangate45_lef", p.nangate45_lef.is_some()),
+        ("paths.asap7_root", p.asap7_root.is_some()),
+        ("paths.asap7_nldm_dir", p.asap7_nldm_dir.is_some()),
+        ("paths.asap7_lef_dir", p.asap7_lef_dir.is_some()),
+        ("[tools.pdk]", c.tools.pdk.is_some()),
+    ]
+    .into_iter()
+    .filter_map(|(k, set)| set.then_some(k))
+    .collect();
+    if !old.is_empty() {
+        return bad(&format!(
+            "{} no longer exist: each kit's files, VT, corner and groups come from its PDK manifest \
+             (pdks/<kit>.toml) under paths.pdk_root, or paths.pdks.<kit> for one kit's root; delete them \
+             from config.local.toml (docs/tools/pdks.md)",
+            old.join(", ")
+        ));
+    }
     Ok(())
 }
 
@@ -761,6 +777,24 @@ mod tests {
         assert!(s.options.contains_key("k") && !s.options.contains_key("resources"));
         let c = layers(&[("a", "[passes.p.resources]\nthreds = 2")]).unwrap();
         assert!(c.pass_section("p").unwrap_err().to_string().contains("threds"));
+    }
+
+    #[test]
+    fn removed_pdk_keys_say_where_they_went() {
+        let e = layers(&[("a", "[paths]\nnangate45_lib = \"/x\"\nasap7_nldm_dir = \"/y\"")])
+            .unwrap_err()
+            .to_string();
+        assert!(
+            e.contains("paths.nangate45_lib, paths.asap7_nldm_dir") && e.contains("pdks/<kit>.toml"),
+            "{e}"
+        );
+        let e = layers(&[("a", "[tools.pdk]\nasap7_vt = \"RVT\"")])
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("[tools.pdk]"), "{e}");
+        let c = layers(&[("a", "[paths]\npdk_root = \"/p\"\npdks = { k = \"/k\" }")]).unwrap();
+        assert_eq!(c.config.paths.pdks["k"], PathBuf::from("/k"));
+        assert_eq!(c.config.paths.pdk_manifests, PathBuf::from("pdks"));
     }
 
     #[test]

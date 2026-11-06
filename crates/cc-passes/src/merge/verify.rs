@@ -757,7 +757,7 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
     let mut zfiles = Vec::new();
     let nq = queries.len();
     for (i, q) in queries.iter().chain(&zq).enumerate() {
-        let want = if i < nq { solver } else { Solver::Z3 };
+        let want = if i < nq { solver } else { cc_smt::lemma_solver() };
         match q {
             Ok(q) => {
                 let stored =
@@ -796,7 +796,7 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
         match cc_smt::run_cached(
             &runner,
             &location,
-            Solver::Z3,
+            cc_smt::lemma_solver(),
             &out.path("proofs")?,
             &zfiles,
             cfg.compose_timeout_s,

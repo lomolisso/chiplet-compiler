@@ -143,6 +143,10 @@ pub struct OrderFree {
     /// `true`: any order gives the same bits (ω is free); `false`: ω binds (a counterexample is in the
     /// result file).
     pub free: bool,
+    /// When ω binds: the order the hardware computes, the accumulator's ω (design §6.4; `verify.json`
+    /// carries the error bound against any other order).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hardware: Option<DimOrder>,
 }
 
 /// The accumulator vertex: a tuple of accumulators updated by one combiner (variadic reductions have

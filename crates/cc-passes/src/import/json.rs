@@ -7,7 +7,7 @@ use cc_ir::ops::OpSpec;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-pub const SUMMARY_SCHEMA: &str = "cc.import.summary/1";
+pub const SUMMARY_SCHEMA: &str = "cc.import.summary/2";
 pub const INVENTORY_SCHEMA: &str = "cc.import.op_inventory/1";
 
 /// What inlining removed, per op name: the inlined `func.call`s, the inlined composites and the
@@ -42,8 +42,16 @@ pub struct Summary {
     /// Size-computation ops and their share of all non-structural ops (rounded to 1e-4).
     pub size_ops: u64,
     pub size_share: f64,
+    /// Constant-computation ops (size computation included) and their share of all non-structural ops.
+    pub constant_ops: u64,
+    pub constant_share: f64,
+    /// Constant-computation ops that are not size computation, per name (`name@target` for custom calls).
+    pub constant_by_op: BTreeMap<String, u64>,
     /// Operand edges where a dimension value enters compute, per consuming op name.
     pub dim_as_data: BTreeMap<String, u64>,
+    /// Operand edges where a constant-computation value (not a size value) enters an op that is not
+    /// constant computation, at a non-shape port, per consuming op name.
+    pub const_in: BTreeMap<String, u64>,
     /// Component composites (`cc.*`) by name.
     pub composites: BTreeMap<String, u64>,
     /// Values whose type has a symbolic dimension.

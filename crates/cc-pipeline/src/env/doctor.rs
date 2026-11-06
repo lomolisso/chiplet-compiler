@@ -32,10 +32,6 @@ pub const DC_TINY: ArtifactKind = ArtifactKind("dc_tiny");
 /// `out/pdk_lib/<library>.lib`: the ASAP7 group libraries of one VT/corner merged into one (`liberty.rs`).
 pub const PDK_LIB: ArtifactKind = ArtifactKind("pdk_lib");
 
-/// The merged ASAP7 library of one VT/corner, e.g. `asap7sc7p5t_RVT_TT`.
-pub fn asap7_merged_name(pdk: &cc_core::config::PdkConfig) -> String {
-    format!("asap7sc7p5t_{}_{}", pdk.asap7_vt, pdk.asap7_corner)
-}
 const DOCTOR_VERSION: u32 = 1;
 /// The steps `cc-selftest` reports (docker/selftest.sh).
 pub const SELFTEST_STEPS: [&str; 9] = [
@@ -50,14 +46,12 @@ pub const SELFTEST_STEPS: [&str; 9] = [
     "flopoco_ghdl",
 ];
 /// Version query per licensed tool (flags observed on this host, docs/tools/{synopsys,cadence}.md).
-const EDA_VERSION_PROBES: [(&str, &[&str]); 8] = [
+const EDA_VERSION_PROBES: [(&str, &[&str]); 6] = [
     ("dc_shell", &["-version"]),
     ("lc_shell", &["-version"]),
     ("fm_shell", &["-version"]),
     ("pt_shell", &["-version"]),
     ("vcs", &["-full64", "-ID"]),
-    ("genus", &["-version"]),
-    ("lec", &["-version"]),
     ("xrun", &["-version"]),
 ];
 const GIB: f64 = (1u64 << 30) as f64;
@@ -117,6 +111,16 @@ impl Via {
     }
 }
 
+/// One kit as `chipc doctor` found it: its manifest, the library the flows link (the merged one for a
+/// kit with groups) and every library compiled to `.db`.
+struct KitLibs {
+    pdk: cc_core::pdk::Pdk,
+    link: LibertyLib,
+    all: Vec<LibertyLib>,
+    /// A shipped Liberty file with the units (a merged library keeps its first group's header).
+    units: PathBuf,
+}
+
 /// Run every check; write `build/.env/{verify,manifest}.json` unless `dry`. The report's `passed()`
 /// is the exit status.
 pub fn doctor(
@@ -155,15 +159,13 @@ pub fn doctor(
     d.submodules();
     d.docker();
     d.eda_versions();
-    let libs = d.pdk();
+    let kits = d.pdk();
     if opts.skip_licenses {
-        d.push(Check::skip("dc.nangate45", "--skip-licenses"));
-        d.push(Check::skip("dc.asap7", "--skip-licenses"));
-        d.push(Check::skip("license.genus", "--skip-licenses"));
-        d.push(Check::skip("license.lec", "--skip-licenses"));
+        for k in &kits {
+            d.push(Check::skip(format!("dc.{}", k.pdk.name()), "--skip-licenses"));
+        }
     } else {
-        d.dc_tiny(&libs);
-        d.cadence_licenses();
+        d.dc_tiny(&kits);
     }
     d.finish(&started_at, t0)?;
     Ok(d.report)
@@ -603,61 +605,86 @@ impl Doctor<'_> {
 
     // -- PDKs and .db ------------------------------------------------------------------------------
 
-    /// PDK files exist; the Liberty files compile to `.db` (cached by `.lib` hash + LC version).
-    fn pdk(&mut self) -> Vec<LibertyLib> {
-        let p = self.config().paths.clone();
-        let mut libs = Vec::new();
-
-        let nangate = p.nangate45_lib.as_ref().map(|x| self.cfg.resolve(x));
-        let lef = p.nangate45_lef.as_ref().map(|x| self.cfg.resolve(x));
-        match (&nangate, &lef) {
-            (Some(lib), Some(lef)) if lib.is_file() && lef.is_file() => match pdk_db::read_library(lib) {
-                Ok(l) => {
-                    self.push(
-                        Check::new("pdk.nangate45", true)
-                            .path(lib.display().to_string())
-                            .path(lef.display().to_string())
-                            .note(format!("library {}", l.name)),
-                    );
-                    libs.push(l);
-                }
-                Err(e) => self.push(Check::new("pdk.nangate45", false).note(e.to_string())),
-            },
-            _ => self.push(
-                Check::new("pdk.nangate45", false)
-                    .note("paths.nangate45_lib / nangate45_lef missing or unset (config.local.toml)"),
-            ),
-        }
-
-        let pdk = self.config().tools.pdk.clone();
-        let label = format!("{} {}", pdk.asap7_vt, pdk.asap7_corner);
-        match p.asap7_nldm_dir.as_ref().map(|x| self.cfg.resolve(x)) {
-            None => self.push(
-                Check::new("pdk.asap7", false).note("paths.asap7_nldm_dir is unset (config.local.toml)"),
-            ),
-            Some(dir) => match pdk_db::asap7_libs(&dir, &pdk).and_then(|ps| {
+    /// Every kit's manifest (`pdks/<kit>.toml`) names files that exist; group libraries are merged; every
+    /// Liberty file compiles to `.db` (cached by `.lib` hash + LC version).
+    fn pdk(&mut self) -> Vec<KitLibs> {
+        let pdks = match cc_core::pdk::load_all(self.cfg) {
+            Ok(p) if !p.is_empty() => p,
+            Ok(_) => {
+                self.push(Check::new("pdk.manifests", false).note(format!(
+                    "no manifests in {}",
+                    cc_core::pdk::manifest_dir(self.cfg).display()
+                )));
+                return Vec::new();
+            }
+            Err(e) => {
+                self.push(Check::new("pdk.manifests", false).note(e.to_string()));
+                return Vec::new();
+            }
+        };
+        let mut kits = Vec::new();
+        for (name, pdk) in pdks {
+            let check = format!("pdk.{name}");
+            let found = pdk.liberty_files().and_then(|ps| {
                 ps.iter()
                     .map(|p| pdk_db::read_library(p))
                     .collect::<Result<Vec<_>, _>>()
-            }) {
-                Ok(found) => {
-                    let mut c = Check::new("pdk.asap7", true)
-                        .count("libraries", found.len() as u64)
-                        .note(format!("{label}: {} libraries", found.len()));
-                    for l in &found {
-                        c = c.path(l.path.display().to_string());
-                    }
-                    self.push(c);
-                    let merged = self.asap7_merge(&pdk, &found);
-                    libs.extend(found);
-                    libs.extend(merged);
+            });
+            let (found, lefs) = match (found, pdk.lef_files()) {
+                (Ok(f), Ok(l)) => (f, l),
+                (Err(e), _) | (_, Err(e)) => {
+                    self.push(Check::new(check, false).note(e.to_string()));
+                    continue;
                 }
-                Err(e) => self.push(Check::new("pdk.asap7", false).note(e.to_string())),
-            },
+            };
+            let note = if pdk.manifest.groups.is_empty() {
+                format!(
+                    "library {}",
+                    found
+                        .iter()
+                        .map(|l| l.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            } else {
+                format!(
+                    "{} {}: {} libraries",
+                    pdk.manifest.vt,
+                    pdk.manifest.corner,
+                    found.len()
+                )
+            };
+            let mut c = Check::new(check, true)
+                .count("libraries", found.len() as u64)
+                .note(note)
+                .path(pdk.file.display().to_string());
+            for p in found.iter().map(|l| &l.path).chain(&lefs) {
+                c = c.path(p.display().to_string());
+            }
+            self.push(c);
+            let link = match pdk.merged_name() {
+                Some(merged) => match self.merge_groups(&name, &merged, &found) {
+                    Some(m) => m,
+                    None => continue,
+                },
+                None => found[0].clone(),
+            };
+            let units = found[0].path.clone();
+            let mut all = found;
+            if !all.contains(&link) {
+                all.push(link.clone());
+            }
+            kits.push(KitLibs {
+                pdk,
+                link,
+                all,
+                units,
+            });
         }
+        let libs: Vec<LibertyLib> = kits.iter().flat_map(|k| k.all.iter().cloned()).collect();
         if libs.is_empty() {
             self.push(Check::new("pdk.db", false).note("no Liberty files"));
-            return libs;
+            return kits;
         }
 
         for l in &libs {
@@ -686,20 +713,20 @@ impl Doctor<'_> {
                         libs.len()
                     )),
             );
-            return libs;
+            return kits;
         }
 
         let job = self.dir.path().join("eda").join("lc");
         let script = job.join("make_db.tcl");
         if !self.write(&script, &pdk_db::make_db_tcl(&libs)) {
             self.push(Check::new("pdk.db", false).note(format!("cannot write {}", script.display())));
-            return libs;
+            return kits;
         }
         let inv = Invocation::new("lc_shell", EdaTool::Lc.program())
             .args(EdaTool::Lc.batch_args("make_db.tcl"))
             .cwd(&job);
         let Some(o) = self.exec("pdk.db", Via::Eda, &inv, LC_CAPS) else {
-            return libs;
+            return kits;
         };
         let text = outcome_text(&o);
         let errors = text
@@ -729,35 +756,35 @@ impl Doctor<'_> {
             c = c.path(format!("out/pdk_db/{}", l.db_file()));
         }
         self.push(c);
-        libs
+        kits
     }
 
-    /// The ASAP7 group libraries merged into one (`out/pdk_lib/`), which LC then compiles with the rest:
-    /// DC's library analysis needs a library with inverters and flops, Yosys reads one file.
-    fn asap7_merge(&mut self, pdk: &cc_core::config::PdkConfig, found: &[LibertyLib]) -> Option<LibertyLib> {
-        let name = asap7_merged_name(pdk);
+    /// A kit's group libraries merged into one (`out/pdk_lib/<merged>.lib`), which LC then compiles with
+    /// the rest: DC's library analysis needs a library with inverters and flops, Yosys reads one file.
+    fn merge_groups(&mut self, kit: &str, name: &str, found: &[LibertyLib]) -> Option<LibertyLib> {
+        let check = format!("pdk.{kit}_merged");
         let texts: Result<Vec<String>, String> = found
             .iter()
             .map(|l| std::fs::read_to_string(&l.path).map_err(|e| format!("{}: {e}", l.path.display())))
             .collect();
         let merged = texts.and_then(|t| {
             let refs: Vec<&str> = t.iter().map(String::as_str).collect();
-            super::liberty::merge(&name, &refs)
+            super::liberty::merge(name, &refs)
         });
         let m = match merged {
             Ok(m) => m,
             Err(e) => {
-                self.push(Check::new("pdk.asap7_merged", false).note(e));
+                self.push(Check::new(check, false).note(e));
                 return None;
             }
         };
         let kd = self.dir.kind(PDK_LIB);
         let path = kd.dir().join(format!("{name}.lib"));
         if !self.opts.dry && (kd.create().is_err() || !self.write(&path, &m.text)) {
-            self.push(Check::new("pdk.asap7_merged", false).note(format!("cannot write {}", path.display())));
+            self.push(Check::new(check, false).note(format!("cannot write {}", path.display())));
             return None;
         }
-        let mut c = Check::new("pdk.asap7_merged", true)
+        let mut c = Check::new(check, true)
             .count("cells", m.cells as u64)
             .count("differing_groups", m.differing.len() as u64)
             .path(format!("out/pdk_lib/{name}.lib"))
@@ -770,35 +797,40 @@ impl Doctor<'_> {
             c = c.note(format!("kept the first library's {}", m.differing.join(", ")));
         }
         self.push(c);
-        Some(LibertyLib { path, name })
+        Some(LibertyLib {
+            path,
+            name: name.to_string(),
+        })
     }
 
     // -- licensed synthesis -----------------------------------------------------------------------
 
-    /// An 8-bit adder through `compile_ultra` on each kit: proves the Synopsys license and that the
-    /// `.db` files link.
-    fn dc_tiny(&mut self, libs: &[LibertyLib]) {
+    /// An 8-bit adder through `compile_ultra` on each kit's linked library at its default clock: proves the
+    /// Synopsys license and that the `.db` files link.
+    fn dc_tiny(&mut self, kits: &[KitLibs]) {
         let db_dir = self.dir.kind(PDK_DB).dir().to_path_buf();
-        let nangate: Vec<String> = libs
-            .iter()
-            .filter(|l| !l.name.starts_with("asap7"))
-            .map(LibertyLib::db_file)
-            .collect();
-        let merged = asap7_merged_name(&self.config().tools.pdk);
-        let asap7: Vec<String> = libs
-            .iter()
-            .filter(|l| l.name == merged)
-            .map(LibertyLib::db_file)
-            .collect();
-        // Clock period in each library's time unit: ns for Nangate45, ps for ASAP7 (pdks.md §5).
-        for (label, dbs, period) in [("nangate45", nangate, "2.0"), ("asap7", asap7, "1000")] {
+        for k in kits {
+            let label = k.pdk.name().to_string();
             let name = format!("dc.{label}");
-            if dbs.is_empty() || (!self.opts.dry && !dbs.iter().all(|f| non_empty(&db_dir.join(f)))) {
+            let dbs = vec![k.link.db_file()];
+            if !self.opts.dry && !dbs.iter().all(|f| non_empty(&db_dir.join(f))) {
                 self.push(Check::new(name, false).note("no .db files (see pdk.db)"));
                 continue;
             }
+            // The clock in the library's time unit (ns for Nangate45, ps for ASAP7: pdks.md §5).
+            let period = match std::fs::read_to_string(&k.units)
+                .map_err(|e| e.to_string())
+                .and_then(|t| super::liberty::header(&t))
+                .and_then(|h| super::liberty::time_unit_ps(h.get("time_unit").map_or("", String::as_str)))
+            {
+                Ok(unit) => format!("{}", k.pdk.manifest.clock_ps / unit),
+                Err(e) => {
+                    self.push(Check::new(name, false).note(format!("{}: time_unit: {e}", k.units.display())));
+                    continue;
+                }
+            };
             let job = self.dir.path().join("eda").join(format!("dc_{label}"));
-            let script = dc_script(&EdaTool::Dc.cap_preamble(&DC_CAPS), &db_dir, &dbs, period);
+            let script = dc_script(&EdaTool::Dc.cap_preamble(&DC_CAPS), &db_dir, &dbs, &period);
             if !self.write(&job.join("add8.v"), ADD8_V) || !self.write(&job.join("syn.tcl"), &script) {
                 self.push(Check::new(name, false).note("cannot write the DC job files"));
                 continue;
@@ -836,84 +868,6 @@ impl Doctor<'_> {
                     .count("dc_errors", errors)
                     .path(format!("out/dc_tiny/{label}_area.rpt"))
                     .path(format!("out/dc_tiny/{label}_netlist.v")),
-            );
-        }
-    }
-
-    /// Cadence licenses can fail intermittently (cadence.md §5): check both tools we use.
-    fn cadence_licenses(&mut self) {
-        let job = self.dir.path().join("eda").join("genus_license");
-        let inv = Invocation::new("genus", EdaTool::Genus.program())
-            .args([
-                "-batch",
-                "-no_gui",
-                "-disable_user_startup",
-                "-execute",
-                "set_db / .max_cpus_per_server 1; exit",
-            ])
-            .cwd(&job);
-        if let Some(o) = self.exec("license.genus", Via::Eda, &inv, EDA_PROBE_CAPS) {
-            let text = outcome_text(&o);
-            let checked_out = text
-                .lines()
-                .find(|l| l.contains("Checking out license"))
-                .map(str::trim);
-            let mut c = Check::new("license.genus", o.success() && checked_out.is_some()).note(
-                checked_out
-                    .unwrap_or("no `Checking out license` line")
-                    .to_string(),
-            );
-            // Genus nests its temp dir under TMPDIR, which EdaRunner points at the scratch disk.
-            if let Some(t) = text
-                .lines()
-                .find_map(|l| l.strip_prefix("TMPDIR is being set to "))
-            {
-                let on_scratch = self
-                    .config()
-                    .paths
-                    .scratch_dir
-                    .as_ref()
-                    .is_some_and(|s| Path::new(t.trim()).starts_with(self.cfg.resolve(s)));
-                c = c.note(format!(
-                    "Genus temp dir {} ({})",
-                    t.trim(),
-                    if on_scratch {
-                        "scratch disk"
-                    } else {
-                        "NOT on scratch"
-                    }
-                ));
-                if !on_scratch {
-                    c = c.with_status(CheckStatus::Fail);
-                }
-            }
-            self.push(c);
-        }
-
-        let job = self.dir.path().join("eda").join("lec_license");
-        if !self.write(&job.join("exit.do"), "exit -force\n") {
-            self.push(Check::new("license.lec", false).note("cannot write exit.do"));
-            return;
-        }
-        let inv = Invocation::new("lec", EdaTool::Lec.program())
-            .args(EdaTool::Lec.batch_args("exit.do"))
-            .cwd(&job);
-        // Exit status is nonzero when no comparison ran (conformal.hlp: EXIT), so judge by the log.
-        if let Some(o) = self.exec("license.lec", Via::Eda, &inv, EDA_PROBE_CAPS) {
-            let text = outcome_text(&o);
-            let lines: Vec<&str> = text
-                .lines()
-                .filter(|l| l.contains("Check out Conformal_"))
-                .map(str::trim)
-                .collect();
-            self.push(
-                Check::new("license.lec", !lines.is_empty() && o.killed.is_none()).note(
-                    if lines.is_empty() {
-                        "no license checkout line".into()
-                    } else {
-                        lines.join("; ")
-                    },
-                ),
             );
         }
     }
@@ -1014,8 +968,8 @@ pub fn total_cell_area(report: &str) -> Option<f64> {
         .ok()
 }
 
-/// The first line that names a version: `… version …` (Synopsys, Genus, VCS) or `Tool: <name> <ver>`
-/// (LEC, xrun). Conformal `//` comment lines are skipped.
+/// The first line that names a version: `… version …` (Synopsys, VCS) or `Tool: <name> <ver>` (xrun).
+/// Cadence's `//` comment lines are skipped.
 pub fn version_line(text: &str) -> Option<String> {
     text.lines()
         .map(str::trim)
@@ -1185,11 +1139,9 @@ mod tests {
         let dc = "Info: [VCS_SAVE_RESTORE_INFO] ASLR ...\n\ndc_shell version    -  W-2024.09\n";
         assert_eq!(version_line(dc).as_deref(), Some("dc_shell version - W-2024.09"));
         assert_eq!(
-            version_line("Tool:\tlec\t24.10-p100\n").as_deref(),
-            Some("Tool: lec 24.10-p100")
+            version_line("TOOL:\txrun\t24.03-s005\n").as_deref(),
+            Some("TOOL: xrun 24.03-s005")
         );
-        let genus = "No DISPLAY environment variable set.\nProgram Name: Genus(TM) Synthesis Solution, Version: 21.19-s055_1\n";
-        assert!(version_line(genus).unwrap().ends_with("21.19-s055_1"));
         assert_eq!(version_line("// Warning: This version is 883 days old.\n"), None);
         assert_eq!(version_line("nothing here"), None);
     }
