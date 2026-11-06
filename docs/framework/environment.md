@@ -110,7 +110,7 @@ Each step is a handful of process launches. The cost is the one-time LC compilat
 | `tools.docker.build.*` | see `config.toml` | image-only pins and build caps (`docker/build.sh`) |
 | `tools.{xls,allo,grami,hardfloat}.*` | see `config.toml` | submodule and image pins |
 | `paths.pdk_manifests` | `pdks` | the PDK manifests; each selects its kit's Liberty set (ASAP7: `RVT`, `TT`, all five groups) |
-| `tools.eda.max_licenses` | 2 | concurrent EDA calls (one semaphore) |
+| `tools.eda.max_licenses` | 12 | concurrent EDA calls (one semaphore) |
 | `tools.eda.license_retries`, `license_backoff_s` | 3, 30 | retry after a licence failure; the wait doubles each time |
 | `tools.eda.license_error_patterns` | Synopsys `SEC-12/21/50/85/87`, the observed Cadence periodic-check message | output substrings that mean "no licence" |
 | `paths.{eda_toggle,scratch_dir,pdk_root}`, `paths.pdks.<kit>` | none | machine paths (`config.local.toml`); the former `nangate45_lib`, `nangate45_lef`, `asap7_root`, `asap7_nldm_dir`, `asap7_lef_dir` and `[tools.pdk]` are rejected with a pointer to the manifests |

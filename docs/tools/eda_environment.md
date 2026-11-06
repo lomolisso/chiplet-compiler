@@ -89,7 +89,10 @@ bash --norc -i -c '. "$HOME/bin/eda-toggle.sh"; eda-run "$@"' eda-run <tool> <ar
 - Observed: `dc_shell -version` without `extra_libs` on `LD_LIBRARY_PATH` fails with
   `libpulse-mainloop-glib.so.0: cannot open shared object file`, another reason to go through `eda-run`.
 - `vcs` without `VCS_HOME` fails (`Cannot find 'vcsMsgReport' script`).
-- Concurrent jobs each hold licenses; keep a small global semaphore (e.g. 2 Synopsys + 2 Cadence jobs) (sizing (unverified)).
+- Concurrent jobs each hold licenses; one global semaphore bounds them (`tools.eda.max_licenses`, 12). The Synopsys
+  server issues 150 licences of Design-Compiler, DC-Ultra-Opt, DC-Ultra-Features and DC-Expert and 5250 of DesignWare
+  (`lmutil lmstat -c 27005@synopsys.webstore.illinois.edu -a`, 2026-11-06: about 6 in use). A Design Compiler
+  session at `-max_cores 2` takes one of each and uses about 1.5 GB.
 
 ## 5. Memory limiting on cgroups v1 (host tools)
 

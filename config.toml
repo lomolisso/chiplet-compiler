@@ -89,7 +89,8 @@ commit = "d2875ae80afa2f141323a3f6b89a387787fcda38"
 commit = "c1105e6ac6a0dd90fc80893efc4830ab609005d3"
 
 [tools.eda]                      # host tools via eda-run
-max_licenses = 2                 # concurrent EDA invocations (one shared semaphore)
+max_licenses = 12                # concurrent EDA invocations (one shared semaphore); the campus Synopsys
+                                 # server issues 150 Design Compiler licences
 watchdog_interval_s = 2          # RSS sampling period of the process-group watchdog
 license_retries = 3              # extra attempts after a license failure (never a design failure)
 license_backoff_s = 30           # first retry wait; doubles each attempt
@@ -359,8 +360,8 @@ cores = 2                        # cores per Design Compiler session
 providers = { dc = ["designware", "hardfloat"], yosys = ["hardfloat", "flopoco", "xls_math"] }
 views = true                     # write views/library.md
 [passes.characterize.resources]
-threads = 2                      # parallel tool sessions (each also holds one of tools.eda.max_licenses)
-memory_gb = 8
+threads = 12                     # parallel tool sessions (each also holds one of tools.eda.max_licenses)
+memory_gb = 96                   # split over the sessions: 8 GB each (a session typically uses 1.5 GB)
 timeout_min = 600
 
 [passes.mine]                     # GraMi per family (map, reduce, contraction, template stages)
