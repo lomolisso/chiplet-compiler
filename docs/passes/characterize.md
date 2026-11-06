@@ -115,7 +115,7 @@
       outputFile=<id>.vhdl`; an XLS DSLX library function `top` of `$XLS_DSLX_PATH/<file>` through
       `ir_converter_main`, `opt_main` and combinational `codegen_main` to `<id>.v`). A failing generator
       prints an `Error:` line and fails the step; its messages are in `<id>.err`. A catalog without generated
-      sources gets the script as before they existed, byte for byte. A design reads its own RTL file after
+      sources gets the script as before they existed, byte for byte; one without DSLX sets `nullglob`. A design reads its own RTL file after
       its dependencies', followed transitively (each file once), and carries the vendor libraries
       (`libraries`, e.g. `designware`) of all of them.
    3. *Jobs.* The designs go in batches of `batch`, one job per (kit, target, batch): a directory
@@ -284,6 +284,13 @@
    (2026-11-05, iacoma227 under load: doctor with the `.db` compilation, then 76 Design Compiler rows; the
    same 76 with Formality, every one proven, reusing every synthesis; 76 Yosys rows, floats and the split
    multiplier included now that its equivalence flow is off).
+
+   Deep test `ip_cores_generate_and_synthesize_in_their_flows` (Nangate45 only, at its clock; 2026-11-05,
+   iacoma231, image 0.6.0: 205 s with doctor): the RTL step generates HardFloat, FloPoCo and XLS cores; wrappers
+   synthesize with every cheap check green. Area µm² / delay ps: Yosys, HardFloat f16 add 1298 / 3291,
+   bf16 compare 289 / 868, FloPoCo f16 exponential with its IEEE converters (three VHDL entities) 4994 /
+   7896; Design Compiler, `DW_fp_add` f16 1182 / 2340, `DW_fp_exp` f16 3158 / 3340, HardFloat f32 to bf16
+   conversion 579 / 2000.
 
 8. **Limitations.**
    - The cheap checks parse the top module's Verilog: a VHDL core is a dependency of a Verilog wrapper,

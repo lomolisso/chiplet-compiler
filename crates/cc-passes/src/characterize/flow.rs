@@ -218,9 +218,13 @@ pub fn generator_line(id: &str, g: &Generator) -> String {
 }
 
 /// The RTL script of a catalog: the DSLX loop, then one line per generated source in catalog order. A
-/// catalog without generated sources gets the DSLX loop alone, as before they existed.
+/// catalog without generated sources gets the DSLX loop alone, as before they existed; one without DSLX
+/// sources sets `nullglob`, so that the loop runs zero times.
 pub fn rtl_script(cat: &[Primitive]) -> String {
     let mut s = RTL_SCRIPT.to_string();
+    if !cat.iter().any(|p| matches!(p.source, Some(Source::Dslx(_)))) {
+        s = s.replacen("set -u\n", "set -u\nshopt -s nullglob\n", 1);
+    }
     for p in cat {
         if let Some(Source::Generated(g)) = &p.source {
             s.push_str(&generator_line(&p.id, g));
@@ -850,14 +854,16 @@ echo "@@done"
 
     #[test]
     fn the_rtl_script_is_unchanged_without_generated_sources() {
-        assert_eq!(rtl_script(&[]), BEFORE);
-        let cat = [prim(
-            "w",
-            &[],
-            Source::Verilog("module w; endmodule\n".into()),
-            &[],
-        )];
+        let cat = [
+            prim("d", &[], Source::Dslx("pub fn d() -> u1 { u1:0 }\n".into()), &[]),
+            prim("w", &[], Source::Verilog("module w; endmodule\n".into()), &[]),
+        ];
         assert_eq!(rtl_script(&cat), BEFORE);
+        // Without DSLX the loop must not run on the literal pattern `*.x`.
+        assert_eq!(
+            rtl_script(&cat[1..]),
+            BEFORE.replacen("set -u\n", "set -u\nshopt -s nullglob\n", 1)
+        );
     }
 
     #[test]
@@ -901,9 +907,7 @@ echo "@@done"
             ),
         ];
         let s = rtl_script(&cat);
-        assert!(
-            s.starts_with(BEFORE.trim_end_matches("echo \"@@done\"\n")) && s.ends_with("echo \"@@done\"\n")
-        );
+        assert!(s.contains("shopt -s nullglob") && s.ends_with("echo \"@@done\"\n"));
         assert!(s.contains("hardfloat-gen add --exp 5 --sig 10 --module hf --out hf.v > hf.err 2>&1 || echo \"Error: HardFloat generation failed on hf\"\n"));
         assert!(s.contains(
             "flopoco FPExp wE=5 wF=10 frequency=0 name=fe outputFile=fe.vhdl > fe.err 2>&1 || echo"
