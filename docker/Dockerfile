@@ -169,7 +169,7 @@ RUN cd /src/hfgen && mkdir -p project && echo "sbt.version=${SBT_VERSION}" > pro
       | tee /tmp/sbt.log | tail -n 1 > /tmp/classpath.txt \
  && mkdir -p /opt/hardfloat/lib /opt/hardfloat/bin \
  && tr ':' '\n' < /tmp/classpath.txt | grep '\.jar$' | xargs -I{} cp {} /opt/hardfloat/lib/ \
- && compgen -G '/opt/hardfloat/lib/chisel_*' > /dev/null && compgen -G '/opt/hardfloat/lib/hardfloat-gen*' > /dev/null \
+ && find /opt/hardfloat/lib -name 'chisel_*' | grep -q . && find /opt/hardfloat/lib -name 'hardfloat-gen*' | grep -q . \
  && install -m 0755 hardfloat-gen /opt/hardfloat/bin/hardfloat-gen \
  && PATH=/opt/firtool/bin:$PATH /opt/hardfloat/bin/hardfloat-gen add --exp 5 --sig 10 --module hf_add_f16 --out /tmp/t.v \
  && grep -q '^module hf_add_f16' /tmp/t.v \
