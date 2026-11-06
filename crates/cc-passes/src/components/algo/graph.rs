@@ -1,10 +1,10 @@
 //! Abstract graphs of instances (docs/passes/components.md §4).
 //!
 //! An instance graph has one node per decomposition argument (`input k`, dimension arguments excluded),
-//! per compute op of the body (nested regions included, size computation excluded; a custom call's reducer
-//! computation is the call's region 0, one copy per call site), per region argument,
-//! per dimension value entering compute (`size_in`) and, for an anon region, per external input and per
-//! exported value. Edges carry (result index, port); shape operands are not edges. In the abstract form
+//! per compute op of the body (nested regions included, size and constant computation excluded; a custom
+//! call's reducer computation is the call's region 0, one copy per call site), per region argument,
+//! per dimension value entering compute (`size_in`), per constant-computation value entering compute
+//! (`const_in`) and, for an anon region, per external input and per exported value. Edges carry (result index, port); shape operands are not edges. In the abstract form
 //! every dim except the literal 1 is a class variable, every element type is (family, class), the
 //! integers of size attributes other than 0 and 1 are parameters and constant values are parameters.
 
@@ -37,6 +37,8 @@ pub enum NodeRef {
     CalleeOp { site: u32, op: u32 },
     /// Argument `value` of the reducer computation inlined at call site `site`.
     CalleeArg { site: u32, value: u32 },
+    /// A value computed by constant computation (design §4.2) and used by compute.
+    ConstIn(u32),
 }
 
 /// What a node is.
@@ -61,6 +63,9 @@ pub enum Kind {
         name: String,
         target: Option<String>,
     },
+    /// A constant-computation value entering compute: folded or precomputed, an input of the graph.
+    /// Last, so that the serialized labels of the other kinds (and the hashes over them) are unchanged.
+    ConstIn,
 }
 
 /// An element-type family (design §6.1): the part of a type in a component's identity.
@@ -334,9 +339,12 @@ pub struct Facts<'m> {
     /// The function each region belongs to.
     pub region_func: Vec<FuncId>,
     pub users: Vec<Vec<(OpId, u32)>>,
-    /// Ops left out of every graph: size computation, and ops whose every use is a shape operand or such
-    /// an op (constant shape vectors).
+    /// Size computation, and ops whose every use is a shape operand or such an op (constant shape
+    /// vectors).
     pub shape_only: Vec<bool>,
+    /// Ops left out of every graph: `shape_only`, constant computation, and ops whose every use is a
+    /// shape operand or such an op (a literal used only by constant computation).
+    pub left_out: Vec<bool>,
     /// Size values (for `size_in` parameters).
     pub sv: Vec<Sv>,
 }
@@ -348,6 +356,7 @@ impl<'m> Facts<'m> {
             .collect();
         let users = m.users();
         let mut shape_only = vec![false; m.ops.len()];
+        let mut left_out = vec![false; m.ops.len()];
         for i in (0..m.ops.len()).rev() {
             let op = &m.ops[i];
             let uses: Vec<(OpId, u32)> = op
@@ -355,11 +364,14 @@ impl<'m> Facts<'m> {
                 .iter()
                 .flat_map(|r| users[r.index()].iter().copied())
                 .collect();
-            shape_only[i] = op.size
-                || (!uses.is_empty()
+            let only = |s: &[bool]| {
+                !uses.is_empty()
                     && uses
                         .iter()
-                        .all(|&(u, p)| shape_only[u.index()] || is_shape_port(m, m.op(u), p as usize)));
+                        .all(|&(u, p)| s[u.index()] || is_shape_port(m, m.op(u), p as usize))
+            };
+            shape_only[i] = op.size || only(&shape_only);
+            left_out[i] = shape_only[i] || op.constant || only(&left_out);
         }
         let sv = crate::import::algo::size_value::interpret(m, &dim_as_data_values(m));
         Self {
@@ -367,6 +379,7 @@ impl<'m> Facts<'m> {
             region_func,
             users,
             shape_only,
+            left_out,
             sv,
         }
     }
@@ -392,7 +405,13 @@ impl<'m> Facts<'m> {
 
     /// Whether op `o` is a node of its function's graph.
     pub fn in_graph(&self, o: OpId) -> bool {
-        !self.shape_only[o.index()]
+        !self.left_out[o.index()]
+    }
+
+    /// Whether value `v` is a constant entering compute: a result of an op left out of the graphs that
+    /// is not size computation (a size value at a compute port is a `dim_as_data` port, handled first).
+    pub fn const_in(&self, v: ValueId) -> bool {
+        matches!(self.m.value(v).def, Def::Result { op, .. } if self.left_out[op.index()])
     }
 }
 
@@ -489,6 +508,7 @@ pub fn build(f: &Facts<'_>, ops: &[OpId], decomposition: Option<FuncId>) -> Resu
     let mut b = Built::default();
     let mut node_of_op: BTreeMap<OpId, u32> = BTreeMap::new();
     let mut node_of_val: BTreeMap<ValueId, u32> = BTreeMap::new();
+    let mut node_of_const: BTreeMap<ValueId, u32> = BTreeMap::new();
     if let Some(func) = decomposition {
         let mut k = 0u32;
         for &a in &m.region(m.func(func).body).args {
@@ -588,6 +608,26 @@ pub fn build(f: &Facts<'_>, ops: &[OpId], decomposition: Option<FuncId>) -> Resu
                     },
                     None,
                 );
+                b.graph.add_edge(s, dst, EdgeEnd { res: 0, port });
+                continue;
+            }
+            if f.const_in(v) {
+                let s = match node_of_const.get(&v) {
+                    Some(&n) => n,
+                    None => {
+                        let t = tensor(m, v)?.clone();
+                        let n = b.node(
+                            Kind::ConstIn,
+                            BTreeMap::new(),
+                            vec![t],
+                            Vec::new(),
+                            NodeRef::ConstIn(v.0),
+                            None,
+                        );
+                        node_of_const.insert(v, n);
+                        n
+                    }
+                };
                 b.graph.add_edge(s, dst, EdgeEnd { res: 0, port });
                 continue;
             }
@@ -895,6 +935,7 @@ mod tests {
             callee: None,
             parent: RegionId(parent),
             size: false,
+            constant: false,
             dim_as_data: Vec::new(),
             prov: Provenance {
                 func: "main".into(),

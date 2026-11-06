@@ -60,10 +60,17 @@ fn import_deep_models_at_full() {
             .values()
             .map(|x| x.as_u64().unwrap())
             .sum();
+        let cin: u64 = v["const_in"]
+            .as_object()
+            .unwrap()
+            .values()
+            .map(|x| x.as_u64().unwrap())
+            .sum();
         digest.insert(
             rel.to_string(),
             serde_json::json!({
                 "ops": v["ops"], "funcs": v["funcs"], "size_ops": v["size_ops"], "dim_as_data": dad,
+                "constant_ops": v["constant_ops"], "const_in": cin,
                 "symbolic_values": v["symbolic_values"], "ledger": v["ledger"], "ir_hash": v["ir_hash"],
             }),
         );

@@ -15,7 +15,7 @@ default-filter = "not binary(deep)"
 fail-fast = false
 slow-timeout = { period = "30s", terminate-after = 4 }
 
-# The `rescale` tolerance lemma at i8: Bitwuzla about 25 s, Z3 (verify's re-check) about 90 s.
+# The `rescale` tolerance lemma at i8: Bitwuzla about 25 s, Z3 (verify's re-check) about 150 s.
 [[profile.smoke.overrides]]
 filter = "test(/fixed_requantization|rescale_lemma_holds/)"
 slow-timeout = { period = "120s", terminate-after = 4 }

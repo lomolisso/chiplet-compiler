@@ -116,7 +116,7 @@ fn is_yield(l: &[EdgeEnd]) -> bool {
 fn nclass(g: &Graph<NNode>, n: u32) -> Result<NClass, String> {
     let x = &g.nodes[n as usize].label;
     match &x.kind {
-        Kind::Input { .. } | Kind::Output | Kind::SizeIn => Ok(NClass::Interface),
+        Kind::Input { .. } | Kind::Output | Kind::SizeIn | Kind::ConstIn => Ok(NClass::Interface),
         Kind::RegionArg { .. } => Ok(NClass::RegionArg),
         Kind::Op { name, target } => {
             if name == "stablehlo.composite" {

@@ -27,7 +27,7 @@ use cc_smt::{Solver, Verdict};
 use rayon::prelude::*;
 
 use super::json::{Datapath, ProofResult, Src, Stage, Summary};
-use super::{DATAPATHS, DatapathsConfig, Inputs, load, proofs};
+use super::{DATAPATHS, DatapathsConfig, Inputs, bound, load, proofs};
 use crate::components::algo::graph::Kind;
 use crate::iteration_space::json::{Direction, Route};
 use crate::kernels::json::{KNode, Role};
@@ -545,6 +545,42 @@ pub(super) fn verify(ctx: &PassContext) -> Result<VerifyReport, PassError> {
             &n,
             &[("queries", ob.queries.len() as u64)],
         ));
+    }
+
+    // Bound orders: the certificate records the hardware's order (ω), and the error bound against any
+    // other order of the reduction is stated here.
+    for (i, id) in ids.iter().enumerate() {
+        let Some(dp) = &dps[i] else { continue };
+        let Some(a) = &dp.accumulator else { continue };
+        let mut bad = Vec::new();
+        let mut stated = Vec::new();
+        for o in &a.order {
+            match (o.free, &o.hardware) {
+                (true, None) => {}
+                (true, Some(_)) => bad.push(format!("{}: a free order with a hardware order", o.tuple)),
+                (false, None) => bad.push(format!("{}: ω binds and no hardware order is recorded", o.tuple)),
+                (false, Some(hw)) => {
+                    if a.omega.as_ref() != Some(hw) {
+                        bad.push(format!(
+                            "{}: the hardware order is not the accumulator's ω",
+                            o.tuple
+                        ));
+                    }
+                    let t = dp.tuples.iter().find(|t| t.name == o.tuple);
+                    match t.map(|t| bound::bounds(dp, t, hw)) {
+                        Some(Ok(bs)) => stated.extend(bs.into_iter().map(|b| format!("{}: {b}", o.tuple))),
+                        Some(Err(e)) => bad.push(format!("{}: {e}", o.tuple)),
+                        None => bad.push(format!("{}: no such tuple", o.tuple)),
+                    }
+                }
+            }
+        }
+        let bound = a.order.iter().filter(|o| !o.free).count() as u64;
+        let mut c = Check::new(format!("{id}:order"), bad.is_empty()).count("bound", bound);
+        for n in bad.iter().take(20).chain(&stated) {
+            c = c.note(n.clone());
+        }
+        r.push(c);
     }
 
     // Lemmas.

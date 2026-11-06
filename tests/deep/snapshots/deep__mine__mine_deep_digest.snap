@@ -1,6 +1,5 @@
 ---
 source: tests/deep/mine.rs
-assertion_line: 72
 expression: digest
 ---
 {
@@ -12,8 +11,8 @@ expression: digest
         [
           "pd07941c267ff00ee",
           2,
-          78,
-          78
+          79,
+          79
         ],
         [
           "pd96b38addd9c22c9",
@@ -222,22 +221,22 @@ expression: digest
           },
           {
             "finished": true,
-            "kept": 17,
-            "reported": 17,
-            "selection": "121fe34f20f5b676",
+            "kept": 16,
+            "reported": 16,
+            "selection": "f35380ced56343e4",
             "tau": 10
           },
           {
             "finished": true,
-            "kept": 140,
-            "reported": 140,
-            "selection": "78031ce9de808267",
+            "kept": 53,
+            "reported": 53,
+            "selection": "c71b523d06532774",
             "tau": 5
           },
           {
             "finished": true,
-            "kept": 3051,
-            "reported": 3051,
+            "kept": 2488,
+            "reported": 2488,
             "selection": "00404abace8a4b3e",
             "tau": 2
           }
@@ -881,16 +880,16 @@ expression: digest
         "workload": 164083273728
       },
       "map": {
-        "edges": 657,
-        "kept": 3051,
-        "occurrences": 6758,
-        "reported": 3051,
+        "edges": 521,
+        "kept": 2488,
+        "occurrences": 4791,
+        "reported": 2488,
         "selected": 32,
         "stopped_by": "tau_min",
         "tau": 2,
-        "units": 149,
-        "vertices": 709,
-        "workload": 624609080250
+        "units": 125,
+        "vertices": 560,
+        "workload": 624165528380
       },
       "reduce": {
         "edges": 46,
@@ -902,7 +901,7 @@ expression: digest
         "tau": 2,
         "units": 32,
         "vertices": 90,
-        "workload": 2553880957404
+        "workload": 2553880956712
       },
       "stage": {
         "edges": 164,
@@ -918,8 +917,8 @@ expression: digest
       }
     },
     "mis_algorithm": "exact_ilp",
-    "node_labels": 37,
-    "overlap": 52,
+    "node_labels": 32,
+    "overlap": 46,
     "schema": "cc.mine.summary/1"
   }
 }

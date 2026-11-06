@@ -31,7 +31,7 @@ id!(RegionId);
 id!(OpId);
 id!(ValueId);
 
-pub const IR_SCHEMA: &str = "cc.ir.module/1";
+pub const IR_SCHEMA: &str = "cc.ir.module/2";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Module {
@@ -126,6 +126,9 @@ pub struct Op {
     /// Size computation (design §4.2): the op computes dimension values that reach a shape operand or a
     /// shape assertion.
     pub size: bool,
+    /// Constant computation (design §4.2): no data argument of the phase reaches the op, and it does more
+    /// than materialize a literal. Every size-computation op is one.
+    pub constant: bool,
     /// Operand ports where a dimension value enters compute (a size value at a non-shape port of a
     /// non-size op), ascending.
     pub dim_as_data: Vec<u32>,

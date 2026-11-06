@@ -7,7 +7,9 @@
 //!   exactly one instance, or is the entry's terminator; the count equals `Module::expanded_multiset`.
 //! - `recoverability`: for every instance, the component instantiated with its bindings is its concrete
 //!   graph under the certificate: a bijection of nodes, equal labels (op, attributes, types, child
-//!   component, size value) and every edge with an equal label, with equal edge counts.
+//!   component, size value) and every edge with an equal label, with equal edge counts. Size and
+//!   constant computation are left out of the rebuilt graph; a constant-computation value used by
+//!   compute is one `const_in` node per value.
 //!
 //! Once: `complete` (every imported phase has its files), `classes` (each component's classes and
 //! interface recompute from its graph), `wl_hash` (each component's WL hash recomputes), `dedup` (every
@@ -230,19 +232,19 @@ fn check_wl(comps: &Comps, cfg: &ComponentsConfig) -> Check {
     acc.done()
 }
 
-/// Ops left out of the graphs: the greatest set of ops that are size computation, or have a use and
-/// every use is a shape port or another such op (iterated to the fixpoint).
-fn shape_only(m: &Module) -> Vec<bool> {
+/// Ops left out of the graphs: the greatest set of ops that are size or constant computation, or have a
+/// use and every use is a shape port or another such op (iterated to the fixpoint).
+fn left_out(m: &Module) -> Vec<bool> {
     let users = m.users();
     let mut s: Vec<bool> = m
         .ops
         .iter()
-        .map(|op| op.size || op.results.iter().any(|r| !users[r.index()].is_empty()))
+        .map(|op| op.size || op.constant || op.results.iter().any(|r| !users[r.index()].is_empty()))
         .collect();
     loop {
         let mut changed = false;
         for (i, op) in m.ops.iter().enumerate() {
-            if !s[i] || op.size {
+            if !s[i] || op.size || op.constant {
                 continue;
             }
             let keep = op.results.iter().all(|r| {
@@ -276,7 +278,7 @@ impl Conc {
 
 struct PhaseFacts<'m> {
     m: &'m Module,
-    shape_only: Vec<bool>,
+    left_out: Vec<bool>,
     users: Vec<Vec<(OpId, u32)>>,
     sv: Vec<crate::import::algo::size_value::Sv>,
     func_ops: Vec<Vec<OpId>>,
@@ -325,7 +327,7 @@ fn concrete(
             }
         }
     }
-    let graph: Vec<OpId> = ops.iter().copied().filter(|o| !f.shape_only[o.index()]).collect();
+    let graph: Vec<OpId> = ops.iter().copied().filter(|o| !f.left_out[o.index()]).collect();
     for &o in &graph {
         let op = m.op(o);
         let composite = op.name == "stablehlo.composite";
@@ -426,11 +428,29 @@ fn concrete(
                 c.edge(s, dst, EdgeEnd { res: 0, port });
                 continue;
             }
+            // A value of constant computation enters compute.
+            if let Def::Result { op: u, .. } = m.value(v).def
+                && f.left_out[u.index()]
+            {
+                if m.op(u).size {
+                    return Err(format!("op {} port {p}: a size value outside `dim_as_data`", o.0));
+                }
+                let s = NodeRef::ConstIn(v.0);
+                c.nodes.insert(
+                    s,
+                    Concrete {
+                        kind: Kind::ConstIn,
+                        attrs: Default::default(),
+                        results: vec![ty(v)?],
+                        child: None,
+                        size: None,
+                    },
+                );
+                c.edge(s, dst, EdgeEnd { res: 0, port });
+                continue;
+            }
             match m.value(v).def {
                 Def::Result { op: u, index } if set.contains(&u) => {
-                    if f.shape_only[u.index()] {
-                        return Err(format!("op {} port {p}: operand from a shape-only op", o.0));
-                    }
                     c.edge(NodeRef::Op(u.0), dst, EdgeEnd { res: index, port });
                 }
                 _ => {
@@ -733,7 +753,7 @@ fn verify_phase(
         func_ops[f.index()].push(OpId(i as u32));
     }
     let facts = PhaseFacts {
-        shape_only: shape_only(&m),
+        left_out: left_out(&m),
         users: m.users(),
         sv: crate::import::algo::size_value::interpret(&m, &super::algo::graph::dim_as_data_values(&m)),
         func_ops,

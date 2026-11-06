@@ -134,6 +134,21 @@
             "callee_arg"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A value computed by constant computation (design §4.2) and used by compute.",
+          "properties": {
+            "const_in": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "const_in"
+          ],
+          "type": "object"
         }
       ]
     }

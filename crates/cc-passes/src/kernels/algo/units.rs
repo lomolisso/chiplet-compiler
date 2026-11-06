@@ -120,7 +120,7 @@ pub fn region_owners(g: &Graph<NNode>) -> Vec<Option<u32>> {
                 .filter(|&u| {
                     matches!(
                         g.nodes[u as usize].label.kind,
-                        Kind::Input { .. } | Kind::Output | Kind::SizeIn
+                        Kind::Input { .. } | Kind::Output | Kind::SizeIn | Kind::ConstIn
                     ) || g.out[u as usize].iter().any(|(v, _)| *v != o && !set.contains(v))
                 })
                 .collect();
@@ -186,7 +186,7 @@ pub fn scatter_reduces(g: &Graph<NNode>, s: u32) -> bool {
 pub fn classify(g: &Graph<NNode>, rep: u32) -> Result<UClass, String> {
     let n = &g.nodes[rep as usize].label;
     let (name, target) = match &n.kind {
-        Kind::Input { .. } | Kind::Output | Kind::SizeIn => {
+        Kind::Input { .. } | Kind::Output | Kind::SizeIn | Kind::ConstIn => {
             return Ok(UClass::Boundary(BoundaryKind::Interface));
         }
         Kind::RegionArg { .. } => return Err(format!("node {rep}: region argument outside every region")),

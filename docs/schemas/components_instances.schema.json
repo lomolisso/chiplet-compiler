@@ -500,6 +500,12 @@
     "Counts": {
       "additionalProperties": false,
       "properties": {
+        "constant": {
+          "description": "Other owned ops left out of the graph: constant computation (design §4.2), and literals used\nonly by it.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "nodes": {
           "description": "Nodes of the graph.",
           "format": "uint64",
@@ -513,7 +519,7 @@
           "type": "integer"
         },
         "size": {
-          "description": "Owned ops left out of the graph (size computation, shape-only constants).",
+          "description": "Owned ops left out of the graph as size computation or shape-only constants.",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -522,6 +528,7 @@
       "required": [
         "ops",
         "size",
+        "constant",
         "nodes"
       ],
       "type": "object"

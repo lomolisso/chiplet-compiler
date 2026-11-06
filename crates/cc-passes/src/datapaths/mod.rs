@@ -3,6 +3,7 @@
 //! its instance table, with the order freedom of its combiner (docs/passes/datapaths.md).
 
 pub mod algo;
+pub mod bound;
 pub mod config;
 pub mod eval;
 pub mod json;
@@ -41,7 +42,7 @@ impl Pass for Datapaths {
     }
 
     fn version(&self) -> u32 {
-        1
+        2
     }
 
     fn requires(&self) -> &[ArtifactKind] {
@@ -155,9 +156,15 @@ impl Pass for Datapaths {
                 let (version, verdict) = answers.get(&q.file).cloned().unwrap_or_else(none);
                 let mut allow = None;
                 if q.order {
+                    let free = verdict.is_unsat();
                     order.push(OrderFree {
                         tuple: q.tuple.clone(),
-                        free: verdict.is_unsat(),
+                        free,
+                        hardware: if free {
+                            None
+                        } else {
+                            dp.accumulator.as_ref().and_then(|a| a.omega.clone())
+                        },
                     });
                 } else if !verdict.is_unsat() {
                     match (&verdict, allowed.get(dp.id.as_str())) {

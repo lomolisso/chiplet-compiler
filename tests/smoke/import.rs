@@ -10,7 +10,7 @@ use cc_core::runner::Runners;
 use cc_ir::{Dim, Module, SymExpr, Type};
 use cc_passes::export::json::{GraphFile, SymbolsFile};
 use cc_passes::import::ImportConfig;
-use cc_passes::import::algo::{build, size_tag};
+use cc_passes::import::algo::{build, const_tag, size_tag};
 use cc_pipeline::{Pipeline, RunOptions, RunStatus};
 use proptest::prelude::*;
 use tests::{Env, ExportReplay, repo_root};
@@ -136,6 +136,12 @@ fn imports_and_verifies_the_toy_export() {
     .unwrap();
     assert_eq!(summary["dim_as_data"]["stablehlo.convert"], 2, "{summary}");
     assert!(summary["size_ops"].as_u64().unwrap() > 0);
+    // That convert of `S` and its broadcast are constant computation, read by the divide.
+    assert!(summary["constant_ops"].as_u64().unwrap() > summary["size_ops"].as_u64().unwrap());
+    assert_eq!(summary["constant_by_op"]["stablehlo.convert"], 2, "{summary}");
+    assert_eq!(summary["const_in"]["stablehlo.divide"], 2, "{summary}");
+    assert!(m.ops.iter().all(|o| !o.size || o.constant));
+    assert!(!m.ops[first_op(&m, "stablehlo.dot_general")].constant);
     assert_eq!(summary["ledger"]["calls"], 3, "{summary}");
     let inv: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(s.out("op_inventory.json")).unwrap()).unwrap();
@@ -259,6 +265,27 @@ fn size_tag_fails_on_a_flipped_tag_or_a_missing_crossing() {
 }
 
 #[test]
+fn const_tag_fails_on_a_dropped_tag_or_a_tagged_data_op() {
+    let s = fresh();
+    s.edit_module(|m| {
+        let i = m
+            .ops
+            .iter()
+            .position(|o| o.constant && o.name == "stablehlo.convert")
+            .unwrap();
+        m.ops[i].constant = false;
+    });
+    assert_fails(&s, "const_tag");
+
+    let s = fresh();
+    s.edit_module(|m| {
+        let i = first_op(m, "stablehlo.dot_general");
+        m.ops[i].constant = true;
+    });
+    assert_fails(&s, "const_tag");
+}
+
+#[test]
 fn summary_fails_on_an_edited_summary() {
     let s = fresh();
     s.edit_json(s.out("toy/forward/ir.postcard.summary.json"), |v| {
@@ -294,6 +321,7 @@ fn fixture() -> (GraphFile, SymbolsFile) {
 fn hash(g: &GraphFile, syms: &SymbolsFile) -> String {
     let mut m = build::build(g, syms, &ImportConfig::default()).unwrap().module;
     size_tag::tag(&mut m);
+    const_tag::tag(&mut m);
     cc_ir::hash::module_hash(&m)
 }
 

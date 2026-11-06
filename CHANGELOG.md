@@ -19,6 +19,8 @@ All notable changes to this project are listed here. The format follows
 - `merge` pass: configurable functional units by datapath merging (compatibility graph and maximum-weight clique, agglomerated under a depth bound) and parameterized arrays for template classes, every configuration proven equal to its datapath.
 - `merge` fixed requantization (`requant_variant = "fixed"`): rescaling chains become one integer `rescale` block (exact multiply by the scale's significand, rounding shift), proven within 1 of fp32, with its RTL in the `characterize` library.
 - `iteration_space` pass and the op table's iteration semantics: per class its affine accesses proven against the spec, dependences, the embedding relation, and routing of uniform contractions to systolic templates by a proven space-time mapping.
+- `import` tags constant computation (ops no data argument reaches: position and rotary tables, masks from `iota`, sizes as floats); `components` leaves it out of the graphs and reads its values as `const_in` inputs, so it never becomes a kernel.
+- `datapaths` records the hardware's order of every reduction whose order binds, and its `verify.json` states the error bound against any other order.
 
 - Adapters for external resources (`cc_core::adapters`): synthesis flows, SMT solvers, clique and MIS solvers, the miner, the HLS front end (a stub) and place and route (declared), each selected by name in `config.toml` with declared capabilities and a shared conformance test.
 - PDK manifests (`pdks/<kit>.toml`): each kit's Liberty files, LEF, VT, corner, driving cell, default clock and XLS delay model, under `paths.pdk_root`.
@@ -27,6 +29,7 @@ All notable changes to this project are listed here. The format follows
 
 ### Changed
 
+- `datapaths` and `merge` prove the design's numerics: f32 and bf16 flush subnormals to zero, conversions into FP8 saturate (NaN kept).
 - `characterize` checks netlist against RTL only with `lec = true` (off by default); `library.json` and `summary.json` schemas 2 (`lec` and `lec_tool` optional, the kit's clock recorded).
 - `characterize` Design Compiler job directories no longer depend on the toolchain image tag (the RTL is in their key by its text), so a new image reuses them.
 - `paths.nangate45_lib`, `nangate45_lef`, `asap7_root`, `asap7_nldm_dir`, `asap7_lef_dir` and `[tools.pdk]` are replaced by the PDK manifests and `paths.pdk_root` / `paths.pdks.<kit>`; the old keys are rejected with a message.

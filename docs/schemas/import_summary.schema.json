@@ -65,6 +65,34 @@
     "config": {
       "type": "string"
     },
+    "const_in": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Operand edges where a constant-computation value (not a size value) enters an op that is not\nconstant computation, at a non-shape port, per consuming op name.",
+      "type": "object"
+    },
+    "constant_by_op": {
+      "additionalProperties": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "description": "Constant-computation ops that are not size computation, per name (`name@target` for custom calls).",
+      "type": "object"
+    },
+    "constant_ops": {
+      "description": "Constant-computation ops (size computation included) and their share of all non-structural ops.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "constant_share": {
+      "format": "double",
+      "type": "number"
+    },
     "constraints": {
       "items": {
         "type": "string"
@@ -149,7 +177,11 @@
     "by_op",
     "size_ops",
     "size_share",
+    "constant_ops",
+    "constant_share",
+    "constant_by_op",
     "dim_as_data",
+    "const_in",
     "composites",
     "symbolic_values",
     "ledger"
