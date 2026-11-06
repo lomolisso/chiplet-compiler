@@ -80,7 +80,8 @@
       innocuous, q ≥ 2p + 2: FP8 through f16, f16 and bf16 through f32; an approximate one when 1/2 +
       e 2^(p - q) ulps stays within its `[numerics]` budget, e the core's bound); without a candidate within
       the budget, the first core found is accepted at its documented guarantee and marked so (or as having
-      no ulp bound: DesignWare's sine, XLS's absolute contract). E4M3FN has no core of its own. A
+      no ulp bound: DesignWare's sine, XLS's absolute contract). E4M3FN has no core of its own; an integer
+      converts into it through a format that holds the integer exactly, so the encoding rounds once. A
       composition lists its cores (rsqrt as sqrt(1/x) without an rsqrt core; power as one core, else
       exp2(y log2 x), else exp(y ln x); tanh; log_plus_one by Goldberg's formula; round to integral by
       `to_int` and `from_int`); sign, abs, negate, select, `is_finite`, exact widening, bool conversions and

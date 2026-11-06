@@ -9,7 +9,9 @@
 //!   width, 1/2 + e 2^(p - q) through a wider core of precision q. Without one, the first core found is
 //!   accepted at its documented guarantee (design §6.4: a single core at its datasheet accuracy), recorded
 //!   as not within the budget, or as unknown for a contract without an ulp bound (absolute, unbounded).
-//!   E4M3FN has no core of its own (no core implements its encoding): only wider routes.
+//!   E4M3FN has no core of its own (no core implements its encoding): only wider routes; an integer
+//!   converts into it through a format that holds every integer of its width exactly (f16, f32, or one
+//!   with as many significand bits), so the encoding glue rounds once.
 //! - **Composition.** An op without a core (or `power`, `rsqrt` without one) built from cores per design
 //!   §4.12; the route lists the cores it needs at the op's format or the wider one, and the extra bits are
 //!   sized to the budget where the composition is built.
@@ -192,8 +194,26 @@ impl Draft {
 
 /// One core for `op` on format `t` (`core_t`: the format whose widths the core takes, normally `t`).
 fn single(find: &Finder, op: &CoreOp, t: Format, budget: f64) -> Draft {
+    single_in(find, op, t, budget, candidates(t, op.exact()))
+}
+
+/// The formats an integer-to-float core for `t` may have: `t` itself (not E4M3FN), else a wider one that
+/// holds every integer of the width exactly (f16, f32, or a format with as many significand bits), so the
+/// glue's rounding to `t` is the only one.
+fn int_candidates(t: Format, signed: bool, width: u32) -> Vec<Format> {
+    if t.flavour != Flavour::FiniteNan {
+        return vec![t];
+    }
+    let magnitude = if signed { width - 1 } else { width };
+    let exact = [F16, F32, Format::ieee(8, magnitude.saturating_sub(1).max(2))]
+        .into_iter()
+        .find(|q| q.e >= t.e && precision(*q) >= magnitude);
+    exact.into_iter().collect()
+}
+
+fn single_in(find: &Finder, op: &CoreOp, t: Format, budget: f64, formats: Vec<Format>) -> Draft {
     let mut fallback: Option<Draft> = None;
-    for q in candidates(t, op.exact()) {
+    for q in formats {
         let Some((core, offer)) = find.find(op, q) else {
             continue;
         };
@@ -450,7 +470,13 @@ fn route_of(find: &Finder, p: &Primitive, numerics: &NumericsConfig) -> Option<R
                 None => Draft::glue("x != 0"),
             },
             (None, Some(b)) => match int_type(src) {
-                Some((signed, width)) => single(find, &CoreOp::FromInt { signed, width }, b, budget),
+                Some((signed, width)) => single_in(
+                    find,
+                    &CoreOp::FromInt { signed, width },
+                    b,
+                    budget,
+                    int_candidates(b, signed, width),
+                ),
                 None => Draft::glue("0 or 1"),
             },
             (None, None) => return None,
@@ -563,6 +589,10 @@ mod tests {
         );
         let a = get(&open, "multiply@f8e5m2");
         assert_eq!(a.cores[0].format, "f8e5m2");
+        // An integer into E4M3FN through a format that holds it exactly: the encoding glue rounds once.
+        assert_eq!(get(&dc, "convert@i8>f8e4m3fn").cores[0].format, "f16");
+        assert_eq!(get(&dc, "convert@i16>f8e4m3fn").cores[0].format, "f32");
+        assert_eq!(get(&dc, "convert@ui32>f8e4m3fn").cores[0].format, "e8m31");
         // Narrowing float conversion: HardFloat in both flows.
         assert_eq!(get(&dc, "convert@f32>bf16").cores[0].provider, "hardfloat");
         assert_eq!(get(&dc, "convert@bf16>f32").kind, RouteKind::Glue);

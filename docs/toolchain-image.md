@@ -102,6 +102,13 @@ more actions, mostly the test's dependencies), the JAX venv, the final stage wit
 and `cc-selftest` (10 s on 2 CPUs, 7.7 s of it the three new steps). Peak resident memory of those steps 9.1 GiB (10.1 GiB
 with page cache). Final image 3.72 GB.
 
+Image 0.6.0 (iacoma231, 2026-11-05, same caps, with the stage cache of earlier images on that host): about
+20 min in two invocations of `docker/build.sh` (the first stopped at the generator's first version): the
+`flopoco` stage, which that host had not built, about 8 min; the `hardfloat` stage (sbt resolving Chisel and
+compiling HardFloat and the generator) about 2 min; the patched `xlscc` step again, the final stage and
+`cc-selftest`. Peak resident memory of a step 8.7 GiB (14.4 GiB with page cache). Final image 3.75 GB.
+`hardfloat-gen` takes about 1 s per core (JVM start, elaboration, firtool).
+
 The image was first built across several invocations of `docker/build.sh` on 2026-10-31. Each invocation fixed one step and resumed from the layer cache, so every layer above was built by this command from an empty cache. The time above is the sum of the runs.
 
 The three Bazel-built tools (`xlscc`, `eval_ir_main`, `check_ir_equivalence_main`) print `redacted` for `--version` (unstamped build). Their commit is the submodule pin, which `versions.json` records.
