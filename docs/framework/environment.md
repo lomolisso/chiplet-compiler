@@ -82,7 +82,10 @@ chipc doctor --build-args    # the docker/build.sh inputs, from config.toml
        simulated through `llvm`, then goes through `xlscc`, `opt_main` and pipelined `codegen_main`, whose Verilog
        must instantiate `DW_fp_mult` (the patched toolchain, `docs/third-party.md`);
      - `xls_float_lib`: XLS's `fp_sincos_32` (DSLX) to combinational Verilog, read by Yosys (`hierarchy -check`);
-     - `flopoco_ghdl`: FloPoCo's `FPExp` (wE=5, wF=10) read by Yosys through the GHDL plugin.
+     - `flopoco_ghdl`: FloPoCo's `FPExp` (wE=5, wF=10) read by Yosys through the GHDL plugin;
+     - `hardfloat`: the HardFloat generator's f16 adder (`hardfloat-gen`, Chisel and firtool) synthesized by
+       Yosys from plain `read_verilog`, and simulated by iverilog on two vectors (1 + 2 = 3, and the sum of two
+       subnormals).
 4. **EDA versions.**
    - `dc_shell`, `lc_shell`, `fm_shell` and `pt_shell` with `-version`, `vcs -full64 -ID`, and `xrun` with `-version`.
    - The version is the first line naming one: `… version …` or `Tool: <name> <ver>`. The exit code is ignored, because `dc_shell -version` exits 1.
@@ -103,9 +106,9 @@ Each step is a handful of process launches. The cost is the one-time LC compilat
 
 | Key | Default | Meaning |
 |---|---|---|
-| `tools.docker.{image,tag}` | `chiplet-compiler/toolchain`, `0.5.0` | the image doctor checks |
+| `tools.docker.{image,tag}` | `chiplet-compiler/toolchain`, `0.6.0` | the image doctor checks |
 | `tools.docker.build.*` | see `config.toml` | image-only pins and build caps (`docker/build.sh`) |
-| `tools.{xls,allo,grami}.*` | see `config.toml` | submodule and image pins |
+| `tools.{xls,allo,grami,hardfloat}.*` | see `config.toml` | submodule and image pins |
 | `paths.pdk_manifests` | `pdks` | the PDK manifests; each selects its kit's Liberty set (ASAP7: `RVT`, `TT`, all five groups) |
 | `tools.eda.max_licenses` | 2 | concurrent EDA calls (one semaphore) |
 | `tools.eda.license_retries`, `license_backoff_s` | 3, 30 | retry after a licence failure; the wait doubles each time |

@@ -1,6 +1,7 @@
 //! `characterize` (design §4.9): the area, delay and leakage of every hardware primitive the merged units
 //! are built from, per kit and timing point, through the configured synthesis flow; every netlist passes
-//! the cheap checks, and with `lec` it is also checked against its RTL (docs/passes/characterize.md).
+//! the cheap checks, and with `lec` it is also checked against its RTL; every float op is mapped to the
+//! flow's IP cores or reported as a gap (docs/passes/characterize.md).
 
 pub mod catalog;
 pub mod config;
@@ -77,6 +78,11 @@ impl Pass for Characterize {
         m.insert("catalog".into(), catalog::CATALOG_VERSION.to_string());
         let d = &config.config.tools.docker;
         m.insert("image".into(), format!("{}:{}", d.image, d.tag));
+        // The budgets decide the float routes (`routes.json`).
+        m.insert(
+            "numerics".into(),
+            canon::hash_bytes(&canon::to_canonical_compact(&config.config.numerics).unwrap_or_default()),
+        );
         if let Some(man) = env.read_manifest()? {
             for (k, v) in &man.tool_versions {
                 if matches!(k.as_str(), "dc_shell" | "fm_shell" | "lc_shell") {
@@ -114,12 +120,27 @@ impl Pass for Characterize {
         let kits = flow::kits(ctx, &cfg).map_err(fail)?;
         let out = ctx.output(LIBRARY)?;
         out.write_json("catalog.json", &cat)?;
+        // Fit checks: every float op's cores in this flow, or a gap (reported, never a failure).
+        let routes = crate::ip::routes::routes(
+            &cat,
+            &cfg.tool,
+            &cfg.providers_of(&cfg.tool).map_err(fail)?,
+            ctx.numerics(),
+        );
+        if !routes.gaps.is_empty() {
+            tracing::warn!(
+                flow = %cfg.tool,
+                gaps = %routes.gaps.join(", "),
+                "float ops without an IP route"
+            );
+        }
+        out.write_json("routes.json", &routes)?;
 
         let rtl_dir = flow::rtl(ctx, &cat)?;
         let rtl_out = out.dir().join("rtl");
         std::fs::create_dir_all(&rtl_out).map_err(|e| fail(format!("{}: {e}", rtl_out.display())))?;
         for p in cat.iter().filter(|p| p.source.is_some()) {
-            for ext in ["x", "v"] {
+            for ext in ["x", "v", "vhdl"] {
                 let src = rtl_dir.join(format!("{}.{ext}", p.id));
                 if src.is_file() {
                     let dst = out.path(&format!("rtl/{}.{ext}", p.id))?;
@@ -127,11 +148,7 @@ impl Pass for Characterize {
                 }
             }
         }
-        let designs: Vec<_> = cat
-            .iter()
-            .filter(|p| p.source.is_some())
-            .map(flow::design)
-            .collect();
+        let designs = flow::designs(&cat);
         let jobs = flow::jobs(ctx, &cfg, &kits, &designs, &rtl_dir)?;
         let (ran, reused, secs) = flow::run_jobs(ctx, &cfg, &kits, &jobs, &rtl_dir)?;
 
@@ -201,7 +218,7 @@ impl Pass for Characterize {
         out.write_json("summary.json", &summary)?;
         if cfg.views {
             ctx.dir()
-                .write_view(VIEW, &view::view(&library, &coverage, &summary))?;
+                .write_view(VIEW, &view::view(&library, &coverage, &summary, &routes))?;
         }
         if !bad.is_empty() {
             bad.sort();

@@ -5,6 +5,7 @@
 
 pub mod contract;
 pub mod hls;
+pub mod ip;
 pub mod mine;
 pub mod pnr;
 pub mod select;
@@ -13,6 +14,9 @@ pub mod synth;
 
 pub use contract::{Accuracy, Contract, CoreInstance, Subnormals};
 pub use hls::{HlsCapabilities, HlsFrontend};
+pub use ip::{
+    CoreOffer, CoreOp, CoreSource, Encoding, Generator, IpCapabilities, IpProvider, Rounding, Timing,
+};
 pub use mine::{MineJob, MineRun, Miner, MinerCapabilities};
 pub use pnr::{PnrCapabilities, PnrFlow};
 pub use select::{CliqueSolver, Limits, MisSolver, SelectCapabilities};

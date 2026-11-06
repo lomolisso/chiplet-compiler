@@ -1,5 +1,74 @@
 {
   "$defs": {
+    "Generator": {
+      "description": "A generator run in the toolchain image's RTL step (docs/passes/characterize.md §4.2). The module or\nentity it writes is named after the primitive that holds it; the arguments never name it.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Our HardFloat generator (`hardfloat-gen <args> --module <id> --out <id>.v`): Berkeley HardFloat's\nChisel cores behind an IEEE interface, lowered to Verilog by firtool.",
+          "properties": {
+            "args": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "tool": {
+              "const": "hardfloat",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tool",
+            "args"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "FloPoCo (`flopoco <args> name=<id> outputFile=<id>.vhdl`): VHDL, read by Yosys through GHDL.",
+          "properties": {
+            "args": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "tool": {
+              "const": "flopoco",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tool",
+            "args"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A function of an XLS DSLX library under `$XLS_DSLX_PATH` (`file` relative to it, function `top`),\nconverted to combinational Verilog like the catalog's DSLX.",
+          "properties": {
+            "file": {
+              "type": "string"
+            },
+            "tool": {
+              "const": "xls_dslx",
+              "type": "string"
+            },
+            "top": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tool",
+            "file",
+            "top"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "Kind": {
       "oneOf": [
         {
@@ -43,7 +112,7 @@
           "type": "boolean"
         },
         "deps": {
-          "description": "Ids of primitives whose RTL this one instantiates (their `rtl/<id>.v` is read with it).",
+          "description": "Ids of primitives whose RTL this one instantiates (their RTL files, and their dependencies', are\nread with it).",
           "items": {
             "type": "string"
           },
@@ -63,6 +132,13 @@
         },
         "kind": {
           "$ref": "#/$defs/Kind"
+        },
+        "libraries": {
+          "description": "Vendor libraries the RTL instantiates cells of (`designware`); a flow must link them.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "op": {
           "type": "string"
@@ -151,6 +227,40 @@
             },
             "text": {
               "type": "string"
+            }
+          },
+          "required": [
+            "lang",
+            "text"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "VHDL written as is to `rtl/<id>.vhdl` (Yosys reads it through GHDL).",
+          "properties": {
+            "lang": {
+              "const": "vhdl",
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "lang",
+            "text"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "RTL a generator of the toolchain image writes in the RTL step (an IP core: HardFloat, FloPoCo, an\nXLS DSLX library function), `rtl/<id>.v` or `rtl/<id>.vhdl`, its module or entity named `<id>`.",
+          "properties": {
+            "lang": {
+              "const": "generated",
+              "type": "string"
+            },
+            "text": {
+              "$ref": "#/$defs/Generator"
             }
           },
           "required": [

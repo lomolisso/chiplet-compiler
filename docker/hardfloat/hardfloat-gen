@@ -1,0 +1,11 @@
+#!/bin/bash
+# The HardFloat generator: one IEEE-interface module around a Berkeley HardFloat core, elaborated by Chisel
+# and lowered to Verilog by firtool (on PATH). Usage: hardfloat-gen <op> --exp E --sig S ... --module NAME
+# --out FILE (`hardfloat-gen --help`). Java runs in a scratch directory, which takes Chisel's side files.
+set -euo pipefail
+here="$PWD"
+scratch="$(mktemp -d)"
+trap 'rm -rf "$scratch"' EXIT
+cd "$scratch"
+java -Xss16m -Xmx2g -XX:+UseSerialGC -XX:ActiveProcessorCount=2 -Dhardfloat.cwd="$here" \
+  -cp '/opt/hardfloat/lib/*' chipc.hardfloat.Generate "$@"

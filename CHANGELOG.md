@@ -28,6 +28,10 @@ All notable changes to this project are listed here. The format follows
 - `cc-float`: glue wrappers around float IP cores (subnormal flush with one more exponent bit, the E4M3FN decoder and round-to-nearest encoder, FP8 saturation, NaN and signed-zero handling, NaN to 0 for float to integer), each proven bit-exact on its Verilog through Yosys `write_smt2` with the cores bound by their contracts; compositions (power, tanh, log1p, rsqrt) sized to an error budget from the cores' accuracy, their special values proven the same way.
 - Composition-error sampler (`python -m cc_float.sampler`): cores modelled at their contracts, exhaustive over the 16-bit and 8-bit formats, stratified over f32; and an exhaustive check of bf16 and f16 sine and cosine through XLS's `fp_sincos_32` IR (`python -m cc_float.sincos`).
 - Toolchain image 0.5.0: external Verilog modules in Allo (`allo.extern_verilog`) and `xlscc` (`hls_extern_verilog` attribute), Allo's XLS emitter fixed for calls and following loop and partition schedules (pinned patches), FloPoCo, GHDL with its Yosys plugin, and XLS's DSLX sine/cosine and exponential libraries.
+- Float IP providers (`IpProvider`): DesignWare for Design Compiler; Berkeley HardFloat, FloPoCo and XLS's float library for the open flow; each core with its accuracy contract, selected per flow by `[passes.characterize] providers`.
+- `[numerics]`: the error budget of every float op and format in ulps, by default NVIDIA's CUDA table for f32 and 1 ulp for f16, bf16 and FP8.
+- `characterize` maps every float op to the flow's IP cores (`routes.json`) and lists the ops without one; it reads VHDL and generated cores (HardFloat, FloPoCo, XLS DSLX libraries) and links DesignWare's synthetic library for the jobs that instantiate it.
+- Toolchain image 0.6.0: Berkeley HardFloat (Chisel, pinned submodule) with our generator of IEEE-interface cores, firtool and Chisel pinned.
 
 ### Changed
 

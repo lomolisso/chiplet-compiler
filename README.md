@@ -33,7 +33,7 @@ added one at a time. See [CHANGELOG.md](CHANGELOG.md).
 | `tests/` | `smoke/` (all models, fast, CI) and `deep/` (representative subset, build host). |
 | `docker/` | The toolchain image. |
 | `scripts/` | Build host helpers: `on-build-host`, `build-area`. |
-| `third_party/` | Submodules: GraMi, Allo, XLS. |
+| `third_party/` | Submodules: GraMi, Allo, XLS, HardFloat. |
 | `config.toml` | All settings; per-pass sections `[passes.<pass>]`. Machine paths go in `config.local.toml`. |
 | `build/` | (ignored) intermediate results, one hidden directory per pass: `build/.<pass>/`. |
 

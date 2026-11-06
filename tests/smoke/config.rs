@@ -103,3 +103,29 @@ fn unknown_model_key_is_rejected() {
         ["resnet50"]
     );
 }
+
+#[test]
+fn numerics_budgets_default_to_the_accelerator_table_and_are_checked() {
+    // config.toml spells out the built-in defaults: the CUDA table for f32, 1 ulp for the narrow formats.
+    let repo = LoadedConfig::load(&repo_root().join("config.toml"), &[]).unwrap();
+    let n = &repo.config.numerics;
+    assert_eq!(n, &cc_core::config::NumericsConfig::default());
+    assert_eq!(n.budget("f32", "exponential"), 2.0);
+    assert_eq!(n.budget("f32", "power"), 4.0);
+    assert_eq!(n.budget("f32", "divide"), 0.0);
+    assert_eq!(n.budget("bf16", "tanh"), 1.0);
+    assert_eq!(n.budget("f8e4m3fn", "sine"), 1.0);
+    assert_eq!(n.budget("f16", "compare"), 0.0);
+    let env = Env::new();
+    for (text, what) in [
+        ("[numerics.budget.f32]\ntanhh = 1\n", "numerics.budget.f32.tanhh"),
+        ("[numerics.budget.f64]\ntanh = 1\n", "numerics.budget.f64"),
+        ("[numerics.budget.f32]\ntanh = -1\n", "numerics.budget.f32.tanh"),
+        ("[numerics]\nbudgets = {}\n", "budgets"),
+    ] {
+        let err = env.try_config(text, &[]).unwrap_err().to_string();
+        assert!(err.contains(what), "{text}: {err}");
+    }
+    let one = env.config("[numerics.budget.f32]\ntanh = 1\n", &[]);
+    assert_eq!(one.config.numerics.budget("f32", "tanh"), 1.0);
+}

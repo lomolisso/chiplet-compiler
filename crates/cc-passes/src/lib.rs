@@ -13,6 +13,7 @@ pub mod hello_a;
 pub mod hello_b;
 pub mod hello_c;
 pub mod import;
+pub mod ip;
 pub mod iteration_space;
 pub mod kernel_classes;
 pub mod kernels;

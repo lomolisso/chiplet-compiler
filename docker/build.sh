@@ -19,6 +19,7 @@ check() { # <path> <expected sha> <what>
 check third_party/xls "${arg[XLS_COMMIT]}" third_party/xls
 check third_party/allo "${arg[ALLO_COMMIT]}" third_party/allo
 check third_party/grami "${arg[GRAMI_COMMIT]}" third_party/grami
+check third_party/hardfloat "${arg[HARDFLOAT_COMMIT]}" third_party/hardfloat
 llvm="$(git -C third_party/allo ls-tree HEAD externals/llvm-project | awk '{print $3}')"
 [[ "$llvm" == "${arg[LLVM_COMMIT]}" ]] || { echo "build.sh: Allo records LLVM $llvm, config pins ${arg[LLVM_COMMIT]}" >&2; exit 1; }
 

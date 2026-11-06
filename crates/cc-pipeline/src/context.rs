@@ -95,6 +95,11 @@ impl PassContext {
         &self.config.config.tools
     }
 
+    /// `[numerics]`: the error budget per float op and format (design §6.4).
+    pub fn numerics(&self) -> &cc_core::config::NumericsConfig {
+        &self.config.config.numerics
+    }
+
     pub fn smt(&self) -> &SmtConfig {
         &self.config.config.tools.smt
     }

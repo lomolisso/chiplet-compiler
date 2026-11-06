@@ -34,7 +34,7 @@ pub const PDK_LIB: ArtifactKind = ArtifactKind("pdk_lib");
 
 const DOCTOR_VERSION: u32 = 1;
 /// The steps `cc-selftest` reports (docker/selftest.sh).
-pub const SELFTEST_STEPS: [&str; 9] = [
+pub const SELFTEST_STEPS: [&str; 10] = [
     "xls",
     "xls_equiv",
     "rtl_tools",
@@ -44,6 +44,7 @@ pub const SELFTEST_STEPS: [&str; 9] = [
     "xls_extern",
     "xls_float_lib",
     "flopoco_ghdl",
+    "hardfloat",
 ];
 /// Version query per licensed tool (flags observed on this host, docs/tools/{synopsys,cadence}.md).
 const EDA_VERSION_PROBES: [(&str, &[&str]); 6] = [
@@ -339,6 +340,7 @@ impl Doctor<'_> {
             ("xls", t.xls.commit.clone()),
             ("allo", t.allo.commit.clone()),
             ("grami", t.grami.commit.clone()),
+            ("hardfloat", t.hardfloat.commit.clone()),
         ];
         for (name, pin) in pins {
             let check = format!("submodule.{name}");
@@ -559,6 +561,7 @@ impl Doctor<'_> {
             ),
             ("xls_float_lib", &["sincos.v", "sincos.stat"][..]),
             ("flopoco_ghdl", &["fpexp.vhdl", "fpexp.stat"][..]),
+            ("hardfloat", &["hf_add_f16.v", "hf_add_f16.stat"][..]),
         ]);
         for step in SELFTEST_STEPS {
             let mut c = Check::new(format!("image.selftest.{step}"), passed.contains(step));
@@ -1105,6 +1108,10 @@ pub fn expected_pins(c: &Config) -> Vec<(&'static str, String)> {
         ("z3_version", b.z3_version.clone()),
         ("bitwuzla_version", b.bitwuzla_version.clone()),
         ("flopoco_commit", b.flopoco_commit.clone()),
+        ("hardfloat_commit", t.hardfloat.commit.clone()),
+        ("chisel_version", b.chisel_version.clone()),
+        ("firtool_version", b.firtool_version.clone()),
+        ("sbt_version", b.sbt_version.clone()),
         ("uv_version", b.uv_version.clone()),
         ("bazelisk_version", b.bazelisk_version.clone()),
         ("apt_snapshot", b.apt_snapshot.clone()),

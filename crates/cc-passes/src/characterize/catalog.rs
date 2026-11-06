@@ -6,6 +6,7 @@
 
 use std::collections::BTreeSet;
 
+use cc_core::adapters::Generator;
 use cc_ir::ops::{Arity, ElemRule, TABLE};
 use cc_smt::float::{Flavour, Format};
 use cc_smt::ops::{Attrs, Ty};
@@ -47,6 +48,22 @@ pub enum Source {
     Dslx(String),
     /// Verilog written as is to `rtl/<id>.v`.
     Verilog(String),
+    /// VHDL written as is to `rtl/<id>.vhdl` (Yosys reads it through GHDL).
+    Vhdl(String),
+    /// RTL a generator of the toolchain image writes in the RTL step (an IP core: HardFloat, FloPoCo, an
+    /// XLS DSLX library function), `rtl/<id>.v` or `rtl/<id>.vhdl`, its module or entity named `<id>`.
+    Generated(Generator),
+}
+
+impl Source {
+    /// The RTL file of primitive `id` (relative to `rtl/`): what synthesis reads.
+    pub fn rtl_file(&self, id: &str) -> String {
+        match self {
+            Source::Vhdl(_) => format!("{id}.vhdl"),
+            Source::Generated(g) => format!("{id}.{}", g.extension()),
+            Source::Dslx(_) | Source::Verilog(_) => format!("{id}.v"),
+        }
+    }
 }
 
 /// One primitive.
@@ -75,8 +92,12 @@ pub struct Primitive {
     pub provisional: bool,
     /// Why there is no RTL yet (no rows are measured).
     pub pending: Option<String>,
-    /// Ids of primitives whose RTL this one instantiates (their `rtl/<id>.v` is read with it).
+    /// Ids of primitives whose RTL this one instantiates (their RTL files, and their dependencies', are
+    /// read with it).
     pub deps: Vec<String>,
+    /// Vendor libraries the RTL instantiates cells of (`designware`); a flow must link them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub libraries: Vec<String>,
     /// The design has a `clk` port.
     pub clocked: bool,
     pub source: Option<Source>,
@@ -334,6 +355,7 @@ fn op_primitive(op: &str, variant: Option<&str>, args: &[T], t: T, ret: T, width
         provisional: float && pending.is_none(),
         pending,
         deps: Vec::new(),
+        libraries: Vec::new(),
         clocked: false,
         source,
     }
@@ -546,6 +568,7 @@ fn mux(n: u32, w: u32) -> Primitive {
         provisional: false,
         pending: None,
         deps: Vec::new(),
+        libraries: Vec::new(),
         clocked: false,
         source: Some(Source::Dslx(dslx)),
     }
@@ -569,6 +592,7 @@ fn register(w: u32) -> Primitive {
         provisional: false,
         pending: None,
         deps: Vec::new(),
+        libraries: Vec::new(),
         clocked: true,
         source: Some(Source::Verilog(v)),
     }
@@ -600,6 +624,7 @@ fn accumulator(c: &Primitive) -> Primitive {
         provisional: c.provisional,
         pending: None,
         deps: vec![c.id.clone()],
+        libraries: Vec::new(),
         clocked: true,
         source: Some(Source::Verilog(v)),
     }
@@ -672,6 +697,7 @@ fn split(w: u32, n: u32) -> Primitive {
         provisional: false,
         pending: None,
         deps: Vec::new(),
+        libraries: Vec::new(),
         clocked: false,
         source: Some(Source::Verilog(v)),
     }
@@ -744,6 +770,7 @@ endmodule
         provisional: true,
         pending: None,
         deps: vec![conv.to_string()],
+        libraries: Vec::new(),
         clocked: false,
         source: Some(Source::Verilog(v)),
     }

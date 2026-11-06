@@ -4,7 +4,8 @@
 //! - `catalog.json`: the primitive set with its RTL sources (`catalog::Primitive`);
 //! - `coverage.json` (`Coverage`): each primitive measured, provisional or pending;
 //! - `rtl/<id>.{x,v}`, `netlist/<kit>/<target>/<id>.v`, `reports/<kit>/<target>/<id>.<what>.rpt`;
-//! - `summary.json` (`Summary`).
+//! - `summary.json` (`Summary`);
+//! - `routes.json` (`ip::routes::Routes`): every float op's IP cores in the flow, or a gap.
 
 use std::collections::BTreeMap;
 
@@ -193,6 +194,10 @@ pub fn schemas() -> Vec<(&'static str, serde_json::Value)> {
         (
             "characterize_summary.schema.json",
             serde_json::to_value(schemars::schema_for!(Summary)).unwrap_or_default(),
+        ),
+        (
+            "characterize_routes.schema.json",
+            serde_json::to_value(schemars::schema_for!(crate::ip::routes::Routes)).unwrap_or_default(),
         ),
     ]
 }

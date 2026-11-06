@@ -225,11 +225,7 @@ fn characterize_job_keys_match_the_standing_library() {
         .collect();
     let env = cc_core::ArtifactStore::new(build.clone()).pass_dir(cc_pipeline::env::doctor::ENV_DIR);
     let kits = flow::kits_of(&env, &pdks, &cfg).unwrap();
-    let designs: Vec<_> = cat
-        .iter()
-        .filter(|p| p.source.is_some())
-        .map(flow::design)
-        .collect();
+    let designs = flow::designs(&cat);
     let jobs = flow::job_list(
         &cfg,
         &kits,
@@ -372,4 +368,304 @@ fn rescale_rtl_matches_its_reference() {
             "rescale_i{n}: {out}\n{err}"
         );
     }
+}
+
+/// IP cores through both flows: the RTL step generates HardFloat (Verilog), FloPoCo (VHDL) and XLS DSLX
+/// library cores in the image; Verilog wrappers instantiate them (dependencies followed transitively) and
+/// DesignWare components (the synthetic library linked only for those jobs); Yosys (GHDL for the VHDL)
+/// and Design Compiler synthesize the wrappers on Nangate45 at its clock, and every row passes the
+/// cheap checks. Writes `<build area>/runs/deep-ipcores/`, removed when the test passes.
+#[test]
+fn ip_cores_generate_and_synthesize_in_their_flows() {
+    use std::collections::BTreeMap;
+
+    use cc_core::adapters::{CoreOffer, CoreSource, FlowRunners, SynthJob};
+    use cc_passes::adapters::IP_PROVIDERS;
+    use cc_passes::characterize::catalog::{Kind, Primitive, Source};
+    use cc_passes::characterize::{CharacterizeConfig, flow};
+    use cc_passes::ip::verilog_instance;
+
+    let area = std::env::var("CC_BUILD_AREA").unwrap_or_else(|_| {
+        format!(
+            "/scratch/{}/chiplet-compiler",
+            std::env::var("USER").unwrap_or_default()
+        )
+    });
+    let build = std::path::Path::new(&area).join("runs").join("deep-ipcores");
+    let _ = std::fs::remove_dir_all(&build);
+    // Nangate45 only: a manifests directory with its manifest alone.
+    let pdks = build.join("pdks");
+    std::fs::create_dir_all(&pdks).unwrap();
+    std::fs::copy(
+        repo_root().join("pdks/nangate45.toml"),
+        pdks.join("nangate45.toml"),
+    )
+    .unwrap();
+    let lc = LoadedConfig::load(
+        &repo_root().join("config.toml"),
+        &[
+            format!("paths.build_dir={}", build.display()),
+            format!("paths.pdk_manifests={}", pdks.display()),
+        ],
+    )
+    .unwrap();
+    assert!(
+        lc.config.paths.eda_toggle.is_some(),
+        "deep tests need config.local.toml"
+    );
+    let runners = Runners::from_config(&lc);
+    let mut text = Vec::new();
+    let env = doctor(&lc, &runners, DoctorOptions::default(), &mut text).unwrap();
+    for name in [
+        "pdk.db",
+        "dc.nangate45",
+        "image.selftest.hardfloat",
+        "image.selftest.flopoco_ghdl",
+    ] {
+        let c = env.checks.iter().find(|c| c.name == name).unwrap();
+        assert_eq!(
+            c.status,
+            CheckStatus::Pass,
+            "{name}: {}",
+            String::from_utf8_lossy(&text)
+        );
+    }
+
+    // The catalog: cores (generated or DesignWare) and wrappers around them.
+    let offer = |p: &str, op: &str, e: u32, s: u32| -> CoreOffer {
+        IP_PROVIDERS
+            .by_name(p)
+            .unwrap()
+            .core(op, e, s)
+            .unwrap_or_else(|| panic!("{p} {op} ({e}, {s})"))
+    };
+    let prim = |id: &str, deps: Vec<String>, source: Source, libraries: Vec<String>| Primitive {
+        key: id.into(),
+        id: id.into(),
+        kind: Kind::Op,
+        op: "core".into(),
+        variant: None,
+        family: "float".into(),
+        types: vec!["f16".into()],
+        width: 16,
+        provisional: false,
+        pending: None,
+        deps,
+        libraries,
+        clocked: false,
+        source: Some(source),
+    };
+    let mut cat: Vec<Primitive> = Vec::new();
+    let core = |o: &CoreOffer, cat: &mut Vec<Primitive>| -> (String, Vec<String>) {
+        match &o.source {
+            CoreSource::Generated { generator } => {
+                if !cat.iter().any(|p| p.id == o.instance.module) {
+                    cat.push(prim(
+                        &o.instance.module,
+                        Vec::new(),
+                        Source::Generated(generator.clone()),
+                        Vec::new(),
+                    ));
+                }
+                (o.instance.module.clone(), Vec::new())
+            }
+            CoreSource::Library { name } => (String::new(), vec![name.clone()]),
+        }
+    };
+    // A wrapper with IEEE operands `a0`, `a1` and result `z` (or the compare outputs) around a chain of
+    // single-operand cores (FloPoCo's from_ieee, op, to_ieee) or one core.
+    let wrapper = |id: &str, chain: &[CoreOffer], width_in: u32, width_out: u32, cat: &mut Vec<Primitive>| {
+        let mut deps = Vec::new();
+        let mut libs = Vec::new();
+        let mut body = String::new();
+        let arity = chain[0]
+            .instance
+            .ports
+            .values()
+            .filter(|v| v.starts_with('a'))
+            .count();
+        let mut ports: Vec<String> = (0..arity)
+            .map(|i| format!("input wire [{}:0] a{i}", width_in - 1))
+            .collect();
+        let compare = chain[0].instance.ports.values().any(|v| v == "lt");
+        if compare {
+            ports.extend(["output wire lt", "output wire eq", "output wire gt"].map(String::from));
+        } else {
+            ports.push(format!("output wire [{}:0] z", width_out - 1));
+        }
+        for (i, o) in chain.iter().enumerate() {
+            let (dep, lib) = core(o, cat);
+            if !dep.is_empty() && !deps.contains(&dep) {
+                deps.push(dep);
+            }
+            libs.extend(lib);
+            let last = i + 1 == chain.len();
+            if !last {
+                // FloPoCo's format between its operators: exception bits, sign, exponent, significand.
+                let w = o.instance.exp_width + o.instance.sig_width + 3;
+                body.push_str(&format!("  wire [{}:0] t{i};\n", w - 1));
+            }
+            let src = |x: &str| -> String {
+                match (x, i) {
+                    ("z", _) if last => "z".into(),
+                    ("z", _) => format!("t{i}"),
+                    (a, 0) => a.to_string(),
+                    ("a0", _) => format!("t{}", i - 1),
+                    (other, _) => other.to_string(),
+                }
+            };
+            body.push_str(&format!(
+                "  {}\n",
+                verilog_instance(&o.instance, &format!("u{i}"), src)
+            ));
+        }
+        let v = format!("module {id}({});\n{body}endmodule\n", ports.join(", "));
+        cat.push(prim(id, deps, Source::Verilog(v), libs));
+    };
+    // Open flow.
+    wrapper(
+        "w_hf_add_f16",
+        &[offer("hardfloat", "add", 5, 10)],
+        16,
+        16,
+        &mut cat,
+    );
+    wrapper(
+        "w_hf_cmp_bf16",
+        &[offer("hardfloat", "compare", 8, 7)],
+        16,
+        1,
+        &mut cat,
+    );
+    wrapper(
+        "w_fp_exp_f16",
+        &[
+            offer("flopoco", "from_ieee", 5, 10),
+            offer("flopoco", "exp", 5, 10),
+            offer("flopoco", "to_ieee", 5, 10),
+        ],
+        16,
+        16,
+        &mut cat,
+    );
+    // Industry flow: DesignWare, and HardFloat where DesignWare has no component.
+    wrapper(
+        "w_dw_add_f16",
+        &[offer("designware", "add", 5, 10)],
+        16,
+        16,
+        &mut cat,
+    );
+    wrapper(
+        "w_dw_exp_f16",
+        &[offer("designware", "exp", 5, 10)],
+        16,
+        16,
+        &mut cat,
+    );
+    wrapper(
+        "w_hf_cvt_f32_bf16",
+        &[offer("hardfloat", "convert.e8m7", 8, 23)],
+        32,
+        16,
+        &mut cat,
+    );
+    // Generated only (no synthesis here): an iterative HardFloat divider and XLS's f32 sine.
+    for o in [offer("hardfloat", "div", 5, 10), offer("xls_math", "sin", 8, 23)] {
+        core(&o, &mut cat);
+    }
+
+    let d = &lc.config.tools.docker;
+    let image = format!("{}:{}", d.image, d.tag);
+    let caps = cc_core::runner::Caps {
+        memory_gb: 4.0,
+        cpus: 2.0,
+        timeout_s: 3600.0,
+        pids_limit: 1024,
+    };
+    let bound = |r: std::sync::Arc<dyn cc_core::runner::ToolRunner>, what: &str| {
+        cc_core::runner::BoundRunner::new(
+            r,
+            caps,
+            cc_core::runner::ToolLog::new(what, build.join("logs")),
+            cc_core::CancelToken::new(),
+        )
+    };
+    let fr = FlowRunners {
+        eda: bound(runners.eda.clone(), "ipcores-eda"),
+        docker: bound(runners.docker.clone(), "ipcores-docker"),
+    };
+    let pass_dir = build.join(".characterize");
+    let rtl_dir = pass_dir.join("eda").join(flow::rtl_dir_name(&image, &cat));
+    flow::rtl_in(&fr.docker, &rtl_dir, &cat).unwrap();
+    let read = |f: &str| std::fs::read_to_string(rtl_dir.join(f)).unwrap();
+    let div = read("hardfloat_e5m10_div.v");
+    for port in ["clock", "start", "done", "ready"] {
+        assert!(
+            div.contains(&format!(" {port},")) || div.contains(&format!(" {port}\n")),
+            "{port}"
+        );
+    }
+    assert!(read("xls_e8m23_sin.v").contains("module xls_e8m23_sin("));
+    assert!(read("flopoco_e5m10_exp.vhdl").contains("entity flopoco_e5m10_exp is"));
+
+    let by_id: BTreeMap<&str, &Primitive> = cat.iter().map(|p| (p.id.as_str(), p)).collect();
+    let all = flow::designs(&cat);
+    let pdk = cc_core::pdk::load(&lc, "nangate45").unwrap();
+    let env_dir = cc_core::ArtifactStore::new(build.clone()).pass_dir(cc_pipeline::env::doctor::ENV_DIR);
+    for (tool, tops) in [
+        ("yosys", &["w_hf_add_f16", "w_hf_cmp_bf16", "w_fp_exp_f16"][..]),
+        ("dc", &["w_dw_add_f16", "w_dw_exp_f16", "w_hf_cvt_f32_bf16"][..]),
+    ] {
+        let cfg = CharacterizeConfig {
+            tool: tool.into(),
+            pdks: vec!["nangate45".into()],
+            targets: vec!["clock".into()],
+            ..CharacterizeConfig::default()
+        };
+        let kits = flow::kits_of(&env_dir, std::slice::from_ref(&pdk), &cfg).unwrap();
+        let designs: Vec<_> = all
+            .iter()
+            .filter(|d| tops.contains(&d.id.as_str()))
+            .cloned()
+            .collect();
+        let fp = designs.iter().find(|d| d.id == "w_fp_exp_f16");
+        if let Some(fp) = fp {
+            assert_eq!(
+                fp.files.iter().filter(|f| f.ends_with(".vhdl")).count(),
+                3,
+                "{:?}",
+                fp.files
+            );
+        }
+        let jobs = flow::job_list(&cfg, &kits, &designs, &rtl_dir, &pass_dir, &image, caps).unwrap();
+        let out_root = build.join(format!("out-{tool}"));
+        for j in &jobs {
+            if tool == "dc" {
+                let dw = j
+                    .synth
+                    .iter()
+                    .filter(|(_, t)| t.contains("dw_foundation.sldb"))
+                    .count();
+                let with_dw = j.designs.iter().filter(|d| !d.libraries.is_empty()).count();
+                assert_eq!(dw, with_dw, "only DesignWare jobs link its library");
+            }
+            let job = SynthJob {
+                kit: &kits[j.kit].0,
+                designs: &j.designs,
+                period_ps: j.period_ps,
+                caps,
+                cache_dir: &pass_dir.join("alib"),
+                lec: None,
+            };
+            flow::run_job_with(&fr, &cfg, &job, j, &rtl_dir).unwrap();
+            for (row, problems) in flow::rows(&cfg, &kits[j.kit].0, j, &by_id, &out_root).unwrap() {
+                assert!(problems.is_empty(), "{tool} {}: {problems:?}", row.id);
+                let a = row.measured.area_um2.unwrap_or(0.0);
+                assert!(a > 50.0, "{tool} {}: area {a}", row.id);
+                eprintln!("{tool} {}: {a:.1} um2, {:?} ps", row.id, row.measured.delay_ps);
+            }
+        }
+    }
+    std::fs::remove_dir_all(&build).unwrap();
 }
