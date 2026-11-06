@@ -71,7 +71,8 @@ def all_values(f: Fmt) -> np.ndarray:
     format excluded: they read as zero)."""
     raw, dt = _DTYPES[f.name]
     bits = np.arange(1 << (8 * np.dtype(raw).itemsize), dtype=np.uint64).astype(raw)
-    v = bits.view(dt).astype(np.float64)
+    with np.errstate(invalid="ignore"):
+        v = bits.view(dt).astype(np.float64)
     v = v[np.isfinite(v)]
     if f.flushes:
         v = v[(v == 0) | (np.abs(v) >= 2.0**f.emin)]
