@@ -210,7 +210,6 @@ fn float_rows_synthesize_in_design_compiler() {
         "passes.characterize.mux_widths=[8]".to_string(),
         "passes.characterize.register_widths=[8]".to_string(),
         "passes.characterize.split_multipliers=[]".to_string(),
-        "passes.characterize.resources.threads=4".to_string(),
     ];
     let cfg = LoadedConfig::load(&repo_root().join("config.toml"), &sets).unwrap();
     assert!(

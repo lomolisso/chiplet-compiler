@@ -314,6 +314,21 @@
    whole library is rebuilt from them in 8 s: 108 jobs reused, 0 run, every check green on the 2 560
    rows (no undriven output, 260 series without a violation).
 
+   The open flow on the float wrappers (2026-11-06, iacoma227, Yosys in image 0.6.0, 12 parallel
+   sessions with 10 GB each): 910 primitives (682 designs, 224 IP cores and adapters, 4 pending: float
+   `remainder`), 2 728 rows in 1 264 jobs (316 op and type groups), about 19 minutes of wall time plus 4.5
+   minutes for the RTL step (116 HardFloat, 77 FloPoCo and 2 XLS cores generated); every check green, 260
+   series without a flag, 218 float routes and no gap. Float examples, Nangate45 at the clock target (area
+   µm²): `add@f32` 3 701, `multiply@f32` 7 381, `divide@f32` 16 063 (FloPoCo), `exponential@f32` 13 676,
+   `power@f32` 45 998 (FloPoCo's power core), `tanh@f32` 71 060 (composition, k = 9), `sine@f32` 163 176
+   (XLS), `multiply@bf16` 1 190, `add@bf16` 2 905 (through an f32 core), `add@f8e4m3fn` 1 596.
+
+   Deep test `float_rows_synthesize_in_design_compiler` (Nangate45 at the clock, 2026-11-06): divide,
+   compare, clamp, floor, conversions and power at f32 and bf16 through Design Compiler, every check green
+   in about 29 minutes; `divide@f32` 12 356 µm² (`DW_fp_div` at 9 exponent bits), `divide@bf16` 2 794,
+   `floor@f32` 1 363, `power@bf16` 13 915 (`DW_fp_log2`, `DW_fp_exp2` composition), `power@f32` 31 354
+   (FloPoCo's VHDL in Design Compiler).
+
    Deep test (`tests/deep/characterize.rs`: doctor, then `add` and `multiply` at 8 bits and f32, their
    accumulators, a 2-input mux, a register and a 16-from-8 split multiplier on both kits and targets,
    through Design Compiler without and then with Formality, and Yosys): about 25 minutes from scratch
