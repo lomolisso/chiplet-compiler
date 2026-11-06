@@ -1,0 +1,17 @@
+--- a/code/VHDLOperators/src/ConstMult/IntConstMult.cpp
++++ b/code/VHDLOperators/src/ConstMult/IntConstMult.cpp
+@@ -1,7 +1,14 @@
+ #include "flopoco/ConstMult/IntConstMult.hpp"
+ 
+ #include "flopoco/InterfacedOperator.hpp"
++#if defined(HAVE_PAGLIB)
+ #include "pagsuite/adder_graph.h"
++#else
++#include <climits>
++// PAGSuite's marker for a don't-care coefficient (pagsuite/adder_graph.h); without PAGSuite only
++// the methods that do not need it are available.
++#define DONT_CARE LLONG_MAX
++#endif
+ 
+ using namespace std;
+ 

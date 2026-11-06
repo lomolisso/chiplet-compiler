@@ -105,6 +105,34 @@ RUN cd /src/grami && for p in /src/patches/*.patch; do patch -p1 --forward < "$p
  && cp LICENCE.txt /opt/grami/
 
 # ---------------------------------------------------------------------------------------------
+# FloPoCo at its pinned release tag (the commit is checked), against the apt snapshot's Sollya,
+# GMP/MPFR/MPFI, Boost and LAPACK. docker/patches/flopoco/ lets it build without the optional
+# PAGSuite and ScaLP libraries (shift-and-add constant multipliers, ILP); the float operators we use
+# (FPExp, FPLog, FPPow) do not need them.
+# ---------------------------------------------------------------------------------------------
+FROM build AS flopoco
+LABEL chiplet-compiler.stage=flopoco
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ARG FLOPOCO_TAG
+ARG FLOPOCO_COMMIT
+ARG JOBS=16
+RUN apt-get update --error-on=any \
+ && apt-get install -y --no-install-recommends flex pkg-config libboost-random-dev libboost-filesystem-dev \
+      libgmp-dev libmpfr-dev libmpfi-dev liblapack-dev libsollya-dev libtbb-dev \
+ && rm -rf /var/lib/apt/lists/*
+COPY docker/patches/flopoco /src/patches/flopoco
+RUN git init -q /src/flopoco && cd /src/flopoco \
+ && git remote add origin https://gitlab.com/flopoco/flopoco.git \
+ && git fetch -q --depth 1 origin "refs/tags/${FLOPOCO_TAG}" && git checkout -q FETCH_HEAD \
+ && test "$(git rev-parse HEAD)" = "${FLOPOCO_COMMIT}" \
+ && for p in /src/patches/flopoco/*.patch; do patch -p1 --forward < "$p"; done \
+ && cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/flopoco \
+      -DFLOPOCO_ENABLE_CCACHE=OFF \
+ && ninja -C build -j"${JOBS}" && cmake --install build \
+ && cp COPYING /opt/flopoco/ && /opt/flopoco/bin/flopoco FPExp wE=5 wF=10 outputFile=/tmp/t.vhdl >/dev/null \
+ && rm -rf /src/flopoco /tmp/t.vhdl
+
+# ---------------------------------------------------------------------------------------------
 # LLVM at Allo's pin (cmake flags from Allo's setup docs) + Allo, editable, into /opt/cc/venv.
 # Caps: ninja -j${JOBS}, LLVM_PARALLEL_LINK_JOBS (links are the memory peak), docker --memory.
 # ---------------------------------------------------------------------------------------------
@@ -133,6 +161,9 @@ RUN cmake -G Ninja -S /opt/llvm-project/llvm -B /opt/llvm-project/build \
       -DLLVM_PARALLEL_LINK_JOBS="${LINK_JOBS}" \
  && ninja -C /opt/llvm-project/build -j"${JOBS}"
 COPY third_party/allo /opt/allo
+# Our pinned patches (third_party/patches/allo, docs/third-party.md), applied before Allo's C++ is built.
+COPY third_party/patches/allo /src/patches/allo
+RUN cd /opt/allo && for p in /src/patches/allo/*.patch; do patch -p1 --forward < "$p"; done
 # allo/_mlir is a symlink into mlir/build, so Allo stays an editable install of /opt/allo.
 RUN cd /opt/allo && test -L allo/_mlir \
  && LLVM_BUILD_DIR=/opt/llvm-project/build NUM_THREADS="${JOBS}" \
@@ -191,6 +222,15 @@ WORKDIR /home/xls/xls
 RUN bazel --host_jvm_args=-Xmx4g build -c opt --jobs="${JOBS}" \
       --local_resources=cpu="${JOBS}" --local_resources=memory="${BAZEL_RAM_MB}" \
       //xls/contrib/xlscc:xlscc //xls/tools:eval_ir_main //xls/dev_tools:check_ir_equivalence_main
+# Our pinned patches (third_party/patches/xls, docs/third-party.md) in their own step: the unpatched
+# build above stays cached, so a patch change rebuilds only what it touches. The patches' unit tests
+# run here.
+COPY --chown=xls third_party/patches/xls /home/xls/patches
+RUN for p in /home/xls/patches/*.patch; do patch -p1 --forward < "$p"; done \
+ && bazel --host_jvm_args=-Xmx4g test -c opt --jobs="${JOBS}" \
+      --local_resources=cpu="${JOBS}" --local_resources=memory="${BAZEL_RAM_MB}" --test_output=errors \
+      //xls/contrib/xlscc:xlscc //xls/tools:eval_ir_main //xls/dev_tools:check_ir_equivalence_main \
+      //xls/contrib/xlscc/unit_tests:translator_extern_verilog_test
 # No Bazel call here (it would start a server over the stale one): bazel-bin is a plain path under
 # the output base. set -e: a failing command substitution must stop the step (pipefail alone does
 # not). xls_int.h includes "ac_datatypes/include/ac_int.h", but none of our three targets depends
@@ -234,11 +274,24 @@ RUN apt-get update --error-on=any \
  && apt-get install -y --no-install-recommends build-essential openjdk-17-jre-headless \
       yosys iverilog verilator libtinfo6 zlib1g libgmp10 libmpfr6 \
  && rm -rf /var/lib/apt/lists/*
+# GHDL and the ghdl-yosys plugin (VHDL, e.g. FloPoCo's operators, into Yosys; the plugin reads the
+# ghdl-gcc library tree), and the libraries the FloPoCo binary links (ldd).
+RUN apt-get update --error-on=any \
+ && apt-get install -y --no-install-recommends ghdl ghdl-gcc yosys-plugin-ghdl \
+      libfplll8t64 libgmpxx4ldbl libmpfi0 libsollya8 libtbb12 libxml2 \
+ && rm -rf /var/lib/apt/lists/*
 COPY --from=xls-release /opt/xls /opt/xls
 COPY --from=xls-bazel /home/xls/out/bin/ /opt/xls/bin/
 COPY --from=xls-bazel /home/xls/out/include /opt/xls/include
 COPY --from=solvers /opt/solvers /opt/solvers
 COPY --from=grami /opt/grami /opt/grami
+COPY --from=flopoco /opt/flopoco /opt/flopoco
+# XLS's DSLX float libraries (sine/cosine, exponential and their imports) from the pinned XLS commit;
+# imported as `third_party.xls_go_math.<file>` with --dslx_path=$XLS_DSLX_PATH.
+COPY third_party/xls/third_party/xls_go_math/*.x third_party/xls/third_party/xls_go_math/LICENSE \
+     /opt/xls/share/third_party/xls_go_math/
+COPY third_party/xls/third_party/xls_berkeley_softfloat/*.x third_party/xls/third_party/xls_berkeley_softfloat/LICENSE \
+     /opt/xls/share/third_party/xls_berkeley_softfloat/
 COPY --from=llvm-allo /opt/llvm-rt /opt/llvm-project/build
 COPY --from=llvm-allo /opt/allo /opt/allo
 COPY --from=llvm-allo /opt/cc/venv /opt/cc/venv
@@ -247,10 +300,11 @@ COPY docker/cc-probe.py /opt/cc/bin/cc-probe
 COPY docker/selftest.sh /opt/cc/bin/cc-selftest
 # DockerRunner runs as the host uid with HOME=/tmp/home (docs/tools/docker_resources.md §3).
 RUN mkdir -p /tmp/home && chmod 1777 /tmp/home && chmod 0755 /opt/cc/bin/cc-probe /opt/cc/bin/cc-selftest
-ENV PATH=/opt/cc/bin:/opt/cc/venv/bin:/opt/xls/bin:/opt/solvers/bin:/opt/llvm-project/build/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+ENV PATH=/opt/cc/bin:/opt/cc/venv/bin:/opt/xls/bin:/opt/solvers/bin:/opt/flopoco/bin:/opt/llvm-project/build/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     VIRTUAL_ENV=/opt/cc/venv \
     LLVM_BUILD_DIR=/opt/llvm-project/build \
     XLS_STDLIB=/opt/xls/share/xls/dslx/stdlib \
+    XLS_DSLX_PATH=/opt/xls/share \
     XLSCC_INCLUDE_DIRS=/opt/xls/include,/opt/xls/include/xls/contrib/xlscc/synth_only \
     XLSCC_DEFINES=__SYNTHESIS__,__xlscc__,__AC_OVERRIDE_OVF_UPDATE_BODY=,__AC_OVERRIDE_OVF_UPDATE2_BODY= \
     GRAMI_DIRECTED_CP=/opt/grami/GRAMI_DIRECTED_SUBGRAPHS/bin \
@@ -261,6 +315,7 @@ ARG XLS_COMMIT
 ARG ALLO_COMMIT
 ARG LLVM_COMMIT
 ARG GRAMI_COMMIT
+ARG FLOPOCO_COMMIT
 ARG Z3_VERSION
 ARG BITWUZLA_VERSION
 ARG UV_VERSION
@@ -268,11 +323,14 @@ ARG BAZELISK_VERSION
 ARG APT_SNAPSHOT
 ARG PYPI_EXCLUDE_NEWER
 ARG IMAGE_TAG
+# The unit tests of the Allo patches (third_party/patches/allo), now that xlscc and codegen are on PATH.
+RUN cd /tmp && python3 -m pytest -q -p no:cacheprovider /opt/allo/tests/test_xls_extensions.py
 # Fail the build if any tool is broken, then record versions + pins for `chipc doctor`.
 RUN cc-selftest \
  && cc-probe --write /opt/cc/versions.json \
       --pin image_tag="${IMAGE_TAG}" --pin xls_tag="${XLS_TAG}" --pin xls_commit="${XLS_COMMIT}" \
       --pin allo_commit="${ALLO_COMMIT}" --pin llvm_commit="${LLVM_COMMIT}" --pin grami_commit="${GRAMI_COMMIT}" \
+      --pin flopoco_commit="${FLOPOCO_COMMIT}" \
       --pin z3_version="${Z3_VERSION}" --pin bitwuzla_version="${BITWUZLA_VERSION}" \
       --pin uv_version="${UV_VERSION}" --pin bazelisk_version="${BAZELISK_VERSION}" \
       --pin apt_snapshot="${APT_SNAPSHOT}" --pin pypi_exclude_newer="${PYPI_EXCLUDE_NEWER}" \

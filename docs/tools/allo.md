@@ -102,6 +102,58 @@ Code comment in `customize.py`: "TODO Add XLS DSLX Backend": only the xlscc path
   C++; the certificates come from `llvm` sim vs XLS IR evaluation.
 - The backend does not call xlscc itself; our pass runs xlscc/opt/codegen (`xls.md`) on `test_block.cpp`.
 
+## 5a. Our pinned patches to the XLS backend (`third_party/patches/allo`, `docs/third-party.md`)
+
+The image's Allo carries four patches; their tests are `tests/test_xls_extensions.py`, run at image build with
+`xlscc`, `opt_main` and `codegen_main` on PATH.
+
+- **Calls.** A called function is emitted as a C++ function returning its (single, scalar) result, and the call as
+  `T v = f(args);`. Unpatched, the emitter inherits the Vitis call, which passes the result through a pointer
+  (`fmul(v5, v6, &v8)`) that the callee's signature does not have, so `xlscc` rejected every kernel with a call.
+  Calls with array arguments or results are an emitter error (inline such callees). The emitted header no longer
+  includes `xls_builtin.h`, which XLS does not ship (`xls_int.h` includes `/xls_builtin.h`, provided by `xlscc`).
+- **External Verilog modules.** A function decorated with `allo.extern_verilog` is implemented by an existing
+  Verilog module:
+
+  ```python
+  @allo.extern_verilog(
+      "DW_fp_mult #(.sig_width(23), .exp_width(8), .ieee_compliance(0)) "
+      "{fn} (.a({a}), .b({b}), .rnd(3'b000), .z({return}), .status())",
+      delay_ps=800,      # the module's combinational delay for the XLS scheduler (optional)
+      model=f32_mul,     # NumPy model for target="llvm" (optional; else the body is simulated)
+  )
+  def fmul(a: uint32, b: uint32) -> uint32:
+      r: uint32 = a ^ b  # body: what xlscc translates and XLS IR evaluation runs
+      return r
+  ```
+
+  The template uses XLS's foreign function syntax (`{fn}` instance name, `{return}`, `{<argument>}` by its Python
+  name); `module=`, `params=` and `ports=` build the same template from a port map (`ports` values: an argument
+  name, `"return"`, a Verilog constant, or `None` for unconnected). The declaration is checked when the function
+  is decorated (unknown placeholders, missing `{fn}`, negative delay).
+  - `target="xls"` emits `[[xlscc::hls_extern_verilog("<template>", <delay_ps>)]]` before the callee, with the
+    placeholders renamed to the emitted C++ argument names; the patched `xlscc` turns it into the IR function's
+    foreign function data (`xls.md` §7a), and `codegen_main` instantiates the module.
+  - `target="llvm"` replaces the callee by a declaration bound to `model` (`ExecutionEngine.register_runtime`):
+    the model gets one Python int per argument (unsigned arguments in `[0, 2^w)`, signed ones signed) and returns
+    the result's bit pattern; integer ports of at most 64 bits. An exception in the model fails the call.
+  - Only scalar arguments and one scalar result (XLS external modules are combinational functions); the
+    function must be called, not the top.
+- **Loop directives.** Each loop gets exactly one `xlscc` directive: `pipeline(axis, ii)` gives
+  `hls_pipeline_init_interval ii` (`xlscc` implements 1; a longer interval comes from codegen's
+  `--worst_case_throughput`), `unroll(axis, factor)` gives `hls_unroll factor` (`yes` for 0, full unrolling).
+  Without a directive: loops using channels are pipelined; loops inside a pipelined or fully unrolled loop, and
+  loops accessing a completely partitioned array, are unrolled; other loops of a block (a kernel with array
+  arguments) run sequentially as pipelined loops of interval 1; loops of a combinational function (scalar
+  arguments only) are unrolled, the only form `xlscc` accepts there. Unpatched, every loop without a pipeline
+  directive was fully unrolled, the pipeline interval was dropped and `unroll` factors were emitted as
+  `hls_unroll yes factor=N`.
+- **Partitioning.** A local array partitioned completely in every dimension is declared with
+  `[[clang::annotate_type("hls_array_as_tuple")]]` (separate registers; `xlscc` then needs constant indices) and
+  stays a register array in memory mode (`use_memory=True`), where other arrays are `__xls_memory`. A block or
+  cyclic partition has no `xlscc` equivalent: it is recorded as a comment and the array is unchanged. No Vitis
+  pragmas are emitted.
+
 ## 6. `allo.verify(schedule_a, schedule_b)` (PAST, FPGA'24)
 
 - Builds both schedules with `target="vhls"`, writes `tmp/a.c`, `tmp/b.c` **relative to CWD**, adds PoCC pragmas,
@@ -120,9 +172,10 @@ Code comment in `customize.py`: "TODO Add XLS DSLX Backend": only the xlscc path
 | sw_emu int32 marshalling | don't use for >32-bit FUs |
 | LLVM build oversubscription | explicit `-j`, link jobs, Docker `--memory` |
 | Upstream churn (main only) | pin commits for Allo and LLVM; record both in `verify.json` |
-| A kernel calling a separate function fails in `xlscc`: the XLS emitter defines the callee as returning its value but inherits the Vitis emitter's call, which passes the result through a pointer (`fmul(v5, v6, &v8)`; `mlir/lib/Translation/EmitVivadoHLS.cpp:2301`) | inline callees; fix: an `emitCall` override in `EmitXlsHLS.cpp` (planned patch, design §4.14) |
-| `IPModule` (external C++ for the `llvm` simulator and Vitis HLS) is ignored by the XLS backend | external Verilog modules through a planned extern declaration and `xlscc` attribute (design §4.13-§4.14) |
-| The XLS emitter emits initiation interval 1 for every pipelined loop, fully unrolls loops without a directive, and emits nothing for `partition` or dataflow regions | throughput via `codegen_main --worst_case_throughput`; the rest are planned emitter patches |
+| `IPModule` (external C++ for the `llvm` simulator and Vitis HLS) is ignored by the XLS backend | use `allo.extern_verilog` (section 5a) |
+| A completely partitioned array is a tuple in `xlscc`: an access with a run-time index fails | unroll the loops that index it (the emitter does so for loops without a directive) |
+| `xlscc` pipelines a loop with interval 1 only | `codegen_main --worst_case_throughput=N` for a unit that takes a new input every N cycles |
+| No dataflow regions in the XLS backend | not needed for v1 units |
 
 ## Sources
 

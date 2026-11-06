@@ -1,0 +1,649 @@
+diff --git a/allo/__init__.py b/allo/__init__.py
+index 0a5e3c0..bae3ff3 100644
+--- a/allo/__init__.py
++++ b/allo/__init__.py
+@@ -11,3 +11,4 @@ from .dsl import *
+ from .template import *
+ from .verify import verify
+ from .memory import Memory, Layout
++from .extern import extern_verilog, ExternVerilog
+diff --git a/allo/backend/llvm.py b/allo/backend/llvm.py
+index f7f907c..e13ca62 100644
+--- a/allo/backend/llvm.py
++++ b/allo/backend/llvm.py
+@@ -45,6 +45,79 @@ from ..utils import (
+ )
+ 
+ 
++def _declare_extern_models(module):
++    """Replace every external Verilog module that has a simulation model by a
++    declaration, to be bound to the model with `register_runtime`.
++
++    Returns (name, spec, argument (width, signed) pairs, result width) tuples.
++    """
++    # pylint: disable=import-outside-toplevel
++    from .._mlir.dialects import func as func_d
++    from .._mlir.ir import (
++        FunctionType,
++        InsertionPoint,
++        IntegerType,
++        StringAttr,
++    )
++    from ..extern import lookup
++
++    found = []
++    for op in list(module.body.operations):
++        if not isinstance(op, func_d.FuncOp) or "extern_model" not in op.attributes:
++            continue
++        spec = lookup(StringAttr(op.attributes["extern_model"]).value)
++        if spec is None or spec.model is None:
++            continue  # simulate the body
++        ftype = FunctionType(op.type)
++        ins, outs = list(ftype.inputs), list(ftype.results)
++        if len(outs) != 1 or not all(
++            IntegerType.isinstance(t) and IntegerType(t).width <= 64
++            for t in ins + outs
++        ):
++            raise RuntimeError(
++                f"extern_verilog({spec.name}): a simulation model needs integer "
++                "arguments and one integer result of at most 64 bits"
++            )
++        itypes = (
++            StringAttr(op.attributes["itypes"]).value
++            if "itypes" in op.attributes
++            else "_" * len(ins)
++        )
++        args = [(IntegerType(t).width, h != "u") for t, h in zip(ins, itypes)]
++        name = StringAttr(op.attributes["sym_name"]).value
++        op.operation.erase()
++        decl = func_d.FuncOp(name=name, type=ftype, ip=InsertionPoint(module.body))
++        decl.attributes["sym_visibility"] = StringAttr.get("private")
++        decl.attributes["llvm.emit_c_interface"] = UnitAttr.get()
++        found.append((name, spec, args, IntegerType(outs[0]).width))
++    return found
++
++
++def _model_callback(spec, args, result_width, errors):
++    """A C callback that runs `spec.model` on the raw argument values."""
++
++    def ctype(width):
++        return {8: ctypes.c_uint8, 16: ctypes.c_uint16, 32: ctypes.c_uint32}.get(
++            max(get_clostest_pow2(width), 8), ctypes.c_uint64
++        )
++
++    def call(*raw):
++        try:
++            values = []
++            for value, (width, signed) in zip(raw, args):
++                value = int(value) & ((1 << width) - 1)
++                if signed and value >> (width - 1):
++                    value -= 1 << width
++                values.append(value)
++            return int(spec.model(*values)) & ((1 << result_width) - 1)
++        except Exception as e:  # pylint: disable=broad-exception-caught
++            errors.append(e)
++            return 0
++
++    proto = ctypes.CFUNCTYPE(ctype(result_width), *[ctype(w) for w, _ in args])
++    return proto(call)
++
++
+ def invoke_mlir_parser(mod: str):
+     with Context() as ctx, Location.unknown():
+         allo_d.register_dialect(ctx)
+@@ -55,10 +128,13 @@ def invoke_mlir_parser(mod: str):
+ class LLVMModule:
+     def __init__(self, mod, top_func_name, ext_libs=None):
+         # Copy the module to avoid modifying the original one
+-        with Context() as ctx:
++        with Context() as ctx, Location.unknown():
+             allo_d.register_dialect(ctx)
+             self.module = Module.parse(str(mod), ctx)
+             self.top_func_name = top_func_name
++            # External Verilog modules with a model run as Python callbacks.
++            self._extern_errors = []
++            self._extern_models = _declare_extern_models(self.module)
+             func = find_func_in_module(self.module, top_func_name)
+             ext_libs = [] if ext_libs is None else ext_libs
+             # Get input/output types
+@@ -118,9 +194,25 @@ class LLVMModule:
+             self.execution_engine = ExecutionEngine(
+                 self.module, opt_level=2, shared_libs=shared_libs
+             )
++            self._extern_callbacks = []
++            for name, spec, args, result_width in self._extern_models:
++                callback = _model_callback(
++                    spec, args, result_width, self._extern_errors
++                )
++                self._extern_callbacks.append(callback)  # must outlive the engine
++                self.execution_engine.register_runtime(name, callback)
+ 
+-    # pylint: disable=too-many-branches
+     def __call__(self, *args):
++        self._extern_errors.clear()
++        result = self._call(*args)
++        if self._extern_errors:
++            raise RuntimeError(
++                "a simulation model of an external Verilog module failed"
++            ) from self._extern_errors[0]
++        return result
++
++    # pylint: disable=too-many-branches
++    def _call(self, *args):
+         """
+         Reference:
+         * https://github.com/llvm/llvm-project/blob/llvmorg-15.0.0/mlir/test/python/execution_engine.py
+diff --git a/allo/extern.py b/allo/extern.py
+new file mode 100644
+index 0000000..186e26d
+--- /dev/null
++++ b/allo/extern.py
+@@ -0,0 +1,138 @@
++# Copyright Allo authors. All Rights Reserved.
++# SPDX-License-Identifier: Apache-2.0
++"""External Verilog modules.
++
++A function decorated with :func:`extern_verilog` is implemented in hardware by
++an existing Verilog module (for example a floating-point IP core) instead of
++its body. Allo keeps the function as a separate callee:
++
++* ``target="xls"`` emits it with the xlscc attribute
++  ``[[xlscc::hls_extern_verilog("<template>", <delay>)]]``, so XLS codegen
++  instantiates the module and schedules it as one combinational block of the
++  given delay. XLS supports combinational modules only.
++* ``target="llvm"`` simulates it with ``model`` (a Python callable on the raw
++  argument values, e.g. a NumPy model of the core); without a model, the body
++  is simulated.
++
++The body must still be valid Allo: xlscc translates it, and XLS IR evaluation
++uses it as the module's behaviour.
++
++The instantiation template uses XLS's foreign function syntax: ``{fn}`` is
++the instance name, ``{return}`` the result and ``{<arg>}`` an argument, by
++its name in the Python signature. Instead of a template, the module can be
++given as a name, parameters and a port map.
++"""
++
++import inspect
++import itertools
++import re
++
++_PLACEHOLDER = re.compile(r"\{([^{}]*)\}")
++_RESULT = re.compile(r"return(\.\d+)*")
++_REGISTRY = {}
++_COUNTER = itertools.count()
++
++
++class ExternVerilog:
++    """A Verilog module that implements an Allo function (see the module doc)."""
++
++    def __init__(self, fn, template, delay_ps=None, model=None):
++        self.name = fn.__name__
++        self.arg_names = list(inspect.signature(fn).parameters)
++        self.template = template
++        self.delay_ps = delay_ps
++        self.model = model
++        self.key = f"{fn.__qualname__}#{next(_COUNTER)}"
++        self._check()
++        _REGISTRY[self.key] = self
++
++    def _check(self):
++        if not isinstance(self.template, str) or "{fn}" not in self.template:
++            raise ValueError(
++                f"extern_verilog({self.name}): the template must contain {{fn}}, "
++                "the instance name"
++            )
++        for key in _PLACEHOLDER.findall(self.template):
++            if key != "fn" and key not in self.arg_names and not _RESULT.fullmatch(key):
++                raise ValueError(
++                    f"extern_verilog({self.name}): unknown placeholder {{{key}}}; "
++                    f"use {{fn}}, {{return}} or an argument of {self.arg_names}"
++                )
++        if self.delay_ps is not None and (
++            not isinstance(self.delay_ps, int) or not 0 <= self.delay_ps < 2**31
++        ):
++            raise ValueError(
++                f"extern_verilog({self.name}): delay_ps must be an integer >= 0"
++            )
++        if self.model is not None and not callable(self.model):
++            raise ValueError(f"extern_verilog({self.name}): model must be callable")
++
++    def attach(self, func_op):
++        """Record the declaration on the callee's ``func.func`` operation."""
++        # pylint: disable=import-outside-toplevel, no-name-in-module
++        from ._mlir.ir import ArrayAttr, IntegerAttr, IntegerType, StringAttr
++
++        func_op.attributes["extern_verilog"] = StringAttr.get(self.template)
++        func_op.attributes["extern_arg_names"] = ArrayAttr.get(
++            [StringAttr.get(name) for name in self.arg_names]
++        )
++        func_op.attributes["extern_model"] = StringAttr.get(self.key)
++        if self.delay_ps is not None:
++            func_op.attributes["extern_delay_ps"] = IntegerAttr.get(
++                IntegerType.get_signless(64), self.delay_ps
++            )
++
++
++def port_template(module, ports, params=None):
++    """An instantiation template from a module name, parameters and a port map.
++
++    ``ports`` maps each Verilog port to an argument name or ``"return"`` (the
++    result; any identifier is taken as one of these), a Verilog constant
++    expression (e.g. ``"3'b000"``), or ``None`` (left unconnected).
++    ``params`` maps parameter names to values.
++    """
++    text = module
++    if params:
++        text += " #(" + ", ".join(f".{k}({v})" for k, v in params.items()) + ")"
++    conns = []
++    for port, source in ports.items():
++        if source is None:
++            conns.append(f".{port}()")
++        elif re.fullmatch(r"[A-Za-z_]\w*(\.\d+)*", source):
++            # An identifier: an argument or the result.
++            conns.append(f".{port}({{{source}}})")
++        else:
++            conns.append(f".{port}({source})")
++    return text + " {fn} (" + ", ".join(conns) + ")"
++
++
++def extern_verilog(
++    template=None, *, module=None, params=None, ports=None, delay_ps=None, model=None
++):
++    """Declare that a function is implemented by an external Verilog module.
++
++    Either ``template`` (XLS foreign function syntax) or ``module`` with
++    ``ports`` (and optionally ``params``) gives the instantiation. ``delay_ps``
++    is the module's combinational delay for the XLS scheduler (codegen's
++    ``--ffi_fallback_delay_ps`` applies when it is omitted). ``model`` is the
++    simulation model for ``target="llvm"``: called with one Python int per
++    argument (unsigned arguments in ``[0, 2**width)``, signed ones as signed
++    values), it returns the result's bit pattern as an int.
++    """
++    if (template is None) == (module is None):
++        raise ValueError("extern_verilog: give either a template or a module")
++    if module is not None:
++        if ports is None:
++            raise ValueError("extern_verilog: a module needs its port map")
++        template = port_template(module, ports, params)
++
++    def decorate(fn):
++        fn.__allo_extern__ = ExternVerilog(fn, template, delay_ps, model)
++        return fn
++
++    return decorate
++
++
++def lookup(key):
++    """The declaration recorded under ``key`` (the ``extern_model`` attribute)."""
++    return _REGISTRY.get(key)
+diff --git a/allo/ir/builder.py b/allo/ir/builder.py
+index f92d0ba..18a1e5d 100644
+--- a/allo/ir/builder.py
++++ b/allo/ir/builder.py
+@@ -3232,6 +3232,11 @@ class ASTTransformer(ASTBuilder):
+             stmts = build_stmts(func_ctx, node.tree.body)
+             func_ctx.pop_ip()
+             func_ctx.call_args = []
++            # An external Verilog module (allo.extern_verilog): record it on
++            # the callee for the backends.
++            extern = getattr(func, "__allo_extern__", None)
++            if extern is not None:
++                extern.attach(stmts[-1])
+             for key, value in func_ctx.global_vars.items():
+                 if isinstance(value, func_d.FuncOp):
+                     ctx.global_vars[key] = value
+diff --git a/mlir/include/allo/Translation/EmitXlsHLS.h b/mlir/include/allo/Translation/EmitXlsHLS.h
+index d715d6d..4aa9df8 100644
+--- a/mlir/include/allo/Translation/EmitXlsHLS.h
++++ b/mlir/include/allo/Translation/EmitXlsHLS.h
+@@ -56,6 +56,11 @@ protected:
+   void emitFlattenedIndex(MemRefType memrefType,
+                           Operation::operand_range indices);
+ 
++  /// Emits the xlscc attribute that makes a function an external Verilog
++  /// module (func attribute "extern_verilog"); the arguments must already be
++  /// named.
++  void emitExternVerilogAttribute(func::FuncOp func);
++
+   /// Helper method to get XLS-specific type names.
+   SmallString<16> getTypeName(Type valType);
+   SmallString<16> getTypeName(Value val);
+diff --git a/mlir/lib/Translation/EmitXlsHLS.cpp b/mlir/lib/Translation/EmitXlsHLS.cpp
+index 3cbb275..5f34e7c 100644
+--- a/mlir/lib/Translation/EmitXlsHLS.cpp
++++ b/mlir/lib/Translation/EmitXlsHLS.cpp
+@@ -1271,6 +1271,18 @@ void allo::hls::XlsModuleEmitter::emitFunction(func::FuncOp func) {
+   }
+ 
+   // COMBINATIONAL MODE: Simple function without arrays
++  // An external Verilog module: its arguments are named first, so that the
++  // xlscc attribute in front of the signature can refer to them.
++  bool isExtern = func->hasAttr("extern_verilog");
++  if (isExtern) {
++    if (func->hasAttr("top") || hasArrayArgs || returnIsArray || !returnValue) {
++      emitError(func, "an external Verilog module must be a called function "
++                      "with scalar arguments and one scalar result");
++      return;
++    }
++    emitExternVerilogAttribute(func);
++  }
++
+   // Add #pragma hls_top for top-level combinational functions
+   if (func->hasAttr("top")) {
+     os << "#pragma hls_top\n";
+@@ -1339,6 +1351,9 @@ void allo::hls::XlsModuleEmitter::emitFunction(func::FuncOp func) {
+         // need to pass by reference - use XLS-specific stream type
+         os << getXLSTypeName(arg.getType()) << "& ";
+         os << addName(arg, false);
++      } else if (isExtern) {
++        // Named by emitExternVerilogAttribute.
++        os << getXLSTypeName(arg.getType()) << " " << getName(arg);
+       } else if (input_args.size() == 0) {
+         emitValue(arg);
+       } else {
+@@ -1468,6 +1483,75 @@ void allo::hls::XlsModuleEmitter::emitFunction(func::FuncOp func) {
+   os << "\n";
+ }
+ 
++void allo::hls::XlsModuleEmitter::emitExternVerilogAttribute(
++    func::FuncOp func) {
++  // Template placeholders follow XLS's foreign function interface: {fn} is
++  // the instance name, {return} the result, and {<name>} an argument, named
++  // as in the Allo source ("extern_arg_names"). The C++ argument names may
++  // differ (the emitter makes names unique), so placeholders are rewritten.
++  std::string tmpl =
++      llvm::cast<StringAttr>(func->getAttr("extern_verilog")).getValue().str();
++  std::string itypes;
++  if (auto attr = func->getAttrOfType<StringAttr>("itypes"))
++    itypes = attr.getValue().str();
++  SmallVector<std::string, 4> sourceNames;
++  if (auto names = func->getAttrOfType<ArrayAttr>("extern_arg_names"))
++    for (auto name : names)
++      sourceNames.push_back(llvm::cast<StringAttr>(name).getValue().str());
++  if (sourceNames.size() != func.getNumArguments()) {
++    emitError(func, "extern_arg_names must name every argument");
++    return;
++  }
++  DenseMap<StringRef, std::string> cxxNames;
++  for (auto [idx, arg] : llvm::enumerate(func.getArguments())) {
++    Value value = arg;
++    fixUnsignedType(value, idx < itypes.size() && itypes[idx] == 'u');
++    cxxNames[sourceNames[idx]] =
++        addName(value, /*isPtr=*/false, sourceNames[idx]).str().str();
++  }
++
++  std::string rewritten;
++  for (size_t pos = 0; pos < tmpl.size();) {
++    size_t open = tmpl.find('{', pos);
++    if (open == std::string::npos) {
++      rewritten += tmpl.substr(pos);
++      break;
++    }
++    size_t close = tmpl.find('}', open);
++    if (close == std::string::npos) {
++      emitError(func, "unterminated placeholder in the extern_verilog template");
++      return;
++    }
++    std::string key = tmpl.substr(open + 1, close - open - 1);
++    rewritten += tmpl.substr(pos, open - pos);
++    auto found = cxxNames.find(key);
++    if (found != cxxNames.end()) {
++      rewritten += "{" + found->second + "}";
++    } else if (key == "fn" || key == "return" || key.rfind("return.", 0) == 0) {
++      rewritten += "{" + key + "}";
++    } else {
++      emitError(func, "the extern_verilog template refers to {" + key +
++                          "}, which is not an argument");
++      return;
++    }
++    pos = close + 1;
++  }
++
++  os << "[[xlscc::hls_extern_verilog(\"";
++  for (char c : rewritten) {
++    if (c == '\\' || c == '"')
++      os << '\\' << c;
++    else if (c == '\n')
++      os << "\\n";
++    else
++      os << c;
++  }
++  os << "\"";
++  if (auto delay = func->getAttrOfType<IntegerAttr>("extern_delay_ps"))
++    os << ", " << delay.getValue().getSExtValue();
++  os << ")]]\n";
++}
++
+ void allo::hls::XlsModuleEmitter::emitCall(func::CallOp op) {
+   // The callee is emitted as a C++ function that returns its (single, scalar)
+   // result, so the call is an expression; the Vitis emitter's pointer outputs
+diff --git a/tests/test_xls_extensions.py b/tests/test_xls_extensions.py
+index 4c1b19b..ee17b7e 100644
+--- a/tests/test_xls_extensions.py
++++ b/tests/test_xls_extensions.py
+@@ -1,7 +1,7 @@
+ # Copyright Allo authors. All Rights Reserved.
+ # SPDX-License-Identifier: Apache-2.0
+ # pylint: disable=invalid-name,unsupported-assignment-operation
+-"""XLS backend: function calls. When xlscc, opt_main and codegen_main are on PATH, the
++"""XLS backend: function calls and external Verilog modules. When xlscc, opt_main and codegen_main are on PATH, the
+ emitted C++ is also translated to check that XLS accepts it."""
+ 
+ import os
+@@ -14,11 +14,24 @@ import numpy as np
+ import pytest
+ 
+ import allo
+-from allo.ir.types import int32
++from allo.extern import port_template
++from allo.ir.types import int32, uint8, uint32
+ 
+ HAS_XLS = all(shutil.which(t) for t in ("xlscc", "opt_main", "codegen_main"))
+ needs_xls = pytest.mark.skipif(not HAS_XLS, reason="XLS tools not on PATH")
+ 
++DW_MULT = (
++    "DW_fp_mult #(.sig_width(23), .exp_width(8), .ieee_compliance(0)) "
++    "{fn} (.a({a}), .b({b}), .rnd(3'b000), .z({return}), .status())"
++)
++
++
++def f32_mul(a, b):
++    """NumPy model of an f32 multiplier on bit patterns."""
++    x = np.array([a, b], dtype=np.uint32).view(np.float32)
++    return int(np.array([x[0] * x[1]], dtype=np.float32).view(np.uint32)[0])
++
++
+ def run(cmd, cwd):
+     proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=False)
+     assert proc.returncode == 0, f"{cmd[0]} failed:\n{proc.stdout}\n{proc.stderr}"
+@@ -69,3 +82,189 @@ def test_call_returns_value():
+             ir = xlscc(tmp, "--top=caller")
+             assert re.search(r"invoke\(.*to_apply=\w*scale", ir)
+     assert s.build()(4, 5) == 17
++
++
++# ---------------------------------------------------------------------------
++# External Verilog modules
++# ---------------------------------------------------------------------------
++@allo.extern_verilog(DW_MULT, delay_ps=800, model=f32_mul)
++def fmul(a: uint32, b: uint32) -> uint32:
++    r: uint32 = a ^ b  # body: the XLS-side behaviour, not the core's
++    return r
++
++
++def unit(a: uint32, b: uint32, c: uint32) -> uint32:
++    p: uint32 = fmul(a, b)
++    y: uint32 = p ^ c
++    return y
++
++
++def test_extern_attribute_emitted():
++    s = allo.customize(unit)
++    with tempfile.TemporaryDirectory() as tmp:
++        cpp = s.build(target="xls", project=tmp).final_cpp
++    m = re.search(r'\[\[xlscc::hls_extern_verilog\("(.*)", 800\)\]\]\s*\n\s*uint32_t fmul\(', cpp)
++    assert m, cpp
++    names = re.search(r"fmul\(\s*uint32_t (\w+),\s*uint32_t (\w+)\s*\)", cpp)
++    assert names, cpp
++    a, b = names.groups()
++    assert m.group(1) == DW_MULT.replace("{a}", "{%s}" % a).replace("{b}", "{%s}" % b)
++
++
++def test_extern_llvm_uses_model():
++    mod = allo.customize(unit).build()
++    a = int(np.float32(1.5).view(np.uint32))
++    b = int(np.float32(-2.25).view(np.uint32))
++    out = mod(a, b, 0x80000000)
++    assert np.uint32(out) == np.uint32(f32_mul(a, b) ^ 0x80000000)
++    assert np.uint32(out).view(np.float32) == np.float32(3.375)
++
++
++@allo.extern_verilog(DW_MULT)
++def xor_core(a: uint32, b: uint32) -> uint32:
++    r: uint32 = a ^ b
++    return r
++
++
++def unit_body(a: uint32, b: uint32) -> uint32:
++    y: uint32 = xor_core(a, b)
++    return y
++
++
++def test_extern_llvm_without_model_runs_body():
++    mod = allo.customize(unit_body).build()
++    assert np.uint32(mod(0xF0F0, 0x0FF0)) == 0xFF00
++    with tempfile.TemporaryDirectory() as tmp:
++        cpp = allo.customize(unit_body).build(target="xls", project=tmp).final_cpp
++    assert re.search(r'extern_verilog\("[^"]*"\)\]\]', cpp)  # no delay given
++
++
++def bad_model(a, b):
++    raise ValueError(f"no model for {a}, {b}")
++
++
++@allo.extern_verilog(DW_MULT, model=bad_model)
++def broken(a: uint32, b: uint32) -> uint32:
++    r: uint32 = a ^ b
++    return r
++
++
++def unit_broken(a: uint32, b: uint32) -> uint32:
++    y: uint32 = broken(a, b)
++    return y
++
++
++def test_extern_model_error_is_raised():
++    mod = allo.customize(unit_broken).build()
++    with pytest.raises(RuntimeError, match="simulation model"):
++        mod(1, 2)
++
++
++@allo.extern_verilog("sat8 {fn} (.a({a}), .z({return}))", model=lambda a: min(a, 15))
++def sat_a(a: uint8) -> uint8:
++    r: uint8 = a
++    return r
++
++
++@allo.extern_verilog("sat8 {fn} (.a({a}), .z({return}))", model=lambda a: min(a, 7))
++def sat_b(a: uint8) -> uint8:
++    r: uint8 = a
++    return r
++
++
++def two_externs(x: uint8, y: uint8) -> uint8:
++    z: uint8 = sat_a(x) + sat_b(y)
++    return z
++
++
++def test_extern_argument_names_are_rewritten():
++    with tempfile.TemporaryDirectory() as tmp:
++        cpp = allo.customize(two_externs).build(target="xls", project=tmp).final_cpp
++    templates = re.findall(r'extern_verilog\("sat8 \{fn\} \(\.a\(\{(\w+)\}\)', cpp)
++    params = re.findall(r"sat_[ab]\(\s*ac_int<8, false> (\w+)\s*\)", cpp)
++    assert len(templates) == 2 and templates == params, cpp
++    assert templates[0] != templates[1]
++    assert allo.customize(two_externs).build()(200, 3) == 18
++
++
++def test_port_map_template():
++    t = port_template(
++        "DW_fp_mult",
++        {"a": "a", "b": "b", "rnd": "3'b000", "z": "return", "status": None},
++        {"sig_width": 23, "exp_width": 8, "ieee_compliance": 0},
++    )
++    assert t == DW_MULT
++
++    @allo.extern_verilog(
++        module="DW_fp_add",
++        params={"sig_width": 23},
++        ports={"a": "x", "b": "y", "z": "return"},
++        delay_ps=500,
++    )
++    def fadd(x: uint32, y: uint32) -> uint32:
++        return x ^ y
++
++    assert fadd.__allo_extern__.template == (
++        "DW_fp_add #(.sig_width(23)) {fn} (.a({x}), .b({y}), .z({return}))"
++    )
++
++
++def test_extern_declaration_errors():
++    with pytest.raises(ValueError, match="unknown placeholder"):
++
++        @allo.extern_verilog("m {fn} (.a({q}), .z({return}))")
++        def f1(a: uint32) -> uint32:
++            return a
++
++    with pytest.raises(ValueError, match="{fn}"):
++
++        @allo.extern_verilog("m inst (.a({a}), .z({return}))")
++        def f2(a: uint32) -> uint32:
++            return a
++
++    with pytest.raises(ValueError, match="either a template or a module"):
++        allo.extern_verilog()
++
++    with pytest.raises(ValueError, match="delay_ps"):
++
++        @allo.extern_verilog("m {fn} (.a({a}), .z({return}))", delay_ps=-1)
++        def f3(a: uint32) -> uint32:
++            return a
++
++
++@needs_xls
++def test_extern_module_instantiated_by_codegen():
++    """An Allo kernel calling an external f32 multiplier: xlscc keeps the call,
++    opt_main keeps the invoke, codegen instantiates DW_fp_mult in a pipeline."""
++    s = allo.customize(unit)
++    with tempfile.TemporaryDirectory() as tmp:
++        s.build(target="xls", project=tmp)
++        ir = xlscc(tmp, "--top=unit")
++        assert "ffi_proto" in ir and "delay_ps: 800" in ir
++        top = top_name(ir)
++        opt = run(["opt_main", "unit.ir", f"--top={top}"], tmp)
++        assert "invoke(" in opt
++        with open(os.path.join(tmp, "unit.opt.ir"), "w", encoding="utf-8") as f:
++            f.write(opt)
++        run(
++            [
++                "codegen_main",
++                "unit.opt.ir",
++                "--generator=pipeline",
++                "--delay_model=asap7",
++                "--clock_period_ps=1000",
++                "--module_name=unit",
++                "--use_system_verilog=false",
++                "--output_verilog_path=unit.v",
++                "--output_signature_path=unit.sig.textproto",
++            ],
++            tmp,
++        )
++        with open(os.path.join(tmp, "unit.v"), encoding="utf-8") as f:
++            verilog = f.read()
++        with open(os.path.join(tmp, "unit.sig.textproto"), encoding="utf-8") as f:
++            sig = f.read()
++    assert re.search(r"^\s*DW_fp_mult #\(\.sig_width\(23\).*_inst \(", verilog, re.M)
++    assert "endmodule" in verilog
++    latency = int(re.search(r"latency: (\d+)", sig).group(1))
++    assert latency >= 2  # 800 ps of the 1000 ps clock: the xor goes in a later stage

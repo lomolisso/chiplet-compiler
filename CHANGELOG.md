@@ -25,6 +25,7 @@ All notable changes to this project are listed here. The format follows
 - PDK manifests (`pdks/<kit>.toml`): each kit's Liberty files, LEF, VT, corner, driving cell, default clock and XLS delay model, under `paths.pdk_root`.
 - `characterize` cheap checks on every netlist: every output driven, and an area below half of a narrower width's fails.
 - `[passes.mine] miner` selects the frequent subgraph miner (`grami`).
+- Toolchain image 0.5.0: external Verilog modules in Allo (`allo.extern_verilog`) and `xlscc` (`hls_extern_verilog` attribute), Allo's XLS emitter fixed for calls and following loop and partition schedules (pinned patches), FloPoCo, GHDL with its Yosys plugin, and XLS's DSLX sine/cosine and exponential libraries.
 
 ### Changed
 
@@ -38,6 +39,7 @@ All notable changes to this project are listed here. The format follows
 - A pass's containers share its declared memory and threads (each at most the `[tools.docker]` ceiling, now 16 GB and 8 CPUs) instead of one fixed 8 GB cap; run budget 128 GB and 32 threads, and pass resources raised to their measured needs (export, datapaths, mine, merge, solver passes).
 - `export` records each symbol's integer size at the exported config and a census of the phase lowered on concrete shapes (`census_concrete.json`, integer FLOPs).
 - `chipc doctor` also merges the ASAP7 group libraries into one Liberty file and `.db`.
+- `chipc doctor` checks every patch set under `third_party/patches/` as a series, and its image self-test covers external modules, the XLS float library and FloPoCo through GHDL.
 - Toolchain image 0.4.0: GraMi's directed build takes a `maxNodes` bound on the pattern size (`third_party/patches/grami/0002`).
 - `scripts/on-build-host --pick` chooses among iacoma227, iacoma231 and iacoma232 by their scarcest resource (idle cores, RAM, disk); both scripts run directly on the local host.
 

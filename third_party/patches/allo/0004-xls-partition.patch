@@ -1,0 +1,235 @@
+diff --git a/mlir/lib/Translation/EmitXlsHLS.cpp b/mlir/lib/Translation/EmitXlsHLS.cpp
+index 8c20b21..76c63d3 100644
+--- a/mlir/lib/Translation/EmitXlsHLS.cpp
++++ b/mlir/lib/Translation/EmitXlsHLS.cpp
+@@ -38,6 +38,45 @@ static bool BIT_FLAG = false;
+ // or as plain C arrays int arr[size] (false - default for registers)
+ static bool USE_MEMORY_FLAG = false;
+ 
++/// True if the memref is completely partitioned in every dimension
++/// (`partition` with the complete type, or a factor equal to each dimension).
++/// Such an array is a set of registers: xlscc keeps it as a tuple
++/// (`hls_array_as_tuple`), never as a memory.
++static bool isCompletelyPartitioned(Type type) {
++  auto memref = llvm::dyn_cast<MemRefType>(type);
++  return memref && memref.getRank() > 0 && getLayoutMap(memref) &&
++         isFullyPartitioned(memref);
++}
++
++/// True if multi-dimensional accesses to this memref use one flattened index
++/// (memory mode, where arrays become `__xls_memory`).
++static bool usesFlattenedIndex(MemRefType memrefType) {
++  return USE_MEMORY_FLAG && memrefType.getRank() > 1 &&
++         !isCompletelyPartitioned(memrefType);
++}
++
++/// True if the region loads from or stores to a completely partitioned array.
++static bool accessesPartitionedArray(Region &region) {
++  bool found = false;
++  region.walk([&](Operation *op) {
++    Value memref;
++    if (auto load = dyn_cast<AffineLoadOp>(op))
++      memref = load.getMemRef();
++    else if (auto store = dyn_cast<AffineStoreOp>(op))
++      memref = store.getMemRef();
++    else if (auto load = dyn_cast<memref::LoadOp>(op))
++      memref = load.getMemRef();
++    else if (auto store = dyn_cast<memref::StoreOp>(op))
++      memref = store.getMemRef();
++    if (memref && isCompletelyPartitioned(memref.getType())) {
++      found = true;
++      return WalkResult::interrupt();
++    }
++    return WalkResult::advance();
++  });
++  return found;
++}
++
+ /// The pipeline directive of a loop, if any: its initiation interval.
+ static std::optional<int64_t> getPipelineII(Operation *op) {
+   if (auto ii = getLoopDirective(op, "pipeline_ii"))
+@@ -349,7 +388,9 @@ void allo::hls::XlsModuleEmitter::emitArrayDecl(Value array, bool isFunc,
+ 
+     // DEFAULT MEMREF -> either skip (if USE_MEMORY_FLAG, wrapper handles it)
+     // or plain C array: T name[d0][d1]...
+-    if (USE_MEMORY_FLAG) {
++    // A completely partitioned array is a set of registers, never a memory.
++    bool partitioned = isCompletelyPartitioned(memref);
++    if (USE_MEMORY_FLAG && !partitioned) {
+       // Memory mode: Don't emit declaration here - wrapper will add
+       // __xls_memory at class level Just register the name so subsequent uses
+       // work
+@@ -384,6 +425,8 @@ void allo::hls::XlsModuleEmitter::emitArrayDecl(Value array, bool isFunc,
+ 
+     for (int64_t dim : shape)
+       os << "[" << dim << "]";
++    if (partitioned && !isFunc)
++      os << " [[clang::annotate_type(\"hls_array_as_tuple\")]]";
+ 
+     // Debug comment
+     os << " /* ";
+@@ -465,8 +508,9 @@ void allo::hls::XlsModuleEmitter::emitLoopDirectives(Operation *op) {
+   //    worst-case throughput), `unroll` passes its factor through (0: full);
+   // 2. loops that use channels are pipelined (unrolled iterations would all
+   //    access the same channel at once);
+-  // 3. loops inside a pipelined or fully unrolled loop are unrolled, as in
+-  //    Vitis HLS where pipelining a loop unrolls its body;
++  // 3. loops inside a pipelined or fully unrolled loop, and loops accessing a
++  //    completely partitioned array (a tuple needs constant indices), are
++  //    unrolled, as in Vitis HLS where pipelining a loop unrolls its body;
+   // 4. any other loop of a block (a function with array arguments) runs
+   //    sequentially, one iteration per cycle: a pipelined loop with interval
+   //    1. Loops are never unrolled unless the schedule says so;
+@@ -505,6 +549,8 @@ void allo::hls::XlsModuleEmitter::emitLoopDirectives(Operation *op) {
+     if (getPipelineII(parent) || (factor && *factor == 0))
+       return emitUnroll(0);
+   }
++  if (body && accessesPartitionedArray(*body))
++    return emitUnroll(0);
+ 
+   if (inArrayFunction)
+     return emitPipeline(1);
+@@ -670,26 +716,25 @@ void allo::hls::XlsModuleEmitter::emitStreamConstruct(
+ }
+ 
+ void allo::hls::XlsModuleEmitter::emitArrayDirectives(Value memref) {
+-  bool emitPragmaFlag = false;
++  // xlscc has no array pragmas: a completely partitioned array is declared as
++  // a tuple (emitArrayDecl), memories come from the memory mode. A partial
++  // (block or cyclic) partition has no xlscc equivalent and is recorded only.
+   auto type = llvm::cast<MemRefType>(memref.getType());
+-
+-  // streaming - check if memory space is a StringAttr with "stream" prefix
+-  auto attr = type.getMemorySpace();
+-  if (attr) {
+-    // Handle StringAttr (stream annotations)
+-    if (auto strAttr = llvm::dyn_cast<StringAttr>(attr)) {
+-      std::string attr_str = strAttr.getValue().str();
+-      if (attr_str.substr(0, 6) == "stream") {
+-        // Note: XLS HLS doesn't need explicit stream pragmas like Vivado HLS
+-        return;
+-      }
+-    }
+-    // IntegerAttr (Memory annotations) - no special handling needed for XLS
+-  }
+-
+-  // For other array directives, delegate to the parent implementation
+-  // but we need to call the parent method explicitly
+-  VhlsModuleEmitter::emitArrayDirectives(memref);
++  if (auto strAttr =
++          llvm::dyn_cast_or_null<StringAttr>(type.getMemorySpace()))
++    if (strAttr.getValue().starts_with("stream"))
++      return;
++  if (!getLayoutMap(type) || isCompletelyPartitioned(type))
++    return;
++  SmallVector<int64_t, 8> factors;
++  getPartitionFactors(type, &factors);
++  indent();
++  os << "// partition of ";
++  emitValue(memref);
++  os << " (factors";
++  for (int64_t factor : factors)
++    os << " " << factor;
++  os << "): no xlscc equivalent, kept as one array\n";
+ }
+ 
+ void allo::hls::XlsModuleEmitter::emitFlattenedIndex(
+@@ -745,7 +790,7 @@ void allo::hls::XlsModuleEmitter::emitLoad(memref::LoadOp op) {
+   }
+ 
+   // For regular memref, handle memory mode vs register mode
+-  if (USE_MEMORY_FLAG && memrefType.getRank() > 1) {
++  if (usesFlattenedIndex(memrefType)) {
+     // Memory mode with multi-dimensional array: use flattened index
+     os << "[";
+     emitFlattenedIndex(memrefType, op.getIndices());
+@@ -783,7 +828,7 @@ void allo::hls::XlsModuleEmitter::emitStore(memref::StoreOp op) {
+   }
+ 
+   // For regular memref, handle memory mode vs register mode
+-  if (USE_MEMORY_FLAG && memrefType.getRank() > 1) {
++  if (usesFlattenedIndex(memrefType)) {
+     // Memory mode with multi-dimensional array: use flattened index
+     os << "[";
+     emitFlattenedIndex(memrefType, op.getIndices());
+@@ -837,7 +882,7 @@ void allo::hls::XlsModuleEmitter::emitAffineLoad(AffineLoadOp op) {
+   }
+ 
+   // For regular memref, handle memory mode vs register mode
+-  if (USE_MEMORY_FLAG && memrefType.getRank() > 1) {
++  if (usesFlattenedIndex(memrefType)) {
+     // Memory mode with multi-dimensional array: use flattened index
+     os << "[";
+     emitFlattenedAffineIndexHelper(os, memrefType, affineMap, affineEmitter);
+@@ -884,7 +929,7 @@ void allo::hls::XlsModuleEmitter::emitAffineStore(AffineStoreOp op) {
+   }
+ 
+   // For regular memref, handle memory mode vs register mode
+-  if (USE_MEMORY_FLAG && memrefType.getRank() > 1) {
++  if (usesFlattenedIndex(memrefType)) {
+     // Memory mode with multi-dimensional array: use flattened index
+     os << "[";
+     emitFlattenedAffineIndexHelper(os, memrefType, affineMap, affineEmitter);
+diff --git a/tests/test_xls_extensions.py b/tests/test_xls_extensions.py
+index e8d4c9d..75f4834 100644
+--- a/tests/test_xls_extensions.py
++++ b/tests/test_xls_extensions.py
+@@ -1,8 +1,8 @@
+ # Copyright Allo authors. All Rights Reserved.
+ # SPDX-License-Identifier: Apache-2.0
+ # pylint: disable=invalid-name,unsupported-assignment-operation
+-"""XLS backend: function calls, external Verilog modules and schedule
+-directives. When xlscc, opt_main and codegen_main are on PATH, the
++"""XLS backend: function calls, external Verilog modules, schedule directives
++and partitioning. When xlscc, opt_main and codegen_main are on PATH, the
+ emitted C++ is also translated to check that XLS accepts it."""
+ 
+ import os
+@@ -358,3 +358,47 @@ def test_combinational_function_loops_unroll():
+         assert not directive_lines(cpp, "hls_pipeline_init_interval")
+         if HAS_XLS:
+             xlscc(tmp, "--top=bitcount")
++
++
++# ---------------------------------------------------------------------------
++# Partitioning
++# ---------------------------------------------------------------------------
++def acc(a: int32[4]) -> int32[4]:
++    r: int32[4] = 0
++    for i in allo.grid(4, name="acc"):
++        r[i] = a[i] + a[3 - i]
++    return r
++
++
++def test_complete_partition_is_a_tuple():
++    s = allo.customize(acc)
++    s.partition(s.r)
++    with tempfile.TemporaryDirectory() as tmp:
++        cpp = s.build(target="xls", project=tmp).final_cpp
++        decl = [l for l in cpp.splitlines() if re.search(r"\br\[4\]", l)]
++        assert decl and 'annotate_type("hls_array_as_tuple")' in decl[0], cpp
++        # Loops that index the tuple are unrolled (constant indices).
++        assert "#pragma hls_pipeline_init_interval 1\n" not in cpp.split("r[4]")[1].split(
++            "out.write"
++        )[0]
++        if HAS_XLS:
++            xlscc(tmp, "--block_from_class=TestBlock", "--block_pb=block.pb")
++
++
++def test_partial_partition_is_recorded():
++    s = allo.customize(acc)
++    s.partition(s.r, partition_type=allo.Partition.Cyclic, factor=2)
++    with tempfile.TemporaryDirectory() as tmp:
++        cpp = s.build(target="xls", project=tmp).final_cpp
++    assert "no xlscc equivalent" in cpp
++    assert "hls_array_as_tuple" not in cpp
++    assert "#pragma HLS" not in cpp
++
++
++def test_partitioned_array_is_not_a_memory():
++    s = allo.customize(gemm)
++    s.partition(s.C)
++    with tempfile.TemporaryDirectory() as tmp:
++        mod = s.build(target="xls", project=tmp, use_memory=True)
++    assert "hls_array_as_tuple" in mod.core_code
++    assert not re.search(r"__xls_memory_decl__: \w+, 16, C\b", mod.core_code)

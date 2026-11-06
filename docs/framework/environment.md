@@ -63,7 +63,9 @@ chipc doctor --build-args    # the docker/build.sh inputs, from config.toml
 2. **Submodules.**
    - Each HEAD (`git rev-parse`) must equal its `config.toml` pin, and its `.gitmodules` entry must say `shallow = true`.
    - Allo's LLVM gitlink must equal `tools.allo.llvm_commit`.
-   - Every patch in `third_party/patches/grami/` must apply (`git apply --check`).
+   - Every patch set `third_party/patches/<submodule>/` must apply to its submodule as the image build applies
+     it: in file-name order, each patch on top of the ones before. The series is applied with `git apply` to a
+     copy of the files it touches (`patches/<submodule>/` in doctor's directory); the submodule is never written.
 3. **Image.**
    - The daemon answers.
    - `<image>:<tag>` exists.
@@ -75,7 +77,12 @@ chipc doctor --build-args    # the docker/build.sh inputs, from config.toml
      - `rtl_tools`: Yosys `synth`, iverilog and Verilator lint of the generated Verilog;
      - `smt`: z3 and bitwuzla prove `x+x = x<<1` (QF_BV, `unsat`);
      - `grami`: directed GraMi on a 6-node toy graph, `freq 2`, `limitedtime=false`;
-     - `allo`: a 4-element Allo kernel through the `llvm` target, compared with numpy.
+     - `allo`: a 4-element Allo kernel through the `llvm` target, compared with numpy;
+     - `xls_extern`: an Allo kernel calling an external f32 multiplier (`allo.extern_verilog`, NumPy model) is
+       simulated through `llvm`, then goes through `xlscc`, `opt_main` and pipelined `codegen_main`, whose Verilog
+       must instantiate `DW_fp_mult` (the patched toolchain, `docs/third-party.md`);
+     - `xls_float_lib`: XLS's `fp_sincos_32` (DSLX) to combinational Verilog, read by Yosys (`hierarchy -check`);
+     - `flopoco_ghdl`: FloPoCo's `FPExp` (wE=5, wF=10) read by Yosys through the GHDL plugin.
 4. **EDA versions.**
    - `dc_shell`, `lc_shell`, `fm_shell` and `pt_shell` with `-version`, `vcs -full64 -ID`, and `xrun` with `-version`.
    - The version is the first line naming one: `… version …` or `Tool: <name> <ver>`. The exit code is ignored, because `dc_shell -version` exits 1.
@@ -96,7 +103,7 @@ Each step is a handful of process launches. The cost is the one-time LC compilat
 
 | Key | Default | Meaning |
 |---|---|---|
-| `tools.docker.{image,tag}` | `chiplet-compiler/toolchain`, `0.4.0` | the image doctor checks |
+| `tools.docker.{image,tag}` | `chiplet-compiler/toolchain`, `0.5.0` | the image doctor checks |
 | `tools.docker.build.*` | see `config.toml` | image-only pins and build caps (`docker/build.sh`) |
 | `tools.{xls,allo,grami}.*` | see `config.toml` | submodule and image pins |
 | `paths.pdk_manifests` | `pdks` | the PDK manifests; each selects its kit's Liberty set (ASAP7: `RVT`, `TT`, all five groups) |
@@ -113,7 +120,7 @@ Every check is computed independently of the code under test: it reads tool outp
 |---|---|---|
 | `host.memory`, `host.scratch_dir` | room to run; temp space off the 8 GB `/tmp` | counts `mem_available_gb`, `free_gb` |
 | `submodule.{xls,allo,grami}`, `submodule.allo.llvm` | source = pins | HEAD and pin in notes |
-| `submodule.grami.patches` | the image's GraMi patch still applies | note |
+| `submodule.<name>.patches` | each pinned patch still applies to its submodule, in series | note per patch |
 | `docker.daemon`, `docker.image` | image present | image ID |
 | `image.pins` | the image was built from these pins | mismatch count |
 | `image.tools` | every tool still starts, at its recorded version | tool and mismatch counts |

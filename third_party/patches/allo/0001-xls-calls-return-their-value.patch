@@ -1,0 +1,149 @@
+diff --git a/mlir/include/allo/Translation/EmitXlsHLS.h b/mlir/include/allo/Translation/EmitXlsHLS.h
+index 0746213..d715d6d 100644
+--- a/mlir/include/allo/Translation/EmitXlsHLS.h
++++ b/mlir/include/allo/Translation/EmitXlsHLS.h
+@@ -32,6 +32,9 @@ public:
+   void emitArrayDirectives(Value memref) override;
+   void emitFunction(func::FuncOp func) override;
+ 
++  /// Function calls: xlscc callees return their value (no pointer outputs).
++  void emitCall(func::CallOp op) override;
++
+   /// Affine statement emitters.
+   void emitAffineFor(affine::AffineForOp op) override;
+ 
+diff --git a/mlir/lib/Translation/EmitXlsHLS.cpp b/mlir/lib/Translation/EmitXlsHLS.cpp
+index a46c5b6..3cbb275 100644
+--- a/mlir/lib/Translation/EmitXlsHLS.cpp
++++ b/mlir/lib/Translation/EmitXlsHLS.cpp
+@@ -1468,6 +1468,45 @@ void allo::hls::XlsModuleEmitter::emitFunction(func::FuncOp func) {
+   os << "\n";
+ }
+ 
++void allo::hls::XlsModuleEmitter::emitCall(func::CallOp op) {
++  // The callee is emitted as a C++ function that returns its (single, scalar)
++  // result, so the call is an expression; the Vitis emitter's pointer outputs
++  // do not match that signature.
++  for (auto operand : op.getOperands())
++    if (llvm::isa<ShapedType>(operand.getType())) {
++      emitError(op, "XLS [CC] backend: calls with array arguments are not "
++                    "supported; inline the callee");
++      return;
++    }
++  if (op.getNumResults() > 1 ||
++      (op.getNumResults() == 1 &&
++       llvm::isa<ShapedType>(op.getResult(0).getType()))) {
++    emitError(op, "XLS [CC] backend: a called function must return at most "
++                  "one scalar");
++    return;
++  }
++
++  indent();
++  if (op.getNumResults() == 1) {
++    Value result = op.getResult(0);
++    auto callee =
++        SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(op, op.getCalleeAttr());
++    if (callee)
++      if (auto otypes = callee->getAttrOfType<StringAttr>("otypes"))
++        fixUnsignedType(result, otypes.getValue().starts_with("u"));
++    emitValue(result);
++    os << " = ";
++  }
++  os << op.getCallee() << "(";
++  for (auto [idx, arg] : llvm::enumerate(op.getOperands())) {
++    if (idx > 0)
++      os << ", ";
++    emitValue(arg);
++  }
++  os << ");";
++  emitInfoAndNewLine(op);
++}
++
+ void allo::hls::XlsModuleEmitter::emitModule(ModuleOp module) {
+   std::string header = R"XXX(
+ //===------------------------------------------------------------*- C++ -*-===//
+@@ -1476,7 +1515,6 @@ void allo::hls::XlsModuleEmitter::emitModule(ModuleOp module) {
+ //
+ //===----------------------------------------------------------------------===//
+ #include <cstdint>
+-#include "xls_builtin.h"
+ #include "xls_int.h"
+ 
+ template <int Width, bool Signed = true>
+diff --git a/tests/test_xls_extensions.py b/tests/test_xls_extensions.py
+new file mode 100644
+index 0000000..4c1b19b
+--- /dev/null
++++ b/tests/test_xls_extensions.py
+@@ -0,0 +1,71 @@
++# Copyright Allo authors. All Rights Reserved.
++# SPDX-License-Identifier: Apache-2.0
++# pylint: disable=invalid-name,unsupported-assignment-operation
++"""XLS backend: function calls. When xlscc, opt_main and codegen_main are on PATH, the
++emitted C++ is also translated to check that XLS accepts it."""
++
++import os
++import re
++import shutil
++import subprocess
++import tempfile
++
++import numpy as np
++import pytest
++
++import allo
++from allo.ir.types import int32
++
++HAS_XLS = all(shutil.which(t) for t in ("xlscc", "opt_main", "codegen_main"))
++needs_xls = pytest.mark.skipif(not HAS_XLS, reason="XLS tools not on PATH")
++
++def run(cmd, cwd):
++    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=False)
++    assert proc.returncode == 0, f"{cmd[0]} failed:\n{proc.stdout}\n{proc.stderr}"
++    return proc.stdout
++
++
++def xlscc(project, *extra):
++    """Translate project/test_block.cpp with xlscc; returns the IR text."""
++    cmd = [
++        "xlscc",
++        "test_block.cpp",
++        "--out=unit.ir",
++        f"--defines={os.environ.get('XLSCC_DEFINES', '__SYNTHESIS__,__xlscc__')}",
++        f"--include_dirs={os.environ.get('XLSCC_INCLUDE_DIRS', '')}",
++        *extra,
++    ]
++    run(cmd, project)
++    with open(os.path.join(project, "unit.ir"), encoding="utf-8") as f:
++        return f.read()
++
++
++def top_name(ir):
++    return re.search(r"^top fn (\w+)\(", ir, re.M).group(1)
++
++
++# ---------------------------------------------------------------------------
++# Calls: the callee returns its value
++# ---------------------------------------------------------------------------
++def scale(x: int32) -> int32:
++    y: int32 = x * 3
++    return y
++
++
++def caller(a: int32, b: int32) -> int32:
++    c: int32 = scale(a) + b
++    return c
++
++
++def test_call_returns_value():
++    s = allo.customize(caller)
++    with tempfile.TemporaryDirectory() as tmp:
++        mod = s.build(target="xls", project=tmp)
++        cpp = mod.final_cpp
++        assert re.search(r"\w+ = scale\(\w+\);", cpp)
++        assert "&" not in cpp.split("scale(", 2)[2].split(";")[0]
++        assert '#include "xls_builtin.h"' not in cpp
++        if HAS_XLS:
++            ir = xlscc(tmp, "--top=caller")
++            assert re.search(r"invoke\(.*to_apply=\w*scale", ir)
++    assert s.build()(4, 5) == 17

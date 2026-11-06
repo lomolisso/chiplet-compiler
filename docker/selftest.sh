@@ -79,4 +79,66 @@ EOF
 python3 allo_add.py
 pass allo
 
+step "Allo external module -> xlscc -> codegen instantiates it"
+cat > allo_extern.py <<'EOF2'
+import numpy as np
+import allo
+from allo.ir.types import uint32
+
+
+def f32_mul(a, b):
+    x = np.array([a, b], dtype=np.uint32).view(np.float32)
+    return int(np.array([x[0] * x[1]], dtype=np.float32).view(np.uint32)[0])
+
+
+@allo.extern_verilog(
+    "DW_fp_mult #(.sig_width(23), .exp_width(8), .ieee_compliance(0)) "
+    "{fn} (.a({a}), .b({b}), .rnd(3'b000), .z({return}), .status())",
+    delay_ps=800,
+    model=f32_mul,
+)
+def fmul(a: uint32, b: uint32) -> uint32:
+    r: uint32 = a ^ b
+    return r
+
+
+def unit(a: uint32, b: uint32, c: uint32) -> uint32:
+    p: uint32 = fmul(a, b)
+    y: uint32 = p ^ c
+    return y
+
+
+s = allo.customize(unit)
+a, b = int(np.float32(1.5).view(np.uint32)), int(np.float32(-2.25).view(np.uint32))
+assert np.uint32(s.build()(a, b, 0)).view(np.float32) == np.float32(-3.375)
+s.build(target="xls", project="allo_extern")
+EOF2
+python3 allo_extern.py
+xlscc allo_extern/test_block.cpp --top=unit --include_dirs="${XLSCC_INCLUDE_DIRS}" --defines="${XLSCC_DEFINES}" \
+  --out=allo_extern.ir
+grep -q 'ffi_proto' allo_extern.ir
+top="$(sed -n 's/^top fn \([^(]*\)(.*/\1/p' allo_extern.ir)"
+opt_main allo_extern.ir --top="${top}" > allo_extern.opt.ir
+codegen_main allo_extern.opt.ir --top="${top}" --generator=pipeline --delay_model=asap7 --clock_period_ps=1000 \
+  --use_system_verilog=false --module_name=unit --output_verilog_path=allo_extern.v \
+  --output_signature_path=allo_extern.sig.textproto
+grep -q '^ *DW_fp_mult #(' allo_extern.v
+pass xls_extern
+
+step "XLS float library (fp_sincos_32) -> Verilog -> yosys"
+ir_converter_main --dslx_stdlib_path="${XLS_STDLIB}" --dslx_path="${XLS_DSLX_PATH}" --top=fp_sincos_32 \
+  "${XLS_DSLX_PATH}/third_party/xls_go_math/fp_sincos_32.x" > sincos.ir
+opt_main sincos.ir > sincos.opt.ir
+codegen_main sincos.opt.ir --generator=combinational --use_system_verilog=false --module_name=fp_sincos_32 \
+  --output_verilog_path=sincos.v
+yosys -q -p 'read_verilog sincos.v; hierarchy -check -top fp_sincos_32; tee -q -o sincos.stat stat'
+grep -q 'cells' sincos.stat
+pass xls_float_lib
+
+step "FloPoCo -> GHDL -> yosys"
+flopoco FPExp wE=5 wF=10 frequency=0 outputFile=fpexp.vhdl > fpexp.log 2>&1
+yosys -q -m ghdl -p 'ghdl --std=08 -fsynopsys fpexp.vhdl -e; hierarchy -check; tee -q -o fpexp.stat stat'
+grep -q 'cells' fpexp.stat
+pass flopoco_ghdl
+
 step "ok"

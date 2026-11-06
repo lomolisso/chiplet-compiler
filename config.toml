@@ -41,7 +41,7 @@ watchdog_interval_s = 0.5        # RSS sampling period of the process-group watc
 
 [tools.docker]                   # DockerRunner
 image = "chiplet-compiler/toolchain"
-tag = "0.4.0"                    # the release in which the image inputs ([tools.docker.build], the pins below,
+tag = "0.5.0"                    # the release in which the image inputs ([tools.docker.build], the pins below,
                                  # docker/) last changed; bump it with them
 memory_gb = 16                   # ceiling of one container (--memory and --memory-swap); a pass's
 cpus = 8.0                       # containers share its declared memory_gb and threads, each at most this
@@ -60,6 +60,8 @@ z3_version = "5.3.3"             # release build for glibc 2.39 (Ubuntu 24.04)
 z3_sha256 = "d56f60b06f432f33de5810f7f1a384a339131f361e2d54d08ea83eea14326880"
 bitwuzla_version = "0.9.1"       # static Linux binary
 bitwuzla_sha256 = "057f1546ae2068df57beb178f3eeab1678f0e5f0c378787a05b7bb294617c9c6"
+flopoco_tag = "flopoco-5.1"      # FloPoCo release tag, fetched from gitlab.com/flopoco/flopoco
+flopoco_commit = "8aa634812d2c9959ed33718d16648d7afcf7fa23"  # the commit the tag must resolve to
 memory_gb = 64                   # docker build --memory = --memory-swap (hard cap of every RUN step)
 cpus = 16                        # docker build CPU quota; also ninja -j and Bazel --jobs
 link_jobs = 2                    # LLVM_PARALLEL_LINK_JOBS (links are the LLVM memory peak)
