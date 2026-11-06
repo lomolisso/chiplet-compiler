@@ -9,6 +9,7 @@ mod components;
 mod datapaths;
 mod env;
 mod export;
+mod float;
 mod import;
 mod iteration_space;
 mod kernel_classes;

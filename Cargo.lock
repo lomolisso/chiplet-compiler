@@ -220,6 +220,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cc-float"
+version = "0.3.0"
+dependencies = [
+ "cc-core",
+ "cc-smt",
+ "rayon",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "cc-ir"
 version = "0.3.0"
 dependencies = [
@@ -1271,6 +1283,7 @@ version = "0.3.0"
 dependencies = [
  "cc-cli",
  "cc-core",
+ "cc-float",
  "cc-ir",
  "cc-passes",
  "cc-pipeline",

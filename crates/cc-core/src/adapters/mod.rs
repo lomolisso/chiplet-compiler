@@ -3,6 +3,7 @@
 //! data they exchange live here; the implementations stay next to the code that uses them and are listed
 //! in one [`Registry`] per family (`cc_passes::adapters`, `cc_smt::SOLVERS`).
 
+pub mod contract;
 pub mod hls;
 pub mod mine;
 pub mod pnr;
@@ -10,6 +11,7 @@ pub mod select;
 pub mod smt;
 pub mod synth;
 
+pub use contract::{Accuracy, Contract, CoreInstance, Subnormals};
 pub use hls::{HlsCapabilities, HlsFrontend};
 pub use mine::{MineJob, MineRun, Miner, MinerCapabilities};
 pub use pnr::{PnrCapabilities, PnrFlow};

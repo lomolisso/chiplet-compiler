@@ -14,6 +14,7 @@ cc-core = { path = "crates/cc-core" }
 cc-pipeline = { path = "crates/cc-pipeline" }
 cc-ir = { path = "crates/cc-ir" }
 cc-smt = { path = "crates/cc-smt" }
+cc-float = { path = "crates/cc-float" }
 cc-passes = { path = "crates/cc-passes" }
 cc-cli = { path = "crates/cc-cli" }
 
