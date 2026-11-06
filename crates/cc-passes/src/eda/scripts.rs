@@ -77,7 +77,7 @@ pub fn dc(preamble: &str, kit: &Kit, designs: &[Design], period_ps: f64, alib: &
     let (dw_path, link) = if dw {
         (
             " [file join $synopsys_root libraries syn]",
-            "set synthetic_library [list dw_foundation.sldb]\nset link_library [concat * $target_library $synthetic_library]\nset dw_root_file [open dw_root.txt w]\nputs $dw_root_file $synopsys_root\nclose $dw_root_file",
+            "set synthetic_library [list dw_foundation.sldb]\nset link_library [concat * $target_library $synthetic_library]",
         )
     } else {
         ("", "set link_library [concat * $target_library]")
@@ -130,12 +130,12 @@ pub fn formality(
         kit.name
     );
     // Formality elaborates instantiated DesignWare components only with the Synopsys tree that holds
-    // them (`hdlin_dwroot`, else black boxes); Design Compiler wrote its own root for such a job.
+    // them (`hdlin_dwroot`, else black boxes): Design Compiler's, two levels above its `dc_shell`.
     if designs
         .iter()
         .any(|d| d.libraries.iter().any(|l| l == DESIGNWARE))
     {
-        s.push_str("set dw_root_file [open dw_root.txt r]\nset hdlin_dwroot [string trim [read $dw_root_file]]\nclose $dw_root_file\n");
+        s.push_str("set hdlin_dwroot [file dirname [file dirname [exec which dc_shell]]]\n");
     }
     let strat = strategies.iter().map(|x| tcl(x)).collect::<Vec<_>>().join(" ");
     for d in designs {
