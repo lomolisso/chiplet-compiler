@@ -193,7 +193,8 @@
       - Yosys: VHDL through the GHDL plugin (`yosys -m ghdl`, `ghdl --std=08 -fsynopsys rtl/<f>.vhdl -e
         <f>` per file, its entity named after the file), then `read_verilog` of the Verilog files; a design
         that instantiates a vendor library's cells reports an error instead (the fit checks keep it out);
-        `synth -flatten`, `dfflibmap`, ABC mapping at the period (`map -D`, then `stime -p`),
+        `synth -flatten -noshare` (Yosys' resource sharing, a SAT search over mutually exclusive operators, ran
+        out of 12 GB on XLS's f32 cosine core, which synthesizes in 43 s without it), `dfflibmap`, ABC mapping at the period (`map -D`, then `stime -p`),
         `stat -liberty`; with `lec`, Yosys' equivalence flow between the RTL and the netlist in the same
         script (`equiv_make` pairs
         signals by name, registers included; `equiv_simple -seq 2`, `equiv_induct -seq 2`,
@@ -234,7 +235,8 @@
    not serve its flow, or an unknown one, is a configuration error), `views = true`. The float wrappers also
    read `[numerics]` (design §6.4), whose hash is part of the pass's cache key. The corner
    is the manifest's: Nangate45's only corner (typical) and ASAP7's `vt`/`corner` (RVT, TT). Resources:
-   `threads = 2`, `memory_gb = 8`, `timeout_min = 600`.
+   `threads = 2`, `memory_gb = 32` (Yosys on XLS's f32 sine and cosine cores needs more than 4 GB per
+   session), `timeout_min = 600`.
 
 6. **Verification** (`verify.rs`; it reads the copies in `out/library/`, the Liberty files and the
    config, never the run's results):

@@ -362,7 +362,7 @@ providers = { dc = ["designware", "hardfloat", "flopoco"], yosys = ["hardfloat",
 views = true                     # write views/library.md
 [passes.characterize.resources]
 threads = 2                      # parallel tool sessions (each also holds one of tools.eda.max_licenses)
-memory_gb = 8
+memory_gb = 32                   # split over the sessions; Yosys on XLS's f32 cosine core needs more than 4 GB
 timeout_min = 600
 
 [passes.mine]                     # GraMi per family (map, reduce, contraction, template stages)

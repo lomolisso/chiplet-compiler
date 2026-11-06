@@ -182,7 +182,7 @@ pub fn yosys(lib: &str, designs: &[Design], period_ps: f64, lec_timeout_s: Optio
         let read = read.join("; ");
         let m = if d.vhdl().next().is_some() { " -m ghdl" } else { "" };
         s.push_str(&format!(
-            "echo \"@@begin {id}\"\nyosys{m} -q -l {id}.log -p \"{read}; hierarchy -check -top {id}; synth -top {id} -flatten; dfflibmap -liberty {lib}; abc -liberty {lib} -script +strash;map,-D,{d_ps};topo;stime,-p; opt_clean; stat -liberty {lib}; tee -o {id}.area.rpt stat -liberty {lib}; write_verilog -noattr {id}.net.v\" > /dev/null 2>&1 || echo \"Error: yosys failed on {id}\"\n",
+            "echo \"@@begin {id}\"\nyosys{m} -q -l {id}.log -p \"{read}; hierarchy -check -top {id}; synth -top {id} -flatten -noshare; dfflibmap -liberty {lib}; abc -liberty {lib} -script +strash;map,-D,{d_ps};topo;stime,-p; opt_clean; stat -liberty {lib}; tee -o {id}.area.rpt stat -liberty {lib}; write_verilog -noattr {id}.net.v\" > /dev/null 2>&1 || echo \"Error: yosys failed on {id}\"\n",
         ));
         if let Some(timeout_s) = lec_timeout_s {
             s.push_str(&format!(

@@ -28,7 +28,8 @@ fn merge_deep_models_at_full() {
         "tools.smt.runner=docker".to_string(),
         "passes.characterize.tool=yosys".to_string(),
         "passes.characterize.pdks=[\"nangate45\"]".to_string(),
-        "passes.characterize.resources.threads=16".to_string(),
+        "passes.characterize.resources.threads=8".to_string(),
+        "passes.characterize.resources.memory_gb=96".to_string(),
         "passes.merge.kit=nangate45".to_string(),
     ];
     let cfg = LoadedConfig::load(&repo_root().join("config.toml"), &sets).unwrap();
