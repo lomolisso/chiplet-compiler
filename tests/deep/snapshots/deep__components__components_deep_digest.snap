@@ -3,15 +3,15 @@ source: tests/deep/components.rs
 expression: digest
 ---
 {
-  "components": 203,
+  "components": 207,
   "most_shared": [
     {
-      "id": "cee261a61c9d4fdfb",
+      "id": "c86e95d992758a1c4",
       "models": {
         "llama": 96,
         "sdxl": 420
       },
-      "nodes": 22
+      "nodes": 18
     },
     {
       "id": "c30b83e64f12d8c10",
@@ -38,28 +38,20 @@ expression: digest
       "nodes": 4
     },
     {
-      "id": "c7a5e30d17d3a5317",
+      "id": "cc6e620ac8b424313",
       "models": {
         "bert": 24,
         "resnet50": 49
       },
-      "nodes": 15
+      "nodes": 11
     },
     {
-      "id": "c9ec237949cf1204f",
+      "id": "c7c1871e37107f5e5",
       "models": {
         "centerpoint": 24,
         "resnet50": 1
       },
-      "nodes": 15
-    },
-    {
-      "id": "c495d592f70f5efc4",
-      "models": {
-        "bert": 2,
-        "sdxl": 4
-      },
-      "nodes": 29
+      "nodes": 11
     },
     {
       "id": "c68783002c8b4fc2d",
@@ -76,6 +68,14 @@ expression: digest
         "qwen3vl": 2
       },
       "nodes": 4
+    },
+    {
+      "id": "c495d592f70f5efc4",
+      "models": {
+        "bert": 2,
+        "sdxl": 2
+      },
+      "nodes": 29
     },
     {
       "id": "c34b7361aade145f0",
@@ -103,14 +103,14 @@ expression: digest
       "instances": 454
     },
     "llama/prefill": {
-      "anon": 2,
+      "anon": 3,
       "components": 13,
-      "instances": 454
+      "instances": 455
     },
     "mobilenetv4_conv_m/forward": {
-      "anon": 21,
-      "components": 26,
-      "instances": 213
+      "anon": 5,
+      "components": 30,
+      "instances": 197
     },
     "qwen3vl/decode_step": {
       "anon": 3,
@@ -128,9 +128,9 @@ expression: digest
       "instances": 239
     },
     "resnet50/forward": {
-      "anon": 23,
+      "anon": 3,
       "components": 14,
-      "instances": 143
+      "instances": 123
     },
     "sdxl/text_encoder_g": {
       "anon": 1,

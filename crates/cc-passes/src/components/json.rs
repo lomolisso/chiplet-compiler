@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use super::algo::classes::Iface;
 use super::algo::graph::{ANode, NodeRef, Param};
 
-pub const INSTANCES_SCHEMA: &str = "cc.components.instances/1";
+pub const INSTANCES_SCHEMA: &str = "cc.components.instances/2";
 pub const COMPONENT_SCHEMA: &str = "cc.components.component/1";
 pub const SUMMARY_SCHEMA: &str = "cc.components.summary/1";
 pub const CERTIFICATES_SCHEMA: &str = "cc.components.certificates/1";
@@ -81,8 +81,11 @@ pub struct Position {
 pub struct Counts {
     /// Owned ops.
     pub ops: u64,
-    /// Owned ops left out of the graph (size computation, shape-only constants).
+    /// Owned ops left out of the graph as size computation or shape-only constants.
     pub size: u64,
+    /// Other owned ops left out of the graph: constant computation (design §4.2), and literals used
+    /// only by it.
+    pub constant: u64,
     /// Nodes of the graph.
     pub nodes: u64,
 }

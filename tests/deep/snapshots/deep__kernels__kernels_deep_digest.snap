@@ -5,17 +5,17 @@ expression: digest
 {
   "boundaries": {
     "call": 784,
-    "constant": 487,
-    "control": 184,
-    "data_movement": 438,
-    "interface": 17034,
+    "constant": 351,
+    "control": 185,
+    "data_movement": 324,
+    "interface": 17125,
     "irregular": 28,
-    "layout": 1281
+    "layout": 802
   },
   "call_fed_maps": 135,
-  "checks": 1625,
-  "components": 203,
-  "core_kernels": 412,
+  "checks": 1657,
+  "components": 207,
+  "core_kernels": 411,
   "cores": {
     "convolution/float": [
       6,
@@ -38,8 +38,8 @@ expression: digest
       188
     ],
     "reduce/bool": [
-      116,
-      1043
+      115,
+      1040
     ],
     "reduce/float": [
       56,
@@ -59,37 +59,36 @@ expression: digest
     ]
   },
   "evictions": 0,
-  "kernels": 1629,
+  "kernels": 939,
   "kernels_per_component": {
-    "0": 39,
-    "1": 39,
-    "110": 1,
+    "0": 41,
+    "1": 50,
+    "10": 1,
+    "12": 1,
     "14": 1,
-    "17": 2,
-    "183": 1,
-    "184": 2,
-    "190": 1,
-    "2": 30,
-    "22": 2,
-    "3": 22,
-    "31": 2,
-    "4": 25,
-    "45": 1,
-    "48": 2,
+    "15": 1,
+    "2": 47,
+    "29": 2,
+    "3": 17,
+    "4": 13,
     "5": 11,
-    "6": 10,
-    "7": 1,
-    "8": 3,
-    "9": 8
+    "6": 7,
+    "7": 3,
+    "79": 1,
+    "8": 2,
+    "80": 2,
+    "82": 1,
+    "83": 1,
+    "9": 5
   },
-  "low_rank_maps": 910,
-  "map_kernels": 1217,
+  "low_rank_maps": 230,
+  "map_kernels": 528,
   "roles": {
-    "body": 852,
-    "broadcast": 1132,
-    "core": 412,
+    "body": 848,
+    "broadcast": 600,
+    "core": 411,
     "epilogue": 326,
-    "map": 3329,
-    "prologue": 611
+    "map": 1526,
+    "prologue": 608
   }
 }

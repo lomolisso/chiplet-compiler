@@ -3,53 +3,53 @@ source: tests/deep/kernel_classes.rs
 expression: digest
 ---
 {
-  "checks": 472,
+  "checks": 424,
   "sharing": {
     "activation": {
       "components": {
-        "coverage_mean": 0.114759,
+        "coverage_mean": 0.114761,
         "coverage_total": 0.071886,
-        "items": 154,
-        "mean_jaccard": 0.010857,
+        "items": 156,
+        "mean_jaccard": 0.011121,
         "per_model": {
           "bert": 12,
           "centerpoint": 17,
-          "llama": 20,
-          "mobilenetv4_conv_m": 21,
-          "qwen3vl": 30,
+          "llama": 19,
+          "mobilenetv4_conv_m": 25,
+          "qwen3vl": 29,
           "resnet50": 14,
           "sdxl": 50
         },
         "shared": 10
       },
       "kernels": {
-        "coverage_mean": 0.146154,
+        "coverage_mean": 0.146153,
         "coverage_total": 0.084161,
-        "items": 186,
-        "mean_jaccard": 0.036357,
+        "items": 182,
+        "mean_jaccard": 0.032566,
         "per_model": {
-          "bert": 25,
+          "bert": 24,
           "centerpoint": 22,
-          "llama": 29,
+          "llama": 27,
           "mobilenetv4_conv_m": 15,
-          "qwen3vl": 77,
+          "qwen3vl": 73,
           "resnet50": 9,
-          "sdxl": 58
+          "sdxl": 56
         },
-        "shared": 40
+        "shared": 38
       }
     },
     "all": {
       "components": {
-        "coverage_mean": 0.114747,
+        "coverage_mean": 0.114748,
         "coverage_total": 0.071867,
-        "items": 164,
-        "mean_jaccard": 0.011288,
+        "items": 166,
+        "mean_jaccard": 0.011577,
         "per_model": {
           "bert": 12,
           "centerpoint": 24,
-          "llama": 22,
-          "mobilenetv4_conv_m": 21,
+          "llama": 20,
+          "mobilenetv4_conv_m": 25,
           "qwen3vl": 31,
           "resnet50": 14,
           "sdxl": 51
@@ -58,19 +58,19 @@ expression: digest
       },
       "kernels": {
         "coverage_mean": 0.146141,
-        "coverage_total": 0.084139,
-        "items": 228,
-        "mean_jaccard": 0.053902,
+        "coverage_total": 0.084138,
+        "items": 204,
+        "mean_jaccard": 0.03842,
         "per_model": {
-          "bert": 29,
-          "centerpoint": 31,
-          "llama": 39,
-          "mobilenetv4_conv_m": 27,
-          "qwen3vl": 91,
-          "resnet50": 14,
-          "sdxl": 69
+          "bert": 27,
+          "centerpoint": 27,
+          "llama": 33,
+          "mobilenetv4_conv_m": 22,
+          "qwen3vl": 76,
+          "resnet50": 11,
+          "sdxl": 59
         },
-        "shared": 54
+        "shared": 42
       }
     },
     "kernel_sharing_exceeds_component_sharing": true,
@@ -86,40 +86,39 @@ expression: digest
   },
   "summary": {
     "call_fed": 34,
-    "classes": 228,
+    "classes": 204,
     "cores": {
       "convolution/float": 4,
       "convolution/sint": 8,
       "dot_general/float": 24,
       "dot_general/sint": 11,
       "dynamic_reduce_window/sint": 1,
-      "map": 149,
+      "map": 125,
       "reduce/bool": 4,
       "reduce/float": 20,
       "reduce/sint": 4,
       "reduce_window/sint": 1,
       "scatter/sint": 2
     },
-    "kernels": 1629,
+    "kernels": 939,
     "kinds": {
       "contraction": 47,
-      "map": 149,
+      "map": 125,
       "reduction": 30,
       "scatter_reduce": 2
     },
-    "low_rank": 41,
-    "members": 1629,
+    "low_rank": 20,
+    "members": 939,
     "models_per_class": {
-      "1": 174,
-      "2": 41,
-      "3": 9,
-      "4": 3,
-      "5": 1
+      "1": 162,
+      "2": 35,
+      "3": 5,
+      "4": 2
     },
-    "positional": 2,
-    "rows": 46729,
+    "positional": 1,
+    "rows": 31770,
     "schema": "cc.kernel_classes.summary/1",
-    "size_independent": 42,
+    "size_independent": 22,
     "split_buckets": 0,
     "split_by_group": 0
   }

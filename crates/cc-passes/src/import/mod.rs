@@ -1,6 +1,6 @@
 //! `import` (design §4.2): each exported phase (`graph.json`) → a `cc_ir::Module` with inlined calls,
-//! symbolic dimensions on every value, size computation tagged and every op classified by the op table
-//! (docs/passes/import.md).
+//! symbolic dimensions on every value, size and constant computation tagged and every op classified by
+//! the op table (docs/passes/import.md).
 
 pub mod algo;
 mod config;
@@ -35,7 +35,7 @@ impl Pass for Import {
     }
 
     fn version(&self) -> u32 {
-        2
+        3
     }
 
     fn requires(&self) -> &[ArtifactKind] {
@@ -150,6 +150,7 @@ fn import_phase(ctx: &PassContext, cfg: &ImportConfig, model: &str, phase: &str)
     drop(g);
     let mut module = built.module;
     algo::size_tag::tag(&mut module);
+    algo::const_tag::tag(&mut module);
     let summary = summarize(&module, built.ledger);
     let out = ctx.output(IMPORT)?;
     out.write_postcard(&format!("{model}/{phase}/{IR_FILE}"), &module, &summary)?;
@@ -170,13 +171,18 @@ pub(crate) fn summarize(m: &Module, ledger: Ledger) -> Summary {
     let mut by_class = BTreeMap::new();
     let mut by_op = BTreeMap::new();
     let mut dim_as_data = BTreeMap::new();
+    let mut const_in = BTreeMap::new();
+    let mut constant_by_op = BTreeMap::new();
     let mut composites = BTreeMap::new();
-    let (mut size_ops, mut compute) = (0u64, 0u64);
-    for op in &m.ops {
+    let (mut size_ops, mut constant_ops, mut compute) = (0u64, 0u64, 0u64);
+    for (i, op) in m.ops.iter().enumerate() {
         let key = match &op.target {
             Some(t) => format!("{}@{t}", op.name),
             None => op.name.clone(),
         };
+        if op.constant && !op.size {
+            *constant_by_op.entry(key.clone()).or_insert(0u64) += 1;
+        }
         *by_op.entry(key).or_insert(0u64) += 1;
         let class = cc_ir::lookup(&op.name, op.target.as_deref())
             .map(|s| format!("{:?}", s.class).to_lowercase())
@@ -184,6 +190,10 @@ pub(crate) fn summarize(m: &Module, ledger: Ledger) -> Summary {
         *by_class.entry(class).or_insert(0u64) += 1;
         if !op.dim_as_data.is_empty() {
             *dim_as_data.entry(op.name.clone()).or_insert(0u64) += op.dim_as_data.len() as u64;
+        }
+        let ports = algo::const_tag::const_in_ports(m, cc_ir::OpId(i as u32));
+        if !ports.is_empty() {
+            *const_in.entry(op.name.clone()).or_insert(0u64) += ports.len() as u64;
         }
         if op.name == "stablehlo.composite"
             && let Some(cc_ir::Attr::Str(n)) = op.attrs.get("name")
@@ -193,6 +203,7 @@ pub(crate) fn summarize(m: &Module, ledger: Ledger) -> Summary {
         if !STRUCTURAL.contains(&op.name.as_str()) {
             compute += 1;
             size_ops += u64::from(op.size);
+            constant_ops += u64::from(op.constant);
         }
     }
     let symbolic_values = m
@@ -219,7 +230,15 @@ pub(crate) fn summarize(m: &Module, ledger: Ledger) -> Summary {
         } else {
             (size_ops as f64 / compute as f64 * 1e4).round() / 1e4
         },
+        constant_ops,
+        constant_by_op,
+        constant_share: if compute == 0 {
+            0.0
+        } else {
+            (constant_ops as f64 / compute as f64 * 1e4).round() / 1e4
+        },
         dim_as_data,
+        const_in,
         composites,
         symbolic_values,
         ledger,

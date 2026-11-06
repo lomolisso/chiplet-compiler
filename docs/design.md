@@ -39,7 +39,7 @@ Facts about the lowered graphs that the design must handle. All were measured on
 | Float carve-outs everywhere (softmax, norms, fp16/bf16 attention, fp32 SSM scans) | Float kernels are first-class, not an afterthought. |
 | `func.call` to private functions in every model; `fft`, `real`, `imag`, `complex` (evo2, rnnt); `reduce_precision` (gemma4); CHLO ops in non-exported lowering | The op table is built from measurement (`import` pass) and must cover every op present. |
 | Symbolic export adds `get_dimension_size`, `dynamic_broadcast_in_dim` / `dynamic_iota` / `dynamic_reshape`, `custom_call @shape_assertion` | These are **size computation**: tagged, not rejected. |
-| Position and rotary tables computed only from `iota` and static sizes (e.g. SAM2's axial table, the only float `remainder` in the model set) | These are **constant computation** *(planned)*: tagged, folded or precomputed, never hardware. |
+| Position and rotary tables computed only from `iota` and static sizes (e.g. SAM2's axial table, the only float `remainder` in the model set) | These are **constant computation**: tagged, folded or precomputed, never hardware. |
 | Gather/scatter with arithmetic update (segment sums, embedding bags, MoE combine, sparse conv) | Scatter-reduce is a kernel class, not a data-movement boundary. |
 
 ## 3. Architecture
@@ -215,7 +215,7 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
   - Inline `func.call` and JAX's own composites (`chlo.*`), keeping provenance; `cc.*` composites stay component boundaries.
   - Symbolic shape inference: the size computation is interpreted over symbolic expressions (case splits on undecided signs and comparisons, the floor-division identities, run-time integers opaque), and every `?` takes the dim the table's shape rule derives.
   - Tag size computation: ops that compute small integer values from a dimension and feed only shape operands or other size ops (`get_dimension_size` and shape assertions by definition). A dimension value that enters compute is allowed and recorded (`dim_as_data`): size independence constrains the graph's structure, not the use of a size as a run-time scalar.
-  - Tag constant computation *(planned)*: an op that no entry argument reaches (its transitive operands are only constants, `iota` and size values) computes a constant. It is folded or precomputed, and `kernels` treats it as a boundary like size computation; a constant result used by compute is a kernel input.
+  - Tag constant computation: an op that no data argument reaches (its transitive operands are only constants, `iota` and size values; data arguments are the entry arguments other than the dimension variables, weights included) computes a constant. Literals (`constant`, `iota`, layout ops of literals) and structure stay as they are; size computation is a part of constant computation. A constant is folded or precomputed, never hardware: later passes leave it out of their graphs like size computation, and a constant result used by compute is an input (`const_in`).
   - Classify every op with the **op-semantics table** (`crates/cc-ir/src/ops/`), built from the measured inventory. It is data, not code paths.
 - **Verification.**
   - SSA and type invariants; declared types agree.
@@ -230,11 +230,13 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
 - **Method.**
   - Each executed composite call is an instance (a call path: one decomposition may serve several calls).
   - The entry's other ops form maximal weakly connected regions (`anon:<hash>`), with composite calls as
-    cut points and size computation joined to its first consumer; they are not split further.
+    cut points and size and constant computation joined to their first consumer; they are not split
+    further.
   - Abstract component = instance without sizes or widths: every dim except the literal 1 is a class
     variable (classes are the axes the op table's StableHLO rules force equal), element types are
     (family, class), size-attribute entries other than 0 and 1 and constant values are parameters. Size
-    computation and shape operands are left out; a dimension value entering compute is a `size_in` input.
+    computation, constant computation and shape operands are left out; a dimension value entering
+    compute is a `size_in` input, a constant-computation value a `const_in` input.
   - Deduplicate by canonical form (WL bucket + VF2 isomorphism confirmation), by nesting height; a
     nested call is labelled by its child component.
 - **Verification.**
@@ -679,7 +681,7 @@ build/         (ignored) build/.<pass>/ artifacts
 | Third-party resources (IP cores, EDA tools, PDKs) trusted; equivalence of netlist and RTL optional, off by default *(planned)* | LEC of every primitive and unit | The check verifies the vendor's tool, not our work; it cost hours on dividers and left rows inconclusive; cheap structural checks catch our own script errors |
 | Two flows: Design Compiler (Innovus later) and Yosys (OpenROAD later) *(planned)* | Every Synopsys and Cadence tool as alternatives | One standard industry RTL-to-GDS flow and one open flow; fewer paths to maintain |
 | One adapter trait per external resource family, PDKs as data *(planned)* | Match arms per tool inside passes; library names in code | Adding a flow, an IP library, a solver or a PDK is one implementation, tested by a shared suite |
-| Constant computation (no path from an entry argument) tagged and never hardware *(planned)* | Kernels for every op | Position and rotary tables depend only on sizes; float `remainder` occurs only there |
+| Constant computation (no path from a data argument) tagged and never hardware | Kernels for every op | Position and rotary tables depend only on sizes; float `remainder` occurs only there |
 | f32 and bf16 flush to zero; f16 and FP8 keep subnormals | IEEE gradual underflow in every format | Most accelerators flush bf16 and many f32 (our JAX reference on XLA:CPU runs f32 flush-to-zero); FP8's subnormals are a real part of its range |
 | Conversions into FP8 saturate to ±max, NaN kept | Non-saturating conversion (overflow to NaN or infinity, ml_dtypes' default) | OCP OFP8's saturating mode; the ports clip to ±448 before converting, so the clip and the convert agree on model data |
 | Open-flow f32 sine and cosine: XLS `fp_sincos_32` under \|error\| ≤ 2^-22 *(planned)* | A ulp-bounded open soft macro; reporting a gap | No open core with a ulp guarantee exists; narrower formats computed through it stay within 0.51 ulp on every input (exhaustive emulation) |

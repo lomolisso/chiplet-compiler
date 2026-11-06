@@ -263,16 +263,16 @@ fn a_swapped_port_fails_the_proof() {
     s.expect(&format!("{id}:proof"));
 }
 
-/// A wrong rounding: a convert retargeted to another width variable changes the semantics.
+/// A wrong operation: a divide relabelled as a multiply changes the semantics.
 #[test]
-fn a_wrong_convert_fails_structure_and_proof() {
+fn a_wrong_operation_fails_structure_and_proof() {
     let s = fresh();
-    let id = s.find(|d| d.vertices.iter().any(|v| v.op == "convert"));
+    let id = s.find(|d| d.vertices.iter().any(|v| v.op == "divide"));
     s.edit(s.out(&format!("datapaths/{id}.json")), |v| {
         let vs = v["vertices"].as_array_mut().unwrap();
-        let x = vs.iter_mut().find(|x| x["op"] == "convert").unwrap();
-        x["op"] = "round_nearest_even".into();
-        x["label"] = "round_nearest_even@float".into();
+        let x = vs.iter_mut().find(|x| x["op"] == "divide").unwrap();
+        x["op"] = "multiply".into();
+        x["label"] = "multiply@float".into();
     });
     let f = s.failing();
     assert!(
@@ -284,7 +284,7 @@ fn a_wrong_convert_fails_structure_and_proof() {
 #[test]
 fn an_edited_label_or_stage_fails_structure() {
     let s = fresh();
-    let id = s.ids()[0].clone();
+    let id = s.find(|d| !d.vertices.is_empty());
     s.edit(s.out(&format!("datapaths/{id}.json")), |v| {
         v["vertices"][0]["label"] = "nothing@float".into();
     });
