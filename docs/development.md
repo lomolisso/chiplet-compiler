@@ -7,7 +7,7 @@ contribution workflow (branches, commits, pull requests, changelog) is in [CONTR
 ## Code
 
 - **Separate responsibilities.**
-  - One crate per layer: `cc-ir` (IR types, op-semantics table), `cc-core` (config, artifacts, tool runners, errors), `cc-pipeline` (registry, DAG, scheduler, cache), `cc-smt` (SMT-LIB generation and solver runner), `cc-passes` (one module per pass), `cc-cli` (the `chipc` binary).
+  - One crate per layer: `cc-ir` (IR types, op-semantics table), `cc-core` (config, artifacts, tool runners, errors), `cc-pipeline` (registry, DAG, scheduler, cache), `cc-smt` (SMT-LIB generation and solver runner), `cc-float` (float glue around IP cores, its proofs, compositions), `cc-passes` (one module per pass), `cc-cli` (the `chipc` binary).
   - A pass module never reaches into another pass's internals. It reads artifacts.
 - **Patterns.**
   - `Pass` trait + registry.

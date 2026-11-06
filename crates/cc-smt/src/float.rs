@@ -450,6 +450,47 @@ pub fn arith(c: &mut Ctx, f: Format, op: Arith, args: &[T]) -> R {
     from_f32(c, f, r)
 }
 
+/// [`arith`] with the theory's operation replaced by its definition: the rounding of `v`, a Float64 term
+/// standing for the exact result of `op` on the DAZ operands (the caller constrains it). Proofs that
+/// leave multipliers, dividers and square roots out use it (the f32 lemmas, the glue proofs of
+/// `cc-float`): a solver relating two multipliers of different sorts does not finish, while the rounding
+/// of one value is cheap. Every decision of the encoding is a function of `v` alone, constant between
+/// dyadic breakpoints of at most 26 significant bits, so a statement for every Float64 `v` in a range holds
+/// for every real there.
+pub fn arith_exact(c: &mut Ctx, f: Format, op: Arith, args: &[T], v: T) -> R {
+    if c.sort(v) != F64 {
+        return Err(SortError("the exact value must be a Float64".into()));
+    }
+    let mut xs = Vec::with_capacity(args.len());
+    for &a in args {
+        xs.push(daz(c, f, a)?);
+    }
+    let round = |c: &mut Ctx, s: Sort, v: T| -> R {
+        let Sort::Fp { e, s } = s else {
+            return Err(SortError("rounding into a non-FP sort".into()));
+        };
+        c.app(Op::FpToFp { e, s, rm: Rm::Rne }, &[v])
+    };
+    if f.native() {
+        let r = round(c, f.fp_sort(), v)?;
+        if !f.flushes() || op == Arith::Sqrt {
+            return Ok(r);
+        }
+        return match op {
+            Arith::Add | Arith::Sub => flush_exact(c, f, r),
+            _ => {
+                let (tp, _) = scaled_pre(c, f, op, xs[0], xs[1])?;
+                let vs = shift_exp(c, v, SCALE)?;
+                let va = c.ite(tp, vs, v)?;
+                let r = round(c, F32, va)?;
+                scaled_post(c, tp, r, 0)
+            }
+        };
+    }
+    let r = round(c, F32, v)?;
+    from_f32(c, f, r)
+}
+
 /// Whether a bit pattern of `f` is a NaN.
 pub fn is_nan_bits(c: &mut Ctx, f: Format, b: T) -> R {
     let exp = c.extract(b, f.e + f.m - 1, f.m)?;

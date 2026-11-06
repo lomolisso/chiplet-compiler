@@ -422,13 +422,19 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
 - **Glue.** Small bit-level logic around cores is ours and proven bit-exact by SMT: sign, absolute value
   and negation, NaN and signed-zero handling, flushing for the formats that flush (section 6.4), and the
   E4M3FN wrapper (exact decode to f16, encode with round to nearest even), since no core implements
-  E4M3FN's encoding without infinities. Glue does no other significand arithmetic.
+  E4M3FN's encoding without infinities. Glue does no other significand arithmetic. The proof is on the
+  wrapper's Verilog: Yosys writes it as SMT-LIB with each core instance cut to free values, bound by the
+  core's contract, and the solver shows that the output equals the specification of section 6.4 for
+  every input (`cc-float`, docs/framework/float.md).
 - **Compositions.** An operator without a core is composed from cores, sized to the error budget of
   section 6.4: power as `exp2(y · log2 x)` with a wider inner logarithm, tanh from the exponential with a
-  separate small-argument branch, log1p by Goldberg's formula. FP8 operators run on f16 or f32 cores
-  through the wrapper.
-- **Status.** Providers, contracts, sources and routes are in place; the primitives built from them,
-  the glue proofs and the compositions are *(planned)*. Until then, `characterize` prices floats with XLS
+  separate small-argument branch, log1p by Goldberg's formula, rsqrt as `sqrt(RN(1/x))`. The extra bits
+  follow from the cores' accuracy class and the budget; the special values (C11 Annex F) are glue and
+  proven like it; the accuracy is measured by a sampler, exhaustively for the 16-bit and 8-bit formats.
+  FP8 operators run on f16 or f32 cores through the wrapper.
+- **Status.** Providers, contracts, sources and routes (`cc_core::adapters`), the glue, its proofs and the
+  compositions (`cc-float`) are implemented; `characterize`'s float rows on them are *(planned)*: until then
+  `characterize` prices floats with XLS
   `apfloat` (provisional, section 4.9).
 
 ### 4.13 `allo_emit`
@@ -532,7 +538,7 @@ Float operators are third-party IP cores (section 4.12) in FP8 E4M3FN, bf16, fp1
 | Exact operators | Arithmetic, divide, square root, compare, min/max, conversions, rounding to integral: the IEEE operation under the subnormal rule, as the core computes it (correctly rounded). |
 | Accumulation | Products and sums by f32 IP cores (multiply-add or dot-product cores) in a fixed order, recorded in the unit's certificate; an FP8 × FP8 product is exact in f32 *(planned: cores)*. |
 | Reductions | The order the hardware uses (ω: `seq` or a tree), recorded in the datapath certificate when it binds, plus an error bound against any other order in `datapaths`' `verify.json` (docs/framework/smt.md). |
-| Approximate operators | exponentials, logarithms, tanh, reciprocal square root, sine, cosine, power: an error budget per operator and format in ulps (`[numerics]`), by default the accelerator reference, NVIDIA's CUDA math library table, for f32 (exponential 2, log 1, log1p 1, sine and cosine 2, tanh 2, rsqrt 2, power 4, ...) and 1 ulp for f16, bf16 and FP8 (CUDA computes them through f32 and rounds once). A single core is accepted at its documented guarantee; a composition (section 4.12) is sized to the budget, which also decides when a narrow format runs through a wider core. Full input range by default. In the open flow, f32 sine and cosine come from XLS's `fp_sincos_32` under an absolute-error contract, \|error\| ≤ 2^-22; bf16, f16 and FP8 sine and cosine computed through it (widened exactly, one rounding back) are within 0.51 ulp, measured over every input of those formats by a bit-level emulation of the core (the absolute bound alone would not give it near zero). |
+| Approximate operators | exponentials, logarithms, tanh, reciprocal square root, sine, cosine, power: an error budget per operator and format in ulps (`[numerics]`), by default the accelerator reference, NVIDIA's CUDA math library table, for f32 (exponential 2, log 1, log1p 1, sine and cosine 2, tanh 2, rsqrt 2, power 4, ...) and 1 ulp for f16, bf16 and FP8 (CUDA computes them through f32 and rounds once). A single core is accepted at its documented guarantee; a composition (section 4.12) is sized to the budget, which also decides when a narrow format runs through a wider core. Full input range by default. In the open flow, f32 sine and cosine come from XLS's `fp_sincos_32` under an absolute-error contract, \|error\| ≤ 2^-22; bf16, f16 and FP8 sine and cosine computed through it (widened exactly, one rounding back) are within 0.51 ulp, measured over every input of those formats on the core's XLS IR (`eval_ir_main`): at most 0.500 ulp for bf16 (every result correctly rounded) and 0.5054 ulp for f16 (the absolute bound alone would not give it near zero). |
 | Special values | One canonical NaN; infinities and the special cases of C11 Annex F; an E4M3FN arithmetic result beyond 448 is NaN. |
 | FP8 conversions | Round to nearest even, saturating to ±max with NaN kept (the OCP OFP8 saturating mode, Rev 1.1); the ports clip to ±448 before converting, so the two agree on model data. |
 
@@ -578,7 +584,7 @@ Dense GEMMs are, in practice, computed on systolic arrays or tensor cores. chipl
 
 ```
 README.md, CHANGELOG.md, CONTRIBUTING.md, config.toml, config.local.toml.example
-crates/        cc-ir, cc-core (artifacts, config, runners), cc-pipeline, cc-passes, cc-smt, cc-cli (binary `chipc`)
+crates/        cc-ir, cc-core (artifacts, config, runners), cc-pipeline, cc-passes, cc-smt, cc-float, cc-cli (binary `chipc`)
 python/        cc_export (JAX front end, uv project), tests
 models/        the 25 quantized JAX ports (input)
 verify/        pre-framework Python checks of the ports (dtype audit, census, unit tests)
@@ -699,11 +705,16 @@ build/         (ignored) build/.<pass>/ artifacts
 | Constant computation (no path from a data argument) tagged and never hardware | Kernels for every op | Position and rotary tables depend only on sizes; float `remainder` occurs only there |
 | f32 and bf16 flush to zero; f16 and FP8 keep subnormals | IEEE gradual underflow in every format | Most accelerators flush bf16 and many f32 (our JAX reference on XLA:CPU runs f32 flush-to-zero); FP8's subnormals are a real part of its range |
 | Conversions into FP8 saturate to ±max, NaN kept | Non-saturating conversion (overflow to NaN or infinity, ml_dtypes' default) | OCP OFP8's saturating mode; the ports clip to ±448 before converting, so the clip and the convert agree on model data |
-| Open-flow f32 sine and cosine: XLS `fp_sincos_32` under \|error\| ≤ 2^-22 *(planned)* | A ulp-bounded open soft macro; reporting a gap | No open core with a ulp guarantee exists; narrower formats computed through it stay within 0.51 ulp on every input (exhaustive emulation) |
+| Open-flow f32 sine and cosine: XLS `fp_sincos_32` under \|error\| ≤ 2^-22 *(planned)* | A ulp-bounded open soft macro; reporting a gap | No open core with a ulp guarantee exists; narrower formats computed through it stay within 0.51 ulp on every input (exhaustive, on its IR: 0.5054 ulp at most) |
 | Accumulation by f32 IP cores in a recorded order *(planned)* | An exact integer FP8 accumulator; block-fused alignment as in GPU matrix units | Cores only; a recorded order keeps the proof bit-exact |
 | Approximate operators: a configurable error budget, by default NVIDIA's CUDA table (f32) and 1 ulp (f16, bf16, FP8); a core at its documented guarantee | At most 1 ulp everywhere | Precision beyond what the workload keeps costs area; a core's guarantee does not depend on the target |
-| E4M3FN through a bit-level wrapper around f16 or f32 cores *(planned)* | A native FP8 core | No core implements E4M3FN's encoding without infinities |
+| E4M3FN through a bit-level wrapper around f16 or f32 cores | A native FP8 core | No core implements E4M3FN's encoding without infinities |
 | DesignWare cores IEEE compliant (`ieee_compliance = 1`) inside the same flushing glue as HardFloat | DesignWare's own `ieee_compliance = 0` | Mode 0 maps NaN to infinity and does not document where it flushes; one glue serves both flows |
 | HardFloat from its Chisel sources (pinned submodule) through our generator and firtool in the image | Hauser's Verilog Release 1 | The maintained source; any width from one generator, in plain Verilog every flow reads |
+| Glue proven on its Verilog: Yosys `write_smt2`, core instances cut and bound by their contracts, against `cc_smt`'s specification | A hand-written SMT model of the glue; simulation | The proof is about the RTL that is synthesized; one specification for datapaths, units and glue |
+| f32 multiply, divide and square root glue proven through the exact value (each side the rounding of one value) | Both operations as the theory's | Z3 gives no answer in 5 minutes for 24-bit multipliers (or square roots) of two sorts; these proofs take seconds |
+| Sums and differences of the flushing formats on cores of the format's own width, flushed when subnormal | One more exponent bit, as for products | An underflowing sum is exact (Hauser 1996); one exponent bit less; Z3 has no addition in bf16 with one more exponent bit |
+| Composition proofs with every core but the final conversion a free function of its operands | The cores' operations interpreted | The glue decides the special values, the wiring and the last rounding for any core; the accuracy is the sampler's and the error analysis's |
+| E5M2 arithmetic on cores of its own width; conversions into E5M2 by a conversion core and saturation glue | The FP8 encoder for E5M2 too | E5M2 is IEEE-like, so cores implement it; the E4M3FN encoder stays the only rounding in the glue |
 | External modules through an `hls_extern_verilog` attribute in `xlscc` (pinned patch) | Annotating the IR after `xlscc`; Allo's HLS backends | XLS IR already instantiates foreign functions; the attribute makes it a front-end feature, checked where the C++ is parsed |
 | Array units delivered as their PE plus a description; grids in later versions *(planned)* | A fixed-size array per unit | The PE does not depend on the grid size, which is chosen together with the memory system |
