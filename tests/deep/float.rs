@@ -3,7 +3,7 @@
 //! its cores cut, bound by their contracts and compared with `cc_smt`'s specification: every proof
 //! `unsat`; the negative controls (a wrapper without its flush, an encoder rounding toward zero or
 //! without its overflow case, a missing NaN or signed-zero case) `sat`. Runs in the build area's
-//! `runs/deep-float/`, removed when the test passes. With `CC_FLOAT_RECORDS=<file>` the records (verdict,
+//! `runs/deep-float/`, removed when the test passes (kept with `CC_FLOAT_KEEP=1`). With `CC_FLOAT_RECORDS=<file>` the records (verdict,
 //! solver, time) are also written there.
 
 use std::sync::Arc;
@@ -159,5 +159,7 @@ fn float_glue_proofs_hold_and_controls_fail() {
         .collect();
     assert!(bad.is_empty(), "{bad:#?}");
     assert_eq!(records.len(), set.len());
-    std::fs::remove_dir_all(&dir).unwrap();
+    if std::env::var("CC_FLOAT_KEEP").is_err() {
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

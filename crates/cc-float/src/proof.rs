@@ -385,7 +385,7 @@ pub fn query(b: &Built, yosys: &str) -> Res<Query> {
     // The operands the first core must see: the format's DAZ values, exactly widened.
     let check_operands = |c: &mut Ctx, mismatch: &mut Vec<T>, cf: Format, a: &[T]| -> Res<()> {
         for (j, &t) in a.iter().enumerate() {
-            let d = float::daz(c, f, ins[j])?;
+            let d = float::daz(c, f, args[j].t)?;
             let x = value(c, f, d)?;
             let want = to_sort(c, sort_of(cf), x)?;
             let got = c.app(Op::FpFromBits { e: cf.e, s: cf.m + 1 }, &[t])?;
@@ -403,8 +403,8 @@ pub fn query(b: &Built, yosys: &str) -> Res<Query> {
             let want = if let (Some(op), Some(v)) = (exact, v) {
                 check_operands(&mut c, &mut mismatch, core_fmt(0), &cores[0].0)?;
                 let mut xs = Vec::new();
-                for &x in &ins {
-                    let d = float::daz(&mut c, *fmt, x)?;
+                for a in &args {
+                    let d = float::daz(&mut c, *fmt, a.t)?;
                     let val = value(&mut c, *fmt, d)?;
                     xs.push(to_sort(&mut c, F64, val)?);
                 }
@@ -493,7 +493,13 @@ pub fn query(b: &Built, yosys: &str) -> Res<Query> {
         if !body.contains(&format!("(declare-const {n} ")) {
             links_text.push_str(&format!("(declare-const {n} (_ BitVec {w}))\n"));
         }
-        links_text.push_str(&format!("(assert (= {n} (|{m}_n {wire}| rtl.state)))\n"));
+        // Yosys writes 1-bit wires as Bool.
+        let rhs = if *w == 1 {
+            format!("(ite (|{m}_n {wire}| rtl.state) #b1 #b0)")
+        } else {
+            format!("(|{m}_n {wire}| rtl.state)")
+        };
+        links_text.push_str(&format!("(assert (= {n} {rhs}))\n"));
     }
     let text = format!("{pre}{head}{yosys}{extra}{body}{links_text}(check-sat){tail}");
     let any_sort = uses_other_sorts(&text);
@@ -522,22 +528,23 @@ pub fn mutation_name(m: Mutation) -> &'static str {
     }
 }
 
-/// Whether a query names a float sort other than Float16, Float32, Float64 and Float128 (Bitwuzla's
-/// release build has only those).
+/// Whether a query names a float sort other than Float16, Float32, Float64 and Float128, as a sort or
+/// as the indices of a conversion (Bitwuzla's release build has only those four; it parses a
+/// conversion into another sort without the check its sort declarations have, so both are looked for).
 pub fn uses_other_sorts(text: &str) -> bool {
-    let mut rest = text;
-    while let Some(i) = rest.find("(_ FloatingPoint ") {
-        rest = &rest[i + 17..];
-        let end = rest.find(')').unwrap_or(rest.len());
-        let es: Vec<u32> = rest[..end]
-            .split_whitespace()
-            .filter_map(|x| x.parse().ok())
-            .collect();
-        if !matches!(es.as_slice(), [5, 11] | [8, 24] | [11, 53] | [15, 113]) {
-            return true;
-        }
-    }
-    false
+    ["(_ FloatingPoint ", "(_ to_fp ", "(_ to_fp_unsigned "]
+        .iter()
+        .any(|pat| {
+            text.match_indices(pat).any(|(i, _)| {
+                let rest = &text[i + pat.len()..];
+                let end = rest.find(')').unwrap_or(rest.len());
+                let es: Vec<u32> = rest[..end]
+                    .split_whitespace()
+                    .filter_map(|x| x.parse().ok())
+                    .collect();
+                !matches!(es.as_slice(), [5, 11] | [8, 24] | [11, 53] | [15, 113])
+            })
+        })
 }
 
 /// The answer to one proof.
@@ -745,4 +752,17 @@ fn io(p: &Path, e: std::io::Error) -> FloatError {
 
 fn write(p: &PathBuf, text: &str) -> Res<()> {
     std::fs::write(p, text).map_err(|e| io(p, e))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn finds_sorts_beyond_the_interchange_ones() {
+        assert!(!uses_other_sorts("(declare-const x (_ FloatingPoint 8 24)) ((_ to_fp 11 53) RNE x)"));
+        assert!(uses_other_sorts("((_ to_fp 9 24) RNE x)"));
+        assert!(uses_other_sorts("(declare-const x (_ FloatingPoint 8 8))"));
+        assert!(uses_other_sorts("((_ to_fp_unsigned 9 8) RNE b)"));
+    }
 }
