@@ -141,8 +141,8 @@ instance cut, and adds:
 The f32 multiply, divide and square root leave the arithmetic out: core and specification are each the
 rounding of one Float64 value `v`, the exact result, constrained to the binade range of the operands
 (or to the IEEE special result), with `cc_smt::float::arith_exact` as the specification's encoding. A
-query relating a 24-bit multiplier of one sort to one of another does not finish in Z3 (600 s
-measured), these take seconds. The narrower formats keep both operations: their specification rounds
+query relating a 24-bit multiplier of one sort to one of another does not finish in Z3 (no answer in
+5 minutes for multiply and square root, where an adder pair takes 21 s), these take seconds. The narrower formats keep both operations: their specification rounds
 twice (to Float32, then to the format), which equals one rounding for actual products but not for every
 `v`.
 

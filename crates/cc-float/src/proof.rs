@@ -16,7 +16,7 @@
 //! `unsat` proves the wrapper. f32 multiply, divide and square root leave both the core's and the
 //! specification's arithmetic out: each is the rounding of one value `v`, the exact result, constrained
 //! to the binade range the operands give (as the encoding lemmas of `cc_smt` do); a solver relating a
-//! 24-bit multiplier of one sort to one of another does not finish (Z3: no answer in 10 minutes, where
+//! 24-bit multiplier of one sort to one of another does not finish (Z3: no answer in 5 minutes, where
 //! these queries take seconds). The narrower formats keep both operations: there the specification
 //! rounds twice (to Float32, then to the format), which equals one rounding only for actual products,
 //! quotients and roots, not for every `v`.
