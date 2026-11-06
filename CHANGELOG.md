@@ -21,7 +21,6 @@ All notable changes to this project are listed here. The format follows
 - `iteration_space` pass and the op table's iteration semantics: per class its affine accesses proven against the spec, dependences, the embedding relation, and routing of uniform contractions to systolic templates by a proven space-time mapping.
 - `import` tags constant computation (ops no data argument reaches: position and rotary tables, masks from `iota`, sizes as floats); `components` leaves it out of the graphs and reads its values as `const_in` inputs, so it never becomes a kernel.
 - `datapaths` records the hardware's order of every reduction whose order binds, and its `verify.json` states the error bound against any other order.
-
 - Adapters for external resources (`cc_core::adapters`): synthesis flows, SMT solvers, clique and MIS solvers, the miner, the HLS front end (a stub) and place and route (declared), each selected by name in `config.toml` with declared capabilities and a shared conformance test.
 - PDK manifests (`pdks/<kit>.toml`): each kit's Liberty files, LEF, VT, corner, driving cell, default clock and XLS delay model, under `paths.pdk_root`.
 - `characterize` cheap checks on every netlist: every output driven, and an area below half of a narrower width's fails.
