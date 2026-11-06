@@ -322,6 +322,22 @@ fn an_edited_query_or_order_flag_fails_the_proof() {
     s.expect(&format!("{id}:proof"));
 }
 
+/// A bound order must record the hardware's order (ω), a free one none.
+#[test]
+fn a_dropped_hardware_order_fails_order() {
+    let s = fresh();
+    let id = s.find(|d| d.accumulator.as_ref().is_some_and(|a| !a.order.is_empty()));
+    s.edit(s.out(&format!("datapaths/{id}.json")), |v| {
+        let o = &mut v["accumulator"]["order"][0];
+        if o.get("hardware").is_some() {
+            o.as_object_mut().unwrap().remove("hardware");
+        } else {
+            o["hardware"] = serde_json::json!({"order": "seq", "dims": [0]});
+        }
+    });
+    s.expect(&format!("{id}:order"));
+}
+
 #[test]
 fn a_missing_result_fails_complete() {
     let s = fresh();

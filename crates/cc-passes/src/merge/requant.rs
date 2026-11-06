@@ -299,8 +299,9 @@ fn scaled(
 ///    the significand of a scale with exponent field `e >= 2` has its implicit bit), every shift `k` and
 ///    every f32 `p` that IEEE
 ///    754 allows for the fp32 chain's product, `|p - x·s| <= (|p| + |x·s|) · 2^-24 + 2^-150` (the
-///    convert's and the multiply's roundings, each within half an ulp) or an overflow to infinity of the
-///    same sign: with `Q = rescale_shift(P, k)` and `R = round_nearest_even(p)`, `|Q| < 2^22` implies
+///    convert's and the multiply's roundings, each within half an ulp), an overflow to infinity of the
+///    same sign, or a zero when `|x·s| < 2^-94` (the flush of design §6.4 and a subnormal scale read as
+///    zero): with `Q = rescale_shift(P, k)` and `R = round_nearest_even(p)`, `|Q| < 2^22` implies
 ///    `|Q − R| <= 1`, and otherwise `R` has the sign of `Q` and `|R| >= 2^21` (any clip narrower than
 ///    that saturates both alike).
 ///
@@ -420,7 +421,13 @@ pub fn lemma_control(int: Ty, tolerance: f32, k_offset: i64) -> Result<(String, 
     let vn = c.op1(Op::FpIsNegative, v).map_err(e)?;
     let same_sign = c.eq(pn, vn).map_err(e)?;
     let ovf = c.and(&[p_inf, huge, same_sign]).map_err(e)?;
-    let allowed = c.or(&[fin, ovf]).map_err(e)?;
+    // Flushed: a zero of either sign when |x·s| < 2^-94, which covers the f32 flush below 2^-126 and a
+    // subnormal scale read as zero (|x·s| < 2^31 · 2^-126; design §6.4).
+    let p_zero = c.op1(Op::FpIsZero, fp).map_err(e)?;
+    let small_lim = pow2(&mut c, -94)?;
+    let v_small = c.op2(Op::FpLt, va, small_lim).map_err(e)?;
+    let flushed = c.and(&[p_zero, v_small]).map_err(e)?;
+    let allowed = c.or(&[fin, ovf, flushed]).map_err(e)?;
     let r = ops::apply(&mut c, "round_nearest_even", &none, &[Val::new(f32t, fp)], f32t).map_err(e)?;
     let q = ops::rescale_shift(&mut c, p, n, kk).map_err(e)?;
     let lit = |c: &mut Ctx, v: f32| cc_smt::float::lit(c, f32s, u128::from(v.to_bits()));

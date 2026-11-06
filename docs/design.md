@@ -404,8 +404,8 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
 - **Providers.** The DC flow uses DesignWare (`DW_fp_*`: arithmetic, divide, square root, reciprocal and
   its square root, exponentials, logarithms, sine and cosine, conversions, compare). The open flow uses
   Berkeley HardFloat (arithmetic, compare, conversions) and FloPoCo (exponential, logarithm, power);
-  operators without an open core (float sine and cosine) take a well-known, verified open-source soft
-  macro, or are reported as a gap.
+  float sine and cosine, which have no open core, come from XLS's `fp_sincos_32` under the contract of
+  section 6.4.
 - **Trust.** The cores are taken as verified by their makers. Proofs treat each instance as an opaque
   function with the core's documented contract; verification covers what is built around the instances.
 - **Glue.** Small bit-level logic around cores is ours and proven bit-exact by SMT: sign, absolute value
@@ -511,20 +511,20 @@ The variant per model follows its recipe by default (`passes.merge.requant_varia
 
 Float operators are third-party IP cores (section 4.12) in FP8 E4M3FN, bf16, fp16 and fp32 (E5M2 optional), with fp32 accumulation where the recipe says so.
 
-**Numerics specification** *(planned)*. StableHLO names IEEE 754 operations but gives no accuracy guarantee and leaves reduction order to the implementation; OCP OFP8 leaves FP8 arithmetic out of scope and OCP MX leaves dot-product precision open. Accelerators use that freedom (flush-to-zero, truncated alignment in matrix units, approximate special functions). chiplet-compiler states one specification, chosen for efficiency, and proves its hardware against it: being formal does not require being more precise than the workload needs.
+**Numerics specification**. StableHLO names IEEE 754 operations but gives no accuracy guarantee and leaves reduction order to the implementation; OCP OFP8 leaves FP8 arithmetic out of scope and OCP MX leaves dot-product precision open. Accelerators use that freedom (flush-to-zero, truncated alignment in matrix units, approximate special functions). chiplet-compiler states one specification, chosen for efficiency, and proves its hardware against it: being formal does not require being more precise than the workload needs.
 
 | Aspect | Rule |
 |---|---|
 | Subnormals | f32 and bf16 flush to zero: subnormal inputs read as zero of the same sign, and a result is flushed when its value rounded with an unbounded exponent is below the smallest normal, keeping its sign. f16 and FP8 keep gradual underflow. |
 | Rounding | Round to nearest, ties to even, everywhere. |
 | Exact operators | Arithmetic, divide, square root, compare, min/max, conversions, rounding to integral: the IEEE operation under the subnormal rule, as the core computes it (correctly rounded). |
-| Accumulation | Products and sums by f32 IP cores (multiply-add or dot-product cores) in a fixed order, recorded in the unit's certificate; an FP8 × FP8 product is exact in f32. |
-| Reductions | The order the hardware uses, recorded in the certificate (`seq`, a tree, or blocks), plus a documented error bound. |
-| Approximate operators | exponentials, logarithms, tanh, reciprocal square root, sine, cosine, power: an error budget per operator and format in `config.toml`, loose by default. A single core is accepted at its documented guarantee; a composition (section 4.12) is sized to the budget. Full input range by default. |
+| Accumulation | Products and sums by f32 IP cores (multiply-add or dot-product cores) in a fixed order, recorded in the unit's certificate; an FP8 × FP8 product is exact in f32 *(planned: cores)*. |
+| Reductions | The order the hardware uses (ω: `seq` or a tree), recorded in the datapath certificate when it binds, plus an error bound against any other order in `datapaths`' `verify.json` (docs/framework/smt.md). |
+| Approximate operators | exponentials, logarithms, tanh, reciprocal square root, sine, cosine, power: an error budget per operator and format in `config.toml`, loose by default *(planned)*. A single core is accepted at its documented guarantee; a composition (section 4.12) is sized to the budget. Full input range by default. In the open flow, f32 sine and cosine come from XLS's `fp_sincos_32` under an absolute-error contract, \|error\| ≤ 2^-22; bf16, f16 and FP8 sine and cosine computed through it (widened exactly, one rounding back) are within 0.51 ulp, measured over every input of those formats by a bit-level emulation of the core (the absolute bound alone would not give it near zero). |
 | Special values | One canonical NaN; infinities and the special cases of C11 Annex F; an E4M3FN arithmetic result beyond 448 is NaN. |
 | FP8 conversions | Round to nearest even, saturating to ±max with NaN kept (the OCP OFP8 saturating mode, Rev 1.1); the ports clip to ±448 before converting, so the two agree on model data. |
 
-Datapath and merge proofs state these semantics: an exact operator in a flushing format is the IEEE operation on flushed inputs, computed with two more exponent bits and flushed below the smallest normal; approximate operators stay uninterpreted functions, so a proof holds for any core within the contract.
+Datapath and merge proofs state these semantics: an exact operator in a flushing format is the IEEE operation on flushed inputs, computed with two more exponent bits and flushed below the smallest normal; approximate operators stay uninterpreted functions, so a proof holds for any core within the contract. The solvers' common sorts lack the wider exponent, so the queries use equivalent encodings in the interchange sorts, each proven equal to this statement by a lemma in Z3 (docs/framework/smt.md, "Floats").
 
 ## 7. "Solved" kernels without hard-coded mappings
 
@@ -682,7 +682,9 @@ build/         (ignored) build/.<pass>/ artifacts
 | Two flows: Design Compiler (Innovus later) and Yosys (OpenROAD later) *(planned)* | Every Synopsys and Cadence tool as alternatives | One standard industry RTL-to-GDS flow and one open flow; fewer paths to maintain |
 | One adapter trait per external resource family, PDKs as data *(planned)* | Match arms per tool inside passes; library names in code | Adding a flow, an IP library, a solver or a PDK is one implementation, tested by a shared suite |
 | Constant computation (no path from a data argument) tagged and never hardware | Kernels for every op | Position and rotary tables depend only on sizes; float `remainder` occurs only there |
-| f32 and bf16 flush to zero; f16 and FP8 keep subnormals *(planned)* | IEEE gradual underflow in every format | Most accelerators flush bf16 and many f32 (our JAX reference on XLA:CPU runs f32 flush-to-zero); FP8's subnormals are a real part of its range |
+| f32 and bf16 flush to zero; f16 and FP8 keep subnormals | IEEE gradual underflow in every format | Most accelerators flush bf16 and many f32 (our JAX reference on XLA:CPU runs f32 flush-to-zero); FP8's subnormals are a real part of its range |
+| Conversions into FP8 saturate to ±max, NaN kept | Non-saturating conversion (overflow to NaN or infinity, ml_dtypes' default) | OCP OFP8's saturating mode; the ports clip to ±448 before converting, so the clip and the convert agree on model data |
+| Open-flow f32 sine and cosine: XLS `fp_sincos_32` under \|error\| ≤ 2^-22 *(planned)* | A ulp-bounded open soft macro; reporting a gap | No open core with a ulp guarantee exists; narrower formats computed through it stay within 0.51 ulp on every input (exhaustive emulation) |
 | Accumulation by f32 IP cores in a recorded order *(planned)* | An exact integer FP8 accumulator; block-fused alignment as in GPU matrix units | Cores only; a recorded order keeps the proof bit-exact |
 | Approximate operators: a configurable error budget, loose by default; a core at its documented guarantee *(planned)* | At most 1 ulp everywhere | Precision beyond what the workload keeps costs area; a core's guarantee does not depend on the target |
 | E4M3FN through a bit-level wrapper around f16 or f32 cores *(planned)* | A native FP8 core | No core implements E4M3FN's encoding without infinities |
