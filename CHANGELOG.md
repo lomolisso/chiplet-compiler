@@ -21,10 +21,17 @@ All notable changes to this project are listed here. The format follows
 - `iteration_space` pass and the op table's iteration semantics: per class its affine accesses proven against the spec, dependences, the embedding relation, and routing of uniform contractions to systolic templates by a proven space-time mapping.
 - `import` tags constant computation (ops no data argument reaches: position and rotary tables, masks from `iota`, sizes as floats); `components` leaves it out of the graphs and reads its values as `const_in` inputs, so it never becomes a kernel.
 - `datapaths` records the hardware's order of every reduction whose order binds, and its `verify.json` states the error bound against any other order.
+- Adapters for external resources (`cc_core::adapters`): synthesis flows, SMT solvers, clique and MIS solvers, the miner, the HLS front end (a stub) and place and route (declared), each selected by name in `config.toml` with declared capabilities and a shared conformance test.
+- PDK manifests (`pdks/<kit>.toml`): each kit's Liberty files, LEF, VT, corner, driving cell, default clock and XLS delay model, under `paths.pdk_root`.
+- `characterize` cheap checks on every netlist: every output driven, and an area below half of a narrower width's fails.
+- `[passes.mine] miner` selects the frequent subgraph miner (`grami`).
 
 ### Changed
 
 - `datapaths` and `merge` prove the design's numerics: f32 and bf16 flush subnormals to zero, conversions into FP8 saturate (NaN kept).
+- `characterize` checks netlist against RTL only with `lec = true` (off by default); `library.json` and `summary.json` schemas 2 (`lec` and `lec_tool` optional, the kit's clock recorded).
+- `characterize` Design Compiler job directories no longer depend on the toolchain image tag (the RTL is in their key by its text), so a new image reuses them.
+- `paths.nangate45_lib`, `nangate45_lef`, `asap7_root`, `asap7_nldm_dir`, `asap7_lef_dir` and `[tools.pdk]` are replaced by the PDK manifests and `paths.pdk_root` / `paths.pdks.<kit>`; the old keys are rejected with a message.
 - Solver answers are cached once for every pass and for `verify` (`paths.smt_cache`, shared by every build directory of a host): constant lemmas and rules are solved once per solver version, `verify` still regenerates and compares every query.
 - `mine` runs GraMi once, at the last threshold, and derives every step's pattern set by MNI (`grami_runs = "once"`, outputs unchanged; `"sweep"` restores one run per step).
 - Pass manifests and run summaries record the time spent in `verify`; `chipc run` prints it; `CC_PROFILE=release` runs the optimized `chipc` through `scripts/on-build-host`.
@@ -33,6 +40,10 @@ All notable changes to this project are listed here. The format follows
 - `chipc doctor` also merges the ASAP7 group libraries into one Liberty file and `.db`.
 - Toolchain image 0.4.0: GraMi's directed build takes a `maxNodes` bound on the pattern size (`third_party/patches/grami/0002`).
 - `scripts/on-build-host --pick` chooses among iacoma227, iacoma231 and iacoma232 by their scarcest resource (idle cores, RAM, disk); both scripts run directly on the local host.
+
+### Removed
+
+- The Genus and Conformal synthesis path (`tool = "genus"`) and their `chipc doctor` license checks.
 
 ### Fixed
 

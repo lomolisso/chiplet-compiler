@@ -120,11 +120,13 @@
    (pattern, unit) is small (patterns ≤ `max_vertices`, units of tens of vertices); the MIS components
    are small.
 
-5. **Config** (`[passes.mine]`): `tau_start = 40`, `tau_min = 2`, `max_vertices = 6`, `top_k = 32`,
+5. **Config** (`[passes.mine]`): `miner = "grami"` (the `Miner` registry `algo::grami::MINERS`,
+   docs/framework/adapters.md), `tau_start = 40`, `tau_min = 2`, `max_vertices = 6`, `top_k = 32`,
    `budget_s = 3600` (GraMi wall clock per family), `run_timeout_s = 600`, `heap_gb = 6`,
    `grami_runs = "once" | "sweep"`,
    `vf2_budget = 100000000` (candidate pairs of one re-match; over it the pass fails), `views = true`;
-   `[passes.mine.mis]`: `algorithm = "exact_ilp" | "branch_and_bound" | "greedy_min_degree"`,
+   `[passes.mine.mis]`: `algorithm = "exact_ilp" | "branch_and_bound" | "greedy_min_degree"` (the
+   `MisSolver` registry `algo::mis::SOLVERS`),
    `node_budget = 1000000`. The image tag and the GraMi commit enter the cache key, and Java's version
    through `tools()`. Resources: `threads = 8`, `memory_gb = 32` (one GraMi container per `heap_gb + 2`
    GB runs at a time: four), `timeout_min = 120`.

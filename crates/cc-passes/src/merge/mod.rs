@@ -15,7 +15,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use cc_core::{ArtifactKind, CoreError, LoadedConfig, PassSection, VerifyReport};
 use cc_pipeline::{Pass, PassContext, PassError};
-use cc_smt::{Solver, Verdict};
+use cc_smt::Verdict;
 use rayon::prelude::*;
 
 pub use config::{CliqueAlgorithm, MergeConfig};
@@ -135,7 +135,7 @@ impl Pass for Merge {
         let mut unit_fu: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
         let mut summary = Summary {
             schema: SUMMARY_SCHEMA.into(),
-            kit: cfg.kit.clone(),
+            kit: lib.kit.clone(),
             requant_variant: if requant_file.is_some() { "fixed" } else { "fp32" }.into(),
             algorithm: cfg.clique.algorithm.name().into(),
             families: BTreeMap::new(),
@@ -303,7 +303,7 @@ impl Pass for Merge {
         let zanswers = cc_smt::solve_cached(
             &runner,
             &location,
-            Solver::Z3,
+            cc_smt::lemma_solver(),
             &out.path("proofs")?,
             &zfiles,
             cfg.compose_timeout_s,
@@ -311,7 +311,10 @@ impl Pass for Merge {
             &cache,
         )?;
         let mut bad = Vec::new();
-        for (set, by, s) in [(&files, &answers, solver), (&zfiles, &zanswers, Solver::Z3)] {
+        for (set, by, s) in [
+            (&files, &answers, solver),
+            (&zfiles, &zanswers, cc_smt::lemma_solver()),
+        ] {
             for (f, text) in set {
                 let (version, verdict) = by.get(f).cloned().unwrap_or((
                     String::new(),

@@ -12,8 +12,8 @@ that could not be checked are marked "(unverified)". Facts about this machine we
 | [xls.md](xls.md) | XLS releases vs Bazel tools, xlscc → IR → opt → codegen flags, scheduling, verification tools, apfloat stdlib coverage, delay/area models |
 | [grami.md](grami.md) | GraMi: MNI frequent subgraph mining, `.lg` format, build (Java ≥11 import fix), direct Java invocation, output format, time-limit pitfall |
 | [synopsys.md](synopsys.md) | Library Compiler, Design Compiler, Formality, PrimeTime, VCS, SpyGlass: batch scripts, flags, resource options |
-| [cadence.md](cadence.md) | Genus, Conformal LEC, Xcelium (Innovus out of scope): batch scripts, flags, licenses, observed issues |
-| [pdks.md](pdks.md) | FreePDK45/Nangate45 and ASAP7 on this host: files, corners, units, `.db` creation, env vars |
+| [cadence.md](cadence.md) | Innovus (place and route in later versions), launching through `eda-run`, licenses, observed issues |
+| [pdks.md](pdks.md) | FreePDK45/Nangate45 and ASAP7 on this host: files, corners, units, the PDK manifests, `.db` creation, env vars |
 | [eda_environment.md](eda_environment.md) | `eda-toggle.sh` functions, why `eda-run` needs an interactive shell, `EdaRunner` contract, licenses, memory limiting on cgroups v1 |
 | [docker_resources.md](docker_resources.md) | `docker run` caps and OOM behaviour, permissions/mounts, toolchain image layering, disk layout |
 | [rust_stack.md](rust_stack.md) | Chosen crates and versions, nextest config, rustup without root, z3/bitwuzla binaries |

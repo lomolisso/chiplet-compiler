@@ -15,7 +15,8 @@ pub struct MergeConfig {
     /// Critical-path bound of a merged unit in ps (0: per family, the deepest single-class datapath
     /// rounded up to whole clock periods).
     pub max_logic_depth: f64,
-    /// The library kit whose areas (`clock` target) and delays (`fast` target) weigh merges.
+    /// The library kit whose areas (`clock` target) and delays (`fast` target) weigh merges; empty: the
+    /// library's first kit.
     pub kit: String,
     /// Cover each datapath with the selected patterns of `mine` first; an occurrence then merges only
     /// with an occurrence of the same pattern.
@@ -97,7 +98,7 @@ impl Default for MergeConfig {
             requant_timeout_s: 1800,
             target_units: 0,
             max_logic_depth: 0.0,
-            kit: "asap7".into(),
+            kit: String::new(),
             contract: true,
             max_compat_nodes: 4000,
             certify_max_nodes: 60,
@@ -129,9 +130,6 @@ impl MergeConfig {
                 "max_logic_depth = {}: a non-negative number of ps",
                 self.max_logic_depth
             ));
-        }
-        if self.kit.is_empty() {
-            return Err("kit: name a kit of the characterize library".into());
         }
         if self.max_compat_nodes == 0 || self.clique.node_budget == 0 || self.clique.timeout_s == 0 {
             return Err("max_compat_nodes, clique.node_budget and clique.timeout_s must be positive".into());

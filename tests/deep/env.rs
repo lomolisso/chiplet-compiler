@@ -43,11 +43,12 @@ fn doctor_is_green_on_this_host() {
         "image.selftest.xls_equiv",
         "image.selftest.grami",
         "image.selftest.allo",
+        "pdk.nangate45",
+        "pdk.asap7",
+        "pdk.asap7_merged",
         "pdk.db",
         "dc.nangate45",
         "dc.asap7",
-        "license.genus",
-        "license.lec",
     ] {
         let c = report
             .checks
@@ -59,6 +60,7 @@ fn doctor_is_green_on_this_host() {
     let env = cfg.build_dir().join(".env");
     assert!(env.join("verify.json").is_file() && env.join("manifest.json").is_file());
     assert!(env.join("out/pdk_db/NangateOpenCellLibrary.db").is_file());
+    assert!(!report.checks.iter().any(|c| c.name.starts_with("license.")));
 }
 
 #[test]

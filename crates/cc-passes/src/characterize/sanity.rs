@@ -1,8 +1,9 @@
 //! Area against width, per primitive series (docs/passes/characterize.md §6): area should not decrease
 //! with width, an integer multiplier should grow about quadratically and an adder about linearly
 //! (`n x n` array and tree multipliers have Θ(n²) cells, Wallace 1964; ripple and prefix adders Θ(n) to
-//! Θ(n log n)). Points off these trends are notes, not failures: synthesis picks different structures at
-//! different widths.
+//! Θ(n log n)). Points off these trends are notes: synthesis picks different structures at different
+//! widths. A clear violation fails: a wider design with less than [`CLEAR_DROP`] of a narrower one's area
+//! has lost logic, which no choice of structure explains.
 
 use std::collections::BTreeMap;
 
@@ -86,6 +87,27 @@ pub fn expected(op: &str) -> Option<(f64, f64, f64)> {
     }
 }
 
+/// A wider point below this fraction of a narrower point's area is a clear violation.
+pub const CLEAR_DROP: f64 = 0.5;
+
+/// Clear violations of one series: a width whose area is below `CLEAR_DROP` of a narrower width's.
+pub fn violations(s: &Series) -> Vec<String> {
+    let mut v = Vec::new();
+    for (k, hi) in s.points.iter().enumerate() {
+        if let Some(lo) = s.points[..k]
+            .iter()
+            .filter(|lo| lo.0 < hi.0)
+            .find(|lo| hi.1 < CLEAR_DROP * lo.1)
+        {
+            v.push(format!(
+                "{} {} {}: area {:.3} at {} bits is below half of {:.3} at {} bits",
+                s.name, s.kit, s.target, hi.1, hi.0, lo.1, lo.0
+            ));
+        }
+    }
+    v
+}
+
 /// Flags of one series: widths where the area decreases, and an exponent outside the expected band.
 pub fn flags(s: &Series) -> Vec<String> {
     let mut f = Vec::new();
@@ -131,5 +153,9 @@ mod tests {
         assert_eq!(flags(&lin_as_mul).len(), 1);
         let dip = s("add", &[(2, 2.0), (4, 3.9), (8, 3.8), (16, 16.0)]);
         assert!(flags(&dip).iter().any(|f| f.contains("area falls")));
+        assert!(violations(&dip).is_empty());
+        let lost = s("add", &[(2, 2.0), (4, 4.0), (8, 1.9), (16, 16.0)]);
+        assert_eq!(violations(&lost).len(), 1);
+        assert!(violations(&lost)[0].contains("at 8 bits"));
     }
 }

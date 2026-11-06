@@ -4,6 +4,20 @@ What the synthesis passes need from the two process kits: which Liberty/LEF/Veri
 corners, units, and how to get Synopsys `.db` files. Paths and numbers were read from the files on
 2026-10-30.
 
+chiplet-compiler reads the kits through their **PDK manifests** (`pdks/<kit>.toml`, one per cell library;
+the format is in `docs/framework/adapters.md`): code names no library. The manifests use the paths of §2
+and §3 relative to a kit root under `paths.pdk_root` (`config.local.toml`, here `/home/rid2/pdks`), or
+`paths.pdks.<kit>` for a kit elsewhere:
+
+| Manifest | Root (under `pdk_root`) | Liberty | LEF | Driving cell | Clock | XLS delay model |
+|---|---|---|---|---|---|---|
+| `nangate45.toml` | `FreePDK45/Nangate45_OpenCellLib` | `stdcells.lib` | `stdcells.lef` | `BUF_X1` | 2000 ps | none |
+| `asap7.toml` | `asap7/asap7sc7p5t_28` | `LIB/NLDM/asap7sc7p5t_{group}_{vt}_{corner}_nldm_*.lib`, groups AO, OA, INVBUF, SEQ, SIMPLE, RVT, TT, merged into `asap7sc7p5t_RVT_TT` | `LEF/asap7sc7p5t_28_R_1x_*.lef` | `BUFx2_ASAP7_75t_R` | 1000 ps | `asap7` |
+
+Another VT or corner (§3) is another cell library: a copy of `asap7.toml` under a new name with its `vt`,
+`corner` and LEF changed. `chipc doctor` checks every manifest and compiles every Liberty file it names
+(§4); `[passes.characterize] pdks` picks the kits that are characterized.
+
 ## 1. Environment variables (from `~/pdks/setup_env.sh`, part 1: always exported when sourced)
 
 | Variable | Value |
@@ -67,7 +81,7 @@ Use for synthesis: `$NANGATE45_LIB` as the single target library. Report timing 
   async-reset DFF**, so generate RTL with synchronous reset (or none) for ASAP7 (see `xls.md`, codegen `--reset`).
 - Arithmetic cells: `FAx1`, `HAxp5`, `MAJIxp5`, `MAJx2`, `MAJx3` (SIMPLE group).
 
-Default selection for chiplet-compiler synthesis: **RVT, TT**, all five groups:
+Default selection for chiplet-compiler synthesis (`pdks/asap7.toml`): **RVT, TT**, all five groups:
 
 ```
 $ASAP7_SC_NLDM_DIR/asap7sc7p5t_{AO,OA,INVBUF,SEQ,SIMPLE}_RVT_TT_nldm_*.lib
@@ -79,7 +93,7 @@ README); not installed here.
 ## 4. Making `.db` files (Library Compiler)
 
 Neither kit ships `.db`. Design Compiler's `target_library`/`link_library` need `.db`. Formality (`read_lib`)
-and Genus/Conformal read `.lib` directly; PrimeTime's `read_lib` compiles `.lib` through Library Compiler.
+and Yosys read `.lib` directly; PrimeTime's `read_lib` compiles `.lib` through Library Compiler.
 
 `lc_shell` script (one `write_lib` per Liberty `library`; the argument is the **library name inside the
 file**, not the file name, `write_lib(2)`):

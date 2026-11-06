@@ -13,6 +13,8 @@ Services every pass and the pipeline share. It knows no pass types (design §3.4
 | `cancel.rs` | `CancelToken` (cooperative cancellation) |
 | `runner/` | `ToolRunner` trait; `HostRunner`, `DockerRunner`, `EdaRunner`; `EdaTool` (batch flags, native caps) |
 | `schema.rs` | JSON Schemas of the manifest and verify report (`docs/schemas/`) |
+| `adapters/` | the external-resource traits (`SynthFlow`, `SmtSolver`, `CliqueSolver`, `MisSolver`, `Miner`, `HlsFrontend`, `PnrFlow`), their capability structs and data, `Registry` (docs/framework/adapters.md) |
+| `pdk.rs` | PDK manifests (`pdks/<kit>.toml`): loading, roots, Liberty and LEF file matching |
 | `error.rs` | `CoreError` (`thiserror`), `IoContext` |
 
 ## Configuration

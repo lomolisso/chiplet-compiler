@@ -7,12 +7,8 @@
 
 [paths]
 eda_toggle = "/home/rid2/bin/eda-toggle.sh"      # defines eda-run; never source eda-on in the driver
-pdk_root = "/home/rid2/pdks"
-nangate45_lib = "/home/rid2/pdks/FreePDK45/Nangate45_OpenCellLib/stdcells.lib"
-nangate45_lef = "/home/rid2/pdks/FreePDK45/Nangate45_OpenCellLib/stdcells.lef"
-asap7_root = "/home/rid2/pdks/asap7"
-asap7_nldm_dir = "/home/rid2/pdks/asap7/asap7sc7p5t_28/LIB/NLDM"
-asap7_lef_dir = "/home/rid2/pdks/asap7/asap7sc7p5t_28/LEF"
+pdk_root = "/home/rid2/pdks"                    # each kit's manifest root (pdks/<kit>.toml) is under it
+# pdks = { asap7 = "/elsewhere/asap7sc7p5t_28" }  # a kit's root directly, when it is not under pdk_root
 scratch_dir = "/scratch/rid2/chiplet-compiler"    # build area on the build host; tmp/ = EDA temp
 smt_cache = "/scratch/rid2/chiplet-compiler/smt-cache"   # solver answers shared by every build dir
 build_dir = "/scratch/rid2/chiplet-compiler/build"  # pass artifacts on the build host's local disk, not the NFS home

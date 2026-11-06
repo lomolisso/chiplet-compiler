@@ -12,7 +12,7 @@ use cc_passes::characterize::LIBRARY;
 use cc_passes::characterize::catalog::Kind;
 use cc_passes::characterize::json::{Library, Row, TargetInfo};
 use cc_passes::datapaths::DATAPATHS;
-use cc_passes::eda::parse::{Lec, Measured};
+use cc_passes::eda::parse::Measured;
 use cc_passes::iteration_space::ITERATION_SPACE;
 use cc_passes::kernel_classes::KERNEL_CLASSES;
 use cc_passes::merge::json::{ArrayFile, ArrayMode, ConfigFile, FuFile, RequantFile, RequantStatus, Summary};
@@ -437,8 +437,8 @@ fn row(key: &str, target: &str, area: f64, delay: f64) -> Row {
             children: BTreeMap::new(),
         },
         estimator: "fixture".into(),
-        lec_tool: String::new(),
-        lec: Lec::default(),
+        lec_tool: None,
+        lec: None,
         inconclusive: false,
         designware: false,
         provisional: false,
@@ -476,9 +476,9 @@ fn library() -> Library {
         rows.push(row(&format!("register@w{w}"), "clock", f64::from(w), 0.0));
     }
     Library {
-        schema: "cc.characterize.library/1".into(),
+        schema: "cc.characterize.library/2".into(),
         tool: "fixture".into(),
-        lec_tool: String::new(),
+        lec_tool: None,
         tool_versions: BTreeMap::new(),
         kits: Vec::new(),
         targets: vec![

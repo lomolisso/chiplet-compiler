@@ -249,3 +249,11 @@ sha256); CI downloads the same releases for the smoke tests (`CC_SMT_RUNNER=host
 needs glibc 2.39, so on the RHEL 8 build host the solvers run in the image. Bitwuzla is the default for
 both QF_BV and QF_FP (word-level rewriting and SymFPU bit-blasting: Niemetz, Preiner, CAV 2023); the
 encoding lemmas are Z3's, as only Z3 has the native sorts they compare with.
+
+The solvers are adapters (`SmtSolver`, docs/framework/adapters.md): `cc_smt::SOLVERS` lists `Bitwuzla`
+and `Z3`, each declaring its capabilities (bit-vectors, uninterpreted functions, the interchange float
+sorts, float sorts of any width, the lemmas) and its program; `Solver::adapter()` maps the identifier
+stored in certificates to its implementation. The encoding lemmas of `datapaths` and the composed array
+steps of `merge` go to `lemma_solver()`, the first solver that declares `lemmas` (Z3). The smoke test
+`adapters::smt_solvers_conform` gives every solver the same queries and checks the declarations: a
+`(_ FloatingPoint 8 8)` query is proven by Z3 and refused by Bitwuzla.

@@ -69,11 +69,11 @@ pub fn solver_version(
     solver: Solver,
 ) -> Result<String, CoreError> {
     let program = match location {
-        Location::Image => solver.name().to_string(),
+        Location::Image => solver.adapter().program().to_string(),
         Location::Host(p) => p
             .get(&solver)
             .cloned()
-            .unwrap_or_else(|| solver.name().to_string()),
+            .unwrap_or_else(|| solver.adapter().program().to_string()),
     };
     let inv = Invocation::new(format!("smt-{}", solver.name()), program).arg("--version");
     let out = runner.run(&inv)?;

@@ -60,7 +60,7 @@ Action facts:
 | Not in CI | Reason |
 |---|---|
 | Docker toolchain (XLS, xlscc, Allo+LLVM, GraMi, Yosys, Verilator, z3/bitwuzla) | image size (tens of GB) vs 14 GB disk; LLVM/xlscc builds take hours (`xls.md`: up to 6 h on 8 cores) |
-| Synopsys / Cadence (DC, Formality, Genus, LEC, VCS, Xcelium) | licensed, host-only, university license servers (`eda_environment.md`) |
+| Synopsys / Cadence (DC, Formality, VCS, Xcelium) | licensed, host-only, university license servers (`eda_environment.md`) |
 | Full-size model export / anything at model scale | memory rule; 16 GB runner |
 | Deep tests (`tests/deep/`, `[testing] deep_models`) | need the above tools and long runtimes |
 | GraMi mining on real kernel graphs | runtime; Java + exponential search |

@@ -15,10 +15,83 @@
 
 use std::time::{Duration, Instant};
 
+use cc_core::adapters::{CliqueSolver, Limits, Named, Registry, SelectCapabilities};
 use microlp::{ComparisonOp, LinearExpr, OptimizationDirection, Problem, SolveOptions};
 
 use super::compat::{Bits, Model};
 use crate::merge::config::CliqueAlgorithm;
+
+/// The clique solvers, by `[passes.merge.clique] algorithm` (`CliqueAlgorithm::name`).
+pub static SOLVERS: Registry<dyn CliqueSolver<Model, Solved>> =
+    Registry::new("clique algorithm", &[&ExactIlp, &Ostergard, &Greedy]);
+
+/// `exact_ilp`.
+#[derive(Debug, Clone, Copy)]
+pub struct ExactIlp;
+/// `ostergard`.
+#[derive(Debug, Clone, Copy)]
+pub struct Ostergard;
+/// `greedy`.
+#[derive(Debug, Clone, Copy)]
+pub struct Greedy;
+
+impl Named for ExactIlp {
+    fn name(&self) -> &'static str {
+        CliqueAlgorithm::ExactIlp.name()
+    }
+}
+impl Named for Ostergard {
+    fn name(&self) -> &'static str {
+        CliqueAlgorithm::Ostergard.name()
+    }
+}
+impl Named for Greedy {
+    fn name(&self) -> &'static str {
+        CliqueAlgorithm::Greedy.name()
+    }
+}
+
+const EXACT: SelectCapabilities = SelectCapabilities {
+    exact: true,
+    budgeted: true,
+    timed: true,
+};
+
+fn timeout(l: &Limits) -> Duration {
+    // No limit: a month, finite for the solvers that add it to an instant.
+    l.timeout.unwrap_or(Duration::from_secs(30 * 86_400))
+}
+
+impl CliqueSolver<Model, Solved> for ExactIlp {
+    fn capabilities(&self) -> SelectCapabilities {
+        EXACT
+    }
+    fn solve(&self, m: &Model, nogoods: &[Vec<usize>], l: &Limits) -> Result<Solved, String> {
+        ilp(m, nogoods, l.node_budget, timeout(l))
+    }
+}
+
+impl CliqueSolver<Model, Solved> for Ostergard {
+    fn capabilities(&self) -> SelectCapabilities {
+        EXACT
+    }
+    fn solve(&self, m: &Model, nogoods: &[Vec<usize>], l: &Limits) -> Result<Solved, String> {
+        ostergard(m, nogoods, l.node_budget, timeout(l))
+    }
+}
+
+impl CliqueSolver<Model, Solved> for Greedy {
+    fn capabilities(&self) -> SelectCapabilities {
+        SelectCapabilities {
+            exact: false,
+            budgeted: false,
+            timed: false,
+        }
+    }
+    fn solve(&self, m: &Model, nogoods: &[Vec<usize>], _l: &Limits) -> Result<Solved, String> {
+        Ok(greedy(m, nogoods))
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Solved {
@@ -40,17 +113,24 @@ pub fn solve(
     timeout: Duration,
     max_nodes: usize,
 ) -> Solved {
-    if alg != CliqueAlgorithm::Greedy && m.n() > max_nodes {
+    let solver = match SOLVERS.by_name(alg.name()) {
+        Ok(s) => s,
+        Err(e) => {
+            let mut g = greedy(m, nogoods);
+            g.fallback = Some(e.to_string());
+            return g;
+        }
+    };
+    if solver.capabilities().exact && m.n() > max_nodes {
         let mut g = greedy(m, nogoods);
         g.fallback = Some("size".into());
         return g;
     }
-    let r = match alg {
-        CliqueAlgorithm::ExactIlp => ilp(m, nogoods, node_budget, timeout),
-        CliqueAlgorithm::Ostergard => ostergard(m, nogoods, node_budget, timeout),
-        CliqueAlgorithm::Greedy => return greedy(m, nogoods),
+    let limits = Limits {
+        node_budget,
+        timeout: Some(timeout),
     };
-    match r {
+    match solver.solve(m, nogoods, &limits) {
         Ok(s) => s,
         Err(why) => {
             let mut g = greedy(m, nogoods);

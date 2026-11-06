@@ -47,7 +47,16 @@ pub fn bits(t: &str) -> u32 {
 }
 
 impl Lib {
+    /// The prices of `kit`; an empty name is the library's first kit.
     pub fn new(lib: &Library, kit: &str) -> Result<Lib, String> {
+        let kit = match kit {
+            "" => lib
+                .kits
+                .first()
+                .map(|k| k.name.as_str())
+                .ok_or("the library has no kit")?,
+            k => k,
+        };
         let period_ps = lib
             .targets
             .iter()

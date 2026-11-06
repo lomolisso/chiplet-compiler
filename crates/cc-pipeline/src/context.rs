@@ -80,8 +80,17 @@ impl PassContext {
         self.config.smt_cache_dir()
     }
 
-    /// `[tools.smt]`: which solver proves, where the binaries are, the per-query timeout.
-    /// `[tools]`: the image, the PDK selection and the tool settings.
+    /// Kit `name`'s PDK manifest with its root (`pdks/<name>.toml`, docs/tools/pdks.md).
+    pub fn pdk(&self, name: &str) -> Result<cc_core::pdk::Pdk, CoreError> {
+        cc_core::pdk::load(&self.config, name)
+    }
+
+    /// The names of every PDK manifest, sorted.
+    pub fn pdk_names(&self) -> Result<Vec<String>, CoreError> {
+        cc_core::pdk::names(&self.config)
+    }
+
+    /// `[tools]`: the image and the tool settings.
     pub fn tools(&self) -> &cc_core::config::ToolsConfig {
         &self.config.config.tools
     }

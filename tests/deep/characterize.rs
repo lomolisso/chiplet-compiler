@@ -1,14 +1,20 @@
-//! Deep check: `chipc doctor` (the `.db` files and the merged ASAP7 Liberty) into the build area's
-//! ephemeral `runs/deep-characterize/`, then `characterize` on a reduced catalog (`add` and `multiply` at
-//! 8 bits and f32, their accumulators, a 2-input mux, a register, a 16-from-8 split multiplier) on both
-//! kits at both timing points, through each flow: Design Compiler + Formality, Genus + Conformal, Yosys +
-//! ABC (without the f32 and split rows, which its equivalence flow cannot prove). Every check of `verify` passes for each, a golden snapshot keeps the keys, and the directory is
-//! removed when the test passes.
+//! Deep checks of `characterize`.
+//!
+//! - `chipc doctor` (the `.db` files and the merged ASAP7 Liberty) into the build area's ephemeral
+//!   `runs/deep-characterize/`, then `characterize` on a reduced catalog (`add` and `multiply` at 8 bits and
+//!   f32, their accumulators, a 2-input mux, a register, a 16-from-8 split multiplier) on both kits at both
+//!   timing points, through every synthesis flow (the `SynthFlow` conformance suite: the same catalog,
+//!   every check of `verify` green): Design Compiler without and then with Formality (the second run
+//!   reuses every synthesis and runs only the check), and Yosys + ABC. A golden snapshot keeps the keys,
+//!   and the directory is removed when the test passes.
+//! - The job directories this code computes for the default configuration are the ones of the standing
+//!   Design Compiler library in the build area's `build/.characterize/` (read only), so a library
+//!   characterized by an earlier version is reused.
 
 use cc_core::runner::Runners;
 use cc_core::{CheckStatus, LoadedConfig};
 use cc_passes::characterize::LIBRARY;
-use cc_passes::characterize::json::Library;
+use cc_passes::characterize::json::{Library, Summary};
 use cc_pipeline::env::{DoctorOptions, doctor};
 use cc_pipeline::{Pipeline, RunOptions, RunStatus};
 use tests::repo_root;
@@ -64,14 +70,11 @@ fn characterize_reduced_catalog_on_every_flow() {
     }
 
     let mut digest = Vec::new();
-    for tool in ["dc", "genus", "yosys"] {
-        // Yosys' equivalence flow proves integer and structural primitives but not the float ones or a
-        // split multiplier within its 600 s (docs/passes/characterize.md §8): it runs without them.
-        let mut extra = vec![format!("passes.characterize.tool=\"{tool}\"")];
-        if tool == "yosys" {
-            extra.push("passes.characterize.float_formats=[]".into());
-            extra.push("passes.characterize.split_multipliers=[]".into());
-        }
+    for (tool, lec) in [("dc", false), ("dc", true), ("yosys", false)] {
+        let extra = vec![
+            format!("passes.characterize.tool=\"{tool}\""),
+            format!("passes.characterize.lec={lec}"),
+        ];
         let cfg = load(&extra);
         let p = Pipeline::new(cc_passes::registry(), cfg).unwrap();
         let s = p
@@ -97,19 +100,27 @@ fn characterize_reduced_catalog_on_every_flow() {
             "{tool}: {s:?}"
         );
         let lib: Library = dir.kind(LIBRARY).read_json("library.json").unwrap();
+        let summary: Summary = dir.kind(LIBRARY).read_json("summary.json").unwrap();
         // Proven, or out of time with no failing point (the row says so); never a failing point.
         let open: Vec<String> = lib
             .rows
             .iter()
-            .filter(|r| !r.lec.equivalent)
+            .filter(|r| r.lec.as_ref().is_some_and(|l| !l.equivalent))
             .map(|r| format!("{} {} {}", r.key, r.kit, r.target))
             .collect();
         assert!(
-            lib.rows
-                .iter()
-                .all(|r| r.lec.failing == 0 && (r.lec.equivalent || r.inconclusive)),
+            lib.rows.iter().all(|r| match &r.lec {
+                Some(l) => lec && l.failing == 0 && (l.equivalent || r.inconclusive),
+                None => !lec,
+            }),
             "{tool}: {open:?}"
         );
+        if tool == "dc" && lec {
+            // Turning the check on reran only Formality: every synthesis was reused.
+            let log = std::fs::read_to_string(dir.logs_dir().join("tools.jsonl")).unwrap_or_default();
+            assert!(!log.contains("\"dc_shell\""), "{tool}: synthesis ran again");
+            assert!(summary.jobs_run > 0, "{tool}: {summary:?}");
+        }
         // A wider multiply costs more than a narrower one, and a split 16-bit multiply has its pieces.
         for kit in ["nangate45", "asap7"] {
             let area = |key: &str| {
@@ -120,9 +131,7 @@ fn characterize_reduced_catalog_on_every_flow() {
                     .unwrap()
             };
             assert!(area("multiply@i8") > area("add@i8"), "{tool} {kit}");
-            if tool != "yosys" {
-                assert!(area("multiply@f32") > area("add@f32"), "{tool} {kit}");
-            }
+            assert!(area("multiply@f32") > area("add@f32"), "{tool} {kit}");
             if tool == "dc" {
                 let split = lib
                     .rows
@@ -161,6 +170,7 @@ fn characterize_reduced_catalog_on_every_flow() {
         keys.sort();
         digest.push(serde_json::json!({
             "tool": tool,
+            "lec": lec,
             "rows": keys.len(),
             "inconclusive": open,
             "keys": keys,
@@ -168,6 +178,88 @@ fn characterize_reduced_catalog_on_every_flow() {
     }
     insta::assert_json_snapshot!("characterize_reduced_keys", digest);
     std::fs::remove_dir_all(&build).unwrap();
+}
+
+/// The standing Design Compiler library (`<build area>/build/.characterize`, or `CC_STANDING_BUILD`'s): the
+/// RTL and synthesis job directories that this code computes for the default configuration (Design
+/// Compiler, the equivalence check off) are exactly the ones there. Nothing is written; without the
+/// standing library the test has nothing to compare and passes with a note.
+#[test]
+fn characterize_job_keys_match_the_standing_library() {
+    use cc_passes::characterize::{CharacterizeConfig, catalog, flow};
+    let area = std::env::var("CC_BUILD_AREA").unwrap_or_else(|_| {
+        format!(
+            "/scratch/{}/chiplet-compiler",
+            std::env::var("USER").unwrap_or_default()
+        )
+    });
+    let build = std::env::var("CC_STANDING_BUILD")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::path::Path::new(&area).join("build"));
+    let eda = build.join(".characterize/eda");
+    if !eda.is_dir() {
+        eprintln!("no standing library at {}: nothing to compare", eda.display());
+        return;
+    }
+    let lc = LoadedConfig::load(
+        &repo_root().join("config.toml"),
+        &[format!("paths.build_dir={}", build.display())],
+    )
+    .unwrap();
+    let section = lc.pass_section("characterize").unwrap();
+    let cfg: CharacterizeConfig = section.parse().unwrap();
+    assert!(!cfg.lec && cfg.tool == "dc", "the default configuration");
+    let d = &lc.config.tools.docker;
+    let image = format!("{}:{}", d.image, d.tag);
+    let cat = catalog::catalog(&cfg).unwrap();
+    let rtl_dir = eda.join(flow::rtl_dir_name(&image, &cat));
+    assert!(
+        rtl_dir.join("rtl.done").is_file(),
+        "{} is not in the standing library",
+        rtl_dir.display()
+    );
+    let pdks: Vec<_> = cfg
+        .pdks
+        .iter()
+        .map(|k| cc_core::pdk::load(&lc, k).unwrap())
+        .collect();
+    let env = cc_core::ArtifactStore::new(build.clone()).pass_dir(cc_pipeline::env::doctor::ENV_DIR);
+    let kits = flow::kits_of(&env, &pdks, &cfg).unwrap();
+    let designs: Vec<_> = cat
+        .iter()
+        .filter(|p| p.source.is_some())
+        .map(flow::design)
+        .collect();
+    let jobs = flow::job_list(
+        &cfg,
+        &kits,
+        &designs,
+        &rtl_dir,
+        &build.join(".characterize"),
+        &image,
+        flow::session_caps(&section.resources, &cfg),
+    )
+    .unwrap();
+    let want: std::collections::BTreeSet<String> = jobs
+        .iter()
+        .map(|j| j.dir.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    let have: std::collections::BTreeSet<String> = std::fs::read_dir(&eda)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| !n.starts_with("rtl-"))
+        .collect();
+    let missing: Vec<&String> = want.difference(&have).collect();
+    assert!(
+        missing.is_empty(),
+        "{} job directories are not in the standing library: {missing:?}",
+        missing.len()
+    );
+    assert!(
+        jobs.iter().all(|j| j.dir.join("synth.done").is_file()),
+        "every job is finished"
+    );
+    eprintln!("{} job directories found in {}", want.len(), eda.display());
 }
 
 /// Deterministic test vectors for `rescale`: edge cases and pseudo-random operands with scales over the

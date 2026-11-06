@@ -27,6 +27,10 @@
       "minimum": 0,
       "type": "integer"
     },
+    "lec": {
+      "description": "The equivalence check ran.",
+      "type": "boolean"
+    },
     "lec_equivalent": {
       "format": "uint64",
       "minimum": 0,
@@ -78,6 +82,7 @@
   "required": [
     "schema",
     "tool",
+    "lec",
     "primitives",
     "by_kind",
     "measured",

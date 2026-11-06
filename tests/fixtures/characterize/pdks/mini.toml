@@ -1,0 +1,8 @@
+# The synthetic four-cell library of the characterize smoke tests (../mini.lib), as a PDK manifest.
+# The tests point paths.pdks.mini at tests/fixtures/characterize.
+name = "mini"
+description = "synthetic four-cell test library (not a real kit)"
+root = "mini"
+liberty = "mini.lib"
+driving_cell = "BUF_X1"
+clock_ps = 2000
