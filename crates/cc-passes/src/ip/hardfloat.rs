@@ -83,7 +83,13 @@ impl IpProvider for HardFloat {
             _ => op.to_string(),
         };
         let module = generated_name("hardfloat", &name_op, e, s);
-        let binary = [("a", "a0"), ("b", "a1"), ("rnd", "3'b000"), ("z", "z"), ("flags", "")];
+        let binary = [
+            ("a", "a0"),
+            ("b", "a1"),
+            ("rnd", "3'b000"),
+            ("z", "z"),
+            ("flags", ""),
+        ];
         let unary = [("a", "a0"), ("rnd", "3'b000"), ("z", "z"), ("flags", "")];
         let ports: Vec<(&str, &str)> = match op {
             CoreOp::Add | CoreOp::Sub | CoreOp::Mul => binary.to_vec(),
@@ -135,10 +141,9 @@ impl IpProvider for HardFloat {
                 ]);
                 unary.to_vec()
             }
-            CoreOp::Convert {
-                exp_width,
-                sig_width,
-            } if format_ok(exp_width, sig_width) && (exp_width, sig_width) != (e, s) => {
+            CoreOp::Convert { exp_width, sig_width }
+                if format_ok(exp_width, sig_width) && (exp_width, sig_width) != (e, s) =>
+            {
                 args.extend([
                     "--out-exp".into(),
                     exp_width.to_string(),

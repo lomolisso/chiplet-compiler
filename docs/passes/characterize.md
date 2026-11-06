@@ -45,14 +45,18 @@
      `provisional`, the netlist path and hash, the report paths.
    - `out/library/coverage.json` (`Coverage`): each primitive `measured`, `provisional` or `pending`
      (with its reason) and its row count.
-   - `out/library/rtl/<id>.{x,v}`, `netlist/<kit>/<target>/<id>.v`,
+   - `out/library/routes.json` (`Routes`, schema `characterize_routes`, `cc.characterize.routes/1`): the
+     flow and its IP providers, and per float op of the catalog its route (`core`, `composition`, `glue`,
+     `excluded` or `gap`) with the cores (provider, core op, format, module, accuracy, subnormal mode), the
+     recipe, the `[numerics]` budget, the bound and whether it is within the budget; the keys of the gaps.
+   - `out/library/rtl/<id>.{x,v,vhdl}`, `netlist/<kit>/<target>/<id>.v`,
      `reports/<kit>/<target>/<id>.{area,qor,timing,power,check,lec}.rpt` and `<id>.log` (the design's
      part of the session log, then `@@lec` and its part of the equivalence log).
    - `out/library/summary.json` (`Summary`, `cc.characterize.summary/2`): the flow, whether the
      equivalence check ran (`lec`), primitives by kind, measured / provisional / pending, rows, rows
      proven equivalent, DesignWare rows, tool sessions run and reused, tool time.
    - `views/library.md`: area and delay per op and type, area against width with the fitted exponents
-     and the flags, the pending primitives. Outside `out/`: `eda/` (the job directories) and `alib/`
+     and the flags, the pending primitives, the float routes' gaps. Outside `out/`: `eda/` (the job directories) and `alib/`
      (Design Compiler's library analysis).
 
 4. **Algorithm.**
@@ -69,6 +73,20 @@
       the flip-flop check caught), a split multiplier per `split_multipliers` (w, n), and last, so that
       adding them keeps the earlier job batches, a `rescale@i<n>` per signed width of `int_widths` when
       `convert@i32>f32` has RTL (`merge`'s fixed requantization, `cc_smt::ops::rescale`).
+   1a. *Float routes* (`ip/routes.rs`, design §4.12). Every float op of the catalog (a `convert` with a
+      float side included) is mapped to the IP cores of the flow, through the providers of `providers` for
+      `tool` in order (docs/framework/adapters.md, `IpProvider`): one core at the op's format, or at a wider
+      one with exact widening and one rounding back (an exact operator only where that double rounding is
+      innocuous, q ≥ 2p + 2: FP8 through f16, f16 and bf16 through f32; an approximate one when 1/2 +
+      e 2^(p - q) ulps stays within its `[numerics]` budget, e the core's bound); without a candidate within
+      the budget, the first core found is accepted at its documented guarantee and marked so (or as having
+      no ulp bound: DesignWare's sine, XLS's absolute contract). E4M3FN has no core of its own. A
+      composition lists its cores (rsqrt as sqrt(1/x) without an rsqrt core; power as one core, else
+      exp2(y log2 x), else exp(y ln x); tanh; log_plus_one by Goldberg's formula; round to integral by
+      `to_int` and `from_int`); sign, abs, negate, select, `is_finite`, exact widening, bool conversions and
+      the E4M3FN encoding are glue; float `remainder` is excluded (constant computation only). An op no
+      provider covers is a gap: listed in `routes.json`, the view and the log, never a failure. With the
+      defaults neither flow has a gap.
    2. *RTL.* Integer and bool ops are DSLX mirroring `cc_smt::ops`: wrapping arithmetic, XLA's results for
       `x / 0 = -1`, `INT_MIN / -1 = INT_MIN`, `x % 0 = x`, `INT_MIN % -1 = 0`, a remainder with the sign of
       the dividend. Float ops call XLS's `apfloat` library (`add`, `sub`, `mul`, `eq_2`, `lt_2`, `lte_2`,
@@ -90,6 +108,15 @@
       result with the characterized `convert_i32_f32`. Its rows are provisional with that conversion; the
       deep test `rescale_rtl_matches_its_reference` simulates the core (iverilog, in the image) against
       `cc_smt::ops::rescale_reference` on edge cases and 3000 operands per width.
+      A source is DSLX, Verilog, VHDL (written as `<id>.vhdl`) or generated: an IP core written in the same
+      container by a generator, one line of the RTL script each, after the DSLX loop, named after the
+      primitive (`hardfloat-gen <args> --module <id> --out <id>.v`; `flopoco <args> name=<id>
+      outputFile=<id>.vhdl`; an XLS DSLX library function `top` of `$XLS_DSLX_PATH/<file>` through
+      `ir_converter_main`, `opt_main` and combinational `codegen_main` to `<id>.v`). A failing generator
+      prints an `Error:` line and fails the step; its messages are in `<id>.err`. A catalog without generated
+      sources gets the script as before they existed, byte for byte. A design reads its own RTL file after
+      its dependencies', followed transitively (each file once), and carries the vendor libraries
+      (`libraries`, e.g. `designware`) of all of them.
    3. *Jobs.* The designs go in batches of `batch`, one job per (kit, target, batch): a directory
       `eda/<kit>-<target>-<hash>/` named by the hash of the flow's name, the `.lib` and `.db` hashes, the
       toolchain image (only for a flow that runs in it, Yosys; Design Compiler runs on the host, and the
@@ -113,7 +140,11 @@
         a different netlist: a 32-bit divider after a 16-bit one came out at 15 614 instead of 9 340 µm²,
         and only the second one was provable): `compile_ultra -no_autoungroup` (hierarchy kept, so a split multiplier reports
         its pieces) with DesignWare parts kept as blocks (`compile_ultra_ungroup_dw false`), and
-        `alib_library_analysis_path` on `alib/`. The ASAP7 group libraries are merged
+        `alib_library_analysis_path` on `alib/`. VHDL files are analyzed first (`analyze -format vhdl`),
+        then the Verilog files. A job whose design instantiates DesignWare components links DesignWare's
+        synthetic library: `dw_foundation.sldb` from the installation's `libraries/syn` added to
+        `search_path`, `synthetic_library` set and appended to `link_library`; every other job's script is
+        unchanged (its text is part of its key). The ASAP7 group libraries are merged
         into one by doctor because DC's library analysis needs one library with inverters and flops: on
         the five group `.db` files it leaves placeholders and repeats the analysis (about 100 s) on every
         compile. With `lec`, Formality then checks RTL against netlist with the SVF, one design after the
@@ -124,7 +155,10 @@
         hours), and strategies s2 and s3 after 5 minutes each; with the DesignWare divider kept as a
         block Formality proves it in 8 s. Keeping the blocks costs DC the optimization across their
         boundaries.
-      - Yosys: `synth -flatten`, `dfflibmap`, ABC mapping at the period (`map -D`, then `stime -p`),
+      - Yosys: VHDL through the GHDL plugin (`yosys -m ghdl`, `ghdl --std=08 -fsynopsys rtl/<f>.vhdl -e
+        <f>` per file, its entity named after the file), then `read_verilog` of the Verilog files; a design
+        that instantiates a vendor library's cells reports an error instead (the fit checks keep it out);
+        `synth -flatten`, `dfflibmap`, ABC mapping at the period (`map -D`, then `stime -p`),
         `stat -liberty`; with `lec`, Yosys' equivalence flow between the RTL and the netlist in the same
         script (`equiv_make` pairs
         signals by name, registers included; `equiv_simple -seq 2`, `equiv_induct -seq 2`,
@@ -159,14 +193,21 @@
    [2, 4, 8, 16, 32]`, `float_formats = ["f32", "f16", "bf16", "f8e4m3fn"]`, `mux_inputs = [2 … 8]`,
    `mux_widths = [1, 2, 4, 8, 16, 32]`, `register_widths = [1, 2, 4, 8, 16, 32]`, `split_multipliers =
    [[8, 4], [16, 8], [32, 8], [32, 16]]`, `load_fanout = 4`, `lec_timeout_min = 2`, `lec_strategies = []`
-   (both with `lec`), `batch = 24`, `cores = 2` (per Design Compiler session), `views = true`. The corner
+   (both with `lec`), `batch = 24`, `cores = 2` (per Design Compiler session), `providers = { dc =
+   ["designware", "hardfloat"], yosys = ["hardfloat", "flopoco", "xls_math"] }` (the float IP providers
+   per flow, in the order a core is looked for; a provider that does not serve its flow, or an unknown one,
+   is a configuration error), `views = true`. The routes also read `[numerics]` (design §6.4), whose hash
+   is part of the pass's cache key. The corner
    is the manifest's: Nangate45's only corner (typical) and ASAP7's `vt`/`corner` (RVT, TT). Resources:
    `threads = 2`, `memory_gb = 8`, `timeout_min = 600`.
 
 6. **Verification** (`verify.rs`; it reads the copies in `out/library/`, the Liberty files and the
    config, never the run's results):
    - `catalog`: the catalog regenerated from the config equals `catalog.json`.
-   - `rtl`: every source in `rtl/` equals the catalog's, and every primitive with RTL has its Verilog.
+   - `rtl`: every written source in `rtl/` (DSLX, Verilog, VHDL) equals the catalog's, and every primitive
+     with RTL has its non-empty RTL file (a generated one included).
+   - `routes`: the float routes regenerated from the catalog, the providers and `[numerics]` equal
+     `routes.json`; the gaps are counted and listed (a gap does not fail the check).
    - `complete`: exactly one row per primitive with RTL, kit and target, none for anything else; the
      coverage states each primitive as the catalog does, every pending one with its reason.
    - `<kit>:libraries`: the `.lib` and `.db` the rows were measured on are the ones there now, with the
@@ -204,7 +245,9 @@
    an edited catalog or RTL file, a datapath type the catalog lacks, an area below half of a narrower
    width's; an inconclusive check passes with clean sanity checks and fails with a wrong port; a mild
    off-trend point stays a note; with `lec` off no equivalence check runs, and turning it on runs only
-   the check; a flow no registry has is a configuration error.
+   the check; a flow no registry has is a configuration error, and so is an unknown IP provider or one
+   listed for a flow it does not serve; an edited `routes.json` fails `routes`, and a flow without a
+   provider for the transcendentals lists them as gaps and stays green.
 
 7. **Resources.** Full catalog at the defaults (2026-11-02, iacoma227, DC + Formality W-2024.09, 2
    parallel sessions): 681 primitives, 635 with RTL, 2 540 rows. Synthesis about 5.3 h of wall time (one
@@ -242,6 +285,12 @@
    multiplier included now that its equivalence flow is off).
 
 8. **Limitations.**
+   - The cheap checks parse the top module's Verilog: a VHDL core is a dependency of a Verilog wrapper,
+     never a top. GHDL analyzes every VHDL file of a job into one work library: two FloPoCo cores of one
+     design with a sub-entity of the same name but different contents would clash (a wrapper with several
+     FloPoCo operators of the same widths, as in the deep test, is fine).
+   - With `lec`, Formality is not set up for DesignWare components instantiated in the RTL (only inferred
+     ones, through the SVF).
    - Float rows are provisional (XLS `apfloat`: subnormals flushed, IEEE special values for E4M3FN) and
      12 float ops are pending until the third-party float IP cores are integrated; `merge` must treat pending
      primitives as unpriced.

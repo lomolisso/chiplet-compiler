@@ -608,7 +608,10 @@ fn float_routes_are_written_and_verified() {
     let s = Setup::green();
     let r: cc_passes::ip::routes::Routes =
         serde_json::from_str(&std::fs::read_to_string(s.out("routes.json")).unwrap()).unwrap();
-    assert_eq!((r.flow.as_str(), r.providers.clone()), ("dc", vec!["designware".to_string(), "hardfloat".to_string()]));
+    assert_eq!(
+        (r.flow.as_str(), r.providers.clone()),
+        ("dc", vec!["designware".to_string(), "hardfloat".to_string()])
+    );
     assert!(r.gaps.is_empty(), "{:?}", r.gaps);
     let add = r.routes.iter().find(|x| x.key == "add@f16").unwrap();
     assert_eq!(add.cores[0].module, "DW_fp_add");

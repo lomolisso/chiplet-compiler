@@ -71,7 +71,13 @@ impl IpProvider for DesignWare {
         };
         let cr = || contract(Accuracy::CorrectlyRounded, true, Subnormals::Ieee);
         let ulp = |u: f64| contract(Accuracy::Ulp { ulp: u }, true, Subnormals::Ieee);
-        let binary = [("a", "a0"), ("b", "a1"), ("rnd", "3'b000"), ("z", "z"), ("status", "")];
+        let binary = [
+            ("a", "a0"),
+            ("b", "a1"),
+            ("rnd", "3'b000"),
+            ("z", "z"),
+            ("status", ""),
+        ];
         let unary_rnd = [("a", "a0"), ("rnd", "3'b000"), ("z", "z"), ("status", "")];
         let unary = [("a", "a0"), ("z", "z"), ("status", "")];
         let (inst, c) = match op {
@@ -88,9 +94,7 @@ impl IpProvider for DesignWare {
                 cr(),
             ),
             CoreOp::Sqrt if in_range(253) => (instance("DW_fp_sqrt", &widths, &unary_rnd, e, s), cr()),
-            CoreOp::Rsqrt if in_range(253) => {
-                (instance("DW_fp_invsqrt", &widths, &unary_rnd, e, s), cr())
-            }
+            CoreOp::Rsqrt if in_range(253) => (instance("DW_fp_invsqrt", &widths, &unary_rnd, e, s), cr()),
             CoreOp::Exp if in_range(57) => (
                 instance("DW_fp_exp", &with(vec![p("arch", 0)]), &unary, e, s),
                 ulp(2.0),

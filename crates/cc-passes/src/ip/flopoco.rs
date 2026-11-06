@@ -45,7 +45,7 @@ impl IpProvider for FloPoCo {
         if !(5..=11).contains(&e) || !(5..=52).contains(&s) {
             return None;
         }
-        let exp_fits = u64::from(s) + 4 <= (1u64 << (e - 1)) - 1;
+        let exp_fits = u64::from(s) + 4 < (1u64 << (e - 1));
         let w = |k: &str, v: u32| format!("{k}={v}");
         let (args, ports, accuracy, specials): (Vec<String>, Vec<(&str, &str)>, Accuracy, bool) = match op {
             CoreOp::Exp if exp_fits => (
@@ -73,7 +73,13 @@ impl IpProvider for FloPoCo {
                     "OutputIEEE"
                 };
                 (
-                    vec![name.into(), w("wEIn", e), w("wFIn", s), w("wEOut", e), w("wFOut", s)],
+                    vec![
+                        name.into(),
+                        w("wEIn", e),
+                        w("wFIn", s),
+                        w("wEOut", e),
+                        w("wFOut", s),
+                    ],
                     vec![("X", "a0"), ("R", "z")],
                     Accuracy::CorrectlyRounded,
                     true,
@@ -88,7 +94,13 @@ impl IpProvider for FloPoCo {
             _ => model(&op),
         };
         Some(CoreOffer {
-            instance: instance(&generated_name("flopoco", &op.to_string(), e, s), &[], &ports, e, s),
+            instance: instance(
+                &generated_name("flopoco", &op.to_string(), e, s),
+                &[],
+                &ports,
+                e,
+                s,
+            ),
             contract: contract(accuracy, specials, Subnormals::Flush),
             delay_ps: None,
             model,

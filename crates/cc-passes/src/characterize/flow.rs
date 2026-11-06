@@ -851,7 +851,12 @@ echo "@@done"
     #[test]
     fn the_rtl_script_is_unchanged_without_generated_sources() {
         assert_eq!(rtl_script(&[]), BEFORE);
-        let cat = [prim("w", &[], Source::Verilog("module w; endmodule\n".into()), &[])];
+        let cat = [prim(
+            "w",
+            &[],
+            Source::Verilog("module w; endmodule\n".into()),
+            &[],
+        )];
         assert_eq!(rtl_script(&cat), BEFORE);
     }
 
@@ -862,7 +867,13 @@ echo "@@done"
                 "hf",
                 &[],
                 Source::Generated(Generator::Hardfloat {
-                    args: vec!["add".into(), "--exp".into(), "5".into(), "--sig".into(), "10".into()],
+                    args: vec![
+                        "add".into(),
+                        "--exp".into(),
+                        "5".into(),
+                        "--sig".into(),
+                        "10".into(),
+                    ],
                 }),
                 &[],
             ),
@@ -870,7 +881,12 @@ echo "@@done"
                 "fe",
                 &[],
                 Source::Generated(Generator::Flopoco {
-                    args: vec!["FPExp".into(), "wE=5".into(), "wF=10".into(), "frequency=0".into()],
+                    args: vec![
+                        "FPExp".into(),
+                        "wE=5".into(),
+                        "wF=10".into(),
+                        "frequency=0".into(),
+                    ],
                 }),
                 &[],
             ),
@@ -885,10 +901,16 @@ echo "@@done"
             ),
         ];
         let s = rtl_script(&cat);
-        assert!(s.starts_with(BEFORE.trim_end_matches("echo \"@@done\"\n")) && s.ends_with("echo \"@@done\"\n"));
+        assert!(
+            s.starts_with(BEFORE.trim_end_matches("echo \"@@done\"\n")) && s.ends_with("echo \"@@done\"\n")
+        );
         assert!(s.contains("hardfloat-gen add --exp 5 --sig 10 --module hf --out hf.v > hf.err 2>&1 || echo \"Error: HardFloat generation failed on hf\"\n"));
-        assert!(s.contains("flopoco FPExp wE=5 wF=10 frequency=0 name=fe outputFile=fe.vhdl > fe.err 2>&1 || echo"));
-        assert!(s.contains("--top=fp_sin_32 \"$XLS_DSLX_PATH\"/third_party/xls_go_math/fp_sincos_32.x > xs.ir"));
+        assert!(s.contains(
+            "flopoco FPExp wE=5 wF=10 frequency=0 name=fe outputFile=fe.vhdl > fe.err 2>&1 || echo"
+        ));
+        assert!(
+            s.contains("--top=fp_sin_32 \"$XLS_DSLX_PATH\"/third_party/xls_go_math/fp_sincos_32.x > xs.ir")
+        );
         assert!(s.contains("--module_name=xs --output_verilog_path=xs.v; } 2> xs.err || echo"));
         assert_ne!(rtl_dir_name("i:1", &cat), rtl_dir_name("i:1", &cat[..1]));
     }

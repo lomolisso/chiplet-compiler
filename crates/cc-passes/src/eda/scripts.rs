@@ -71,7 +71,9 @@ pub fn dc(preamble: &str, kit: &Kit, designs: &[Design], period_ps: f64, alib: &
     let p = num(kit.period(period_ps));
     // A job with DesignWare components links DesignWare's synthetic library; every other job's script is
     // unchanged (its text is part of the job's key).
-    let dw = designs.iter().any(|d| d.libraries.iter().any(|l| l == DESIGNWARE));
+    let dw = designs
+        .iter()
+        .any(|d| d.libraries.iter().any(|l| l == DESIGNWARE));
     let (dw_path, link) = if dw {
         (
             " [file join $synopsys_root libraries syn]",
@@ -247,12 +249,22 @@ mod tests {
 
     #[test]
     fn designware_jobs_link_the_synthetic_library_and_others_stay_as_they_were() {
-        let plain = dc("", &kit(), &[design("add_i8", &["add_i8.v"], &[])], 2000.0, Path::new("/a"));
+        let plain = dc(
+            "",
+            &kit(),
+            &[design("add_i8", &["add_i8.v"], &[])],
+            2000.0,
+            Path::new("/a"),
+        );
         assert!(plain.contains(
             "set search_path [list . /env/out/pdk_db]\nset target_library [list NangateOpenCellLibrary.db]\nset link_library [concat * $target_library]\n"
         ));
         assert!(!plain.contains("synthetic_library") && !plain.contains("vhdl"));
-        assert!(plain.contains("set_svf add_i8.svf\nanalyze -format verilog [list rtl/add_i8.v]\nelaborate add_i8\n"));
+        assert!(
+            plain.contains(
+                "set_svf add_i8.svf\nanalyze -format verilog [list rtl/add_i8.v]\nelaborate add_i8\n"
+            )
+        );
         let dw = dc(
             "",
             &kit(),
@@ -260,7 +272,11 @@ mod tests {
             2000.0,
             Path::new("/a"),
         );
-        assert!(dw.contains("set search_path [list . /env/out/pdk_db [file join $synopsys_root libraries syn]]\n"));
+        assert!(
+            dw.contains(
+                "set search_path [list . /env/out/pdk_db [file join $synopsys_root libraries syn]]\n"
+            )
+        );
         assert!(dw.contains(
             "set synthetic_library [list dw_foundation.sldb]\nset link_library [concat * $target_library $synthetic_library]\n"
         ));
@@ -270,16 +286,25 @@ mod tests {
     fn vhdl_is_read_before_verilog_in_every_flow() {
         let d = [design("w", &["core.vhdl", "w.v"], &[])];
         let s = dc("", &kit(), &d, 2000.0, Path::new("/a"));
-        assert!(s.contains("analyze -format vhdl [list rtl/core.vhdl]\nanalyze -format verilog [list rtl/w.v]\nelaborate w\n"));
+        assert!(s.contains(
+            "analyze -format vhdl [list rtl/core.vhdl]\nanalyze -format verilog [list rtl/w.v]\nelaborate w\n"
+        ));
         let f = formality("", &kit(), &d, 2, &[]);
-        assert!(f.contains("read_vhdl -r [list rtl/core.vhdl]\nread_verilog -r [list rtl/w.v]\nset_top r:/WORK/w\n"));
+        assert!(f.contains(
+            "read_vhdl -r [list rtl/core.vhdl]\nread_verilog -r [list rtl/w.v]\nset_top r:/WORK/w\n"
+        ));
         let y = yosys("/kit/x.lib", &d, 1000.0, Some(60));
         assert!(y.contains("yosys -m ghdl -q -l w.log -p \"ghdl --std=08 -fsynopsys rtl/core.vhdl -e core; read_verilog rtl/w.v; hierarchy -check -top w;"));
         assert!(y.contains("yosys -m ghdl -q -l w.lec.rpt -p \"ghdl --std=08 -fsynopsys rtl/core.vhdl -e core; read_verilog rtl/w.v; prep"));
         let plain = yosys("/kit/x.lib", &[design("a", &["a.v"], &[])], 1000.0, None);
         assert!(plain.contains("yosys -q -l a.log -p \"read_verilog rtl/a.v; hierarchy"));
         // A vendor library is not linked in this flow: the design reports an error instead of running.
-        let dw = yosys("/kit/x.lib", &[design("e", &["e.v"], &[DESIGNWARE])], 1000.0, None);
+        let dw = yosys(
+            "/kit/x.lib",
+            &[design("e", &["e.v"], &[DESIGNWARE])],
+            1000.0,
+            None,
+        );
         assert!(dw.contains("Error: e instantiates the designware library") && !dw.contains("yosys -q"));
     }
 }

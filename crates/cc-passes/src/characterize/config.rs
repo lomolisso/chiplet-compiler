@@ -77,10 +77,17 @@ impl Default for CharacterizeConfig {
             batch: 24,
             cores: 2,
             providers: BTreeMap::from([
-                ("dc".to_string(), vec!["designware".to_string(), "hardfloat".to_string()]),
+                (
+                    "dc".to_string(),
+                    vec!["designware".to_string(), "hardfloat".to_string()],
+                ),
                 (
                     "yosys".to_string(),
-                    vec!["hardfloat".to_string(), "flopoco".to_string(), "xls_math".to_string()],
+                    vec![
+                        "hardfloat".to_string(),
+                        "flopoco".to_string(),
+                        "xls_math".to_string(),
+                    ],
                 ),
             ]),
             views: true,

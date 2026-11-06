@@ -151,10 +151,7 @@ impl fmt::Display for CoreOp {
                 write!(f, "to_int.{}.{}{width}", rnd.name(), su(*signed))
             }
             CoreOp::FromInt { signed, width } => write!(f, "from_int.{}{width}", su(*signed)),
-            CoreOp::Convert {
-                exp_width,
-                sig_width,
-            } => write!(f, "convert.e{exp_width}m{sig_width}"),
+            CoreOp::Convert { exp_width, sig_width } => write!(f, "convert.e{exp_width}m{sig_width}"),
             op => f.write_str(op.family()),
         }
     }
@@ -271,7 +268,9 @@ pub enum Encoding {
 pub enum Timing {
     Combinational,
     /// `start` to `done` in at most `max_cycles` clock cycles.
-    Iterative { max_cycles: u32 },
+    Iterative {
+        max_cycles: u32,
+    },
 }
 
 /// What a provider answers for one core operation at one width.
@@ -340,7 +339,15 @@ mod tests {
             let op: CoreOp = s.parse().unwrap();
             assert_eq!(op.to_string(), s);
         }
-        for bad in ["", "to_int.rne", "to_int.up.s8", "from_int.x8", "convert.5m10", "add.rne", "tanh"] {
+        for bad in [
+            "",
+            "to_int.rne",
+            "to_int.up.s8",
+            "from_int.x8",
+            "convert.5m10",
+            "add.rne",
+            "tanh",
+        ] {
             assert!(bad.parse::<CoreOp>().is_err(), "{bad}");
         }
         assert!(CoreOp::Add.exact() && !CoreOp::Exp.exact());

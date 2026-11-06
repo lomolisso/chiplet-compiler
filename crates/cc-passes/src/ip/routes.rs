@@ -214,9 +214,13 @@ fn single(find: &Finder, op: &CoreOp, t: Format, budget: f64) -> Draft {
         let within = bound.map(|b| b <= budget.max(0.5));
         let note = match (native, within) {
             (true, Some(true)) => String::new(),
-            (false, Some(true)) => format!("through {} (exact widening, one rounding)", format_name(q.e, q.m)),
+            (false, Some(true)) => {
+                format!("through {} (exact widening, one rounding)", format_name(q.e, q.m))
+            }
             (_, Some(false)) => "accepted at the core's documented guarantee, above the budget".to_string(),
-            (_, None) => "no ulp bound in the contract: accepted at the core's documented guarantee".to_string(),
+            (_, None) => {
+                "no ulp bound in the contract: accepted at the core's documented guarantee".to_string()
+            }
         };
         let d = Draft {
             kind: Some(RouteKind::Core),
@@ -235,7 +239,10 @@ fn single(find: &Finder, op: &CoreOp, t: Format, budget: f64) -> Draft {
     }
     fallback.unwrap_or_else(|| Draft {
         kind: Some(RouteKind::Gap),
-        note: format!("no provider of the flow offers `{op}` at {} or wider", format_name(t.e, t.m)),
+        note: format!(
+            "no provider of the flow offers `{op}` at {} or wider",
+            format_name(t.e, t.m)
+        ),
         ..Draft::default()
     })
 }
@@ -296,7 +303,9 @@ fn int_type(name: &str) -> Option<(bool, u32)> {
     if let Some(w) = name.strip_prefix("ui") {
         return w.parse().ok().map(|w| (false, w));
     }
-    name.strip_prefix('i').and_then(|w| w.parse().ok()).map(|w| (true, w))
+    name.strip_prefix('i')
+        .and_then(|w| w.parse().ok())
+        .map(|w| (true, w))
 }
 
 fn route_of(find: &Finder, p: &Primitive, numerics: &NumericsConfig) -> Option<Route> {
@@ -345,7 +354,12 @@ fn route_of(find: &Finder, p: &Primitive, numerics: &NumericsConfig) -> Option<R
                 &[CoreOp::Log2, CoreOp::Mul, CoreOp::Exp2],
                 t,
             ),
-            composition(find, "exp(y ln x), wider ln", &[CoreOp::Ln, CoreOp::Mul, CoreOp::Exp], t),
+            composition(
+                find,
+                "exp(y ln x), wider ln",
+                &[CoreOp::Ln, CoreOp::Mul, CoreOp::Exp],
+                t,
+            ),
         ]),
         "tanh" => composition(
             find,
@@ -375,10 +389,7 @@ fn route_of(find: &Finder, p: &Primitive, numerics: &NumericsConfig) -> Option<R
                         signed: true,
                         width,
                     },
-                    CoreOp::FromInt {
-                        signed: true,
-                        width,
-                    },
+                    CoreOp::FromInt { signed: true, width },
                 ],
                 t,
             )
@@ -531,16 +542,25 @@ mod tests {
         let open = routes_for("yosys");
         // f32 exp: DesignWare's 2 ulps meet the f32 budget of 2; f16 exp (budget 1) runs through f32.
         let e = get(&dc, "exponential@f32");
-        assert_eq!((e.cores[0].module.as_str(), e.within_budget), ("DW_fp_exp", Some(true)));
+        assert_eq!(
+            (e.cores[0].module.as_str(), e.within_budget),
+            ("DW_fp_exp", Some(true))
+        );
         let e = get(&dc, "exponential@f16");
         assert_eq!(e.cores[0].format, "f32");
         assert_eq!(e.bound_ulp, Some(0.5 + 2.0 * 2f64.powi(-13)));
         // The open flow: FloPoCo is faithful (1 ulp) at f16 already.
         let e = get(&open, "exponential@f16");
-        assert_eq!((e.cores[0].provider.as_str(), e.cores[0].format.as_str()), ("flopoco", "f16"));
+        assert_eq!(
+            (e.cores[0].provider.as_str(), e.cores[0].format.as_str()),
+            ("flopoco", "f16")
+        );
         // FP8 arithmetic through f16 (innocuous double rounding), E4M3FN never native.
         let a = get(&dc, "add@f8e4m3fn");
-        assert_eq!((a.cores[0].module.as_str(), a.cores[0].format.as_str()), ("DW_fp_add", "f16"));
+        assert_eq!(
+            (a.cores[0].module.as_str(), a.cores[0].format.as_str()),
+            ("DW_fp_add", "f16")
+        );
         let a = get(&open, "multiply@f8e5m2");
         assert_eq!(a.cores[0].format, "f8e5m2");
         // Narrowing float conversion: HardFloat in both flows.
@@ -548,9 +568,15 @@ mod tests {
         assert_eq!(get(&dc, "convert@bf16>f32").kind, RouteKind::Glue);
         // f32 sine: DesignWare unbounded in DC, XLS's absolute contract in the open flow.
         let s = get(&dc, "sine@f32");
-        assert_eq!((s.cores[0].module.as_str(), s.within_budget), ("DW_fp_sincos", None));
+        assert_eq!(
+            (s.cores[0].module.as_str(), s.within_budget),
+            ("DW_fp_sincos", None)
+        );
         let s = get(&open, "sine@bf16");
-        assert_eq!((s.cores[0].provider.as_str(), s.cores[0].format.as_str()), ("xls_math", "f32"));
+        assert_eq!(
+            (s.cores[0].provider.as_str(), s.cores[0].format.as_str()),
+            ("xls_math", "f32")
+        );
         // Compositions where no core exists.
         assert_eq!(get(&dc, "rsqrt@f32").cores[0].module, "DW_fp_invsqrt");
         assert_eq!(get(&open, "rsqrt@f32").kind, RouteKind::Composition);
@@ -578,6 +604,10 @@ mod tests {
         assert!(r.gaps.contains(&"exponential@f32".to_string()), "{:?}", r.gaps);
         assert!(r.gaps.contains(&"sine@f32".to_string()));
         assert!(!r.gaps.contains(&"add@f32".to_string()));
-        assert!(get(&r, "tanh@f32").note.contains("exp"), "{:?}", get(&r, "tanh@f32"));
+        assert!(
+            get(&r, "tanh@f32").note.contains("exp"),
+            "{:?}",
+            get(&r, "tanh@f32")
+        );
     }
 }

@@ -253,7 +253,8 @@ impl Default for NumericsConfig {
         ];
         let mut budget = BTreeMap::new();
         for f in NUMERICS_FORMATS {
-            let mut m: BTreeMap<String, f64> = NUMERICS_OPS[..5].iter().map(|o| (o.to_string(), 0.0)).collect();
+            let mut m: BTreeMap<String, f64> =
+                NUMERICS_OPS[..5].iter().map(|o| (o.to_string(), 0.0)).collect();
             for (op, ulp) in f32 {
                 m.insert(op.to_string(), if f == "f32" { ulp } else { 1.0 });
             }
