@@ -109,7 +109,8 @@ parameters and contracts from the vendors' documentation, listed in each module)
   integer sizes 3-512); HardFloat w ≥ 3, p = sig_width + 1 ≥ 3, p ≤ 2^(w-2) + 3, to_int at least 3 bits
   (`RecFNToIN`), add and sub only where `AddRawFN`'s alignment mask fits, `(p + 5)/4 ≤ 2^(⌈log2 p⌉ - 2)`
   (generating them fails at p = 3, 4, 7, 8, 15, 16, 31: bf16's adder is not available); FloPoCo the widths its
-  unit tests run (`wE` 5-11, `wF` 5-52; exp and pow also `wF + 4 ≤ 2^(wE-1) - 1`); XLS f32 only. Round to
+  unit tests run (`wE` 5-11, `wF` 5-52; exp and pow also `wF + 4 ≤ 2^(wE-1) - 1`; ln `wF ≥ 9`: below, FPLog's VHDL
+  assigns a 16-bit table output to a 15-bit signal); XLS f32 only. Round to
   integral is not a core anywhere: `to_int` with the mode and `from_int` with glue. FloPoCo's VHDL is read by
   Yosys through GHDL and by Design Compiler; the open flow takes division and square root from it
   (HardFloat's are iterative), the industry flow only power, which DesignWare lacks (its logarithms stop at

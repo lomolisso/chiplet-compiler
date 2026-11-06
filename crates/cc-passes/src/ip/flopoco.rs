@@ -8,7 +8,7 @@
 //! | `div` | `FPDiv` | `X`, `Y`, `R` | correctly rounded |
 //! | `sqrt` | `FPSqrt` | `X`, `R` | correctly rounded |
 //! | `exp` | `FPExp` | `X`, `R` | faithful |
-//! | `ln` | `FPLog` | `X`, `R` | faithful |
+//! | `ln` | `FPLog` (`wF >= 9`) | `X`, `R` | faithful |
 //! | `pow` | `FPPow` (`type=0`: pow) | `X`, `Y`, `R` | faithful; special cases not documented |
 //! | `from_ieee`, `to_ieee` | `InputIEEE`, `OutputIEEE` (same widths) | `X`, `R` | exact |
 //!
@@ -72,7 +72,9 @@ impl IpProvider for FloPoCo {
                 Accuracy::Faithful,
                 true,
             ),
-            CoreOp::Ln => (
+            // FPLog's generated VHDL assigns a 16-bit table output to a 15-bit signal for `wF <= 8`
+            // (any `wE`; GHDL rejects it): offered from 9 fraction bits.
+            CoreOp::Ln if s >= 9 => (
                 vec!["FPLog".into(), w("wE", e), w("wF", s)],
                 vec![("X", "a0"), ("R", "z")],
                 Accuracy::Faithful,

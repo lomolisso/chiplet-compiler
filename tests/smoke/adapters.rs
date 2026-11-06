@@ -481,7 +481,8 @@ fn documented(provider: &str, op: &str, e: u32, s: u32) -> bool {
         },
         "flopoco" => match core {
             CoreOp::Exp | CoreOp::Pow => fl_exp,
-            CoreOp::Div | CoreOp::Sqrt | CoreOp::Ln | CoreOp::FromIeee | CoreOp::ToIeee => fl,
+            CoreOp::Ln => fl && s >= 9,
+            CoreOp::Div | CoreOp::Sqrt | CoreOp::FromIeee | CoreOp::ToIeee => fl,
             _ => false,
         },
         "xls_math" => matches!(core, CoreOp::Sin | CoreOp::Cos) && (e, s) == (8, 23),
