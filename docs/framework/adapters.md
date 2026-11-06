@@ -78,7 +78,7 @@ parameters and contracts from the vendors' documentation, listed in each module)
   |---|---|
   | `add`, `sub`, `mul`, `div`, `pow` | `a0`, `a1` → `z` |
   | `sqrt`, `rsqrt`, `exp`, `exp2`, `ln`, `log2`, `sin`, `cos` | `a0` → `z` |
-  | `compare` | `a0`, `a1` → `lt`, `eq`, `gt` (DesignWare also `unordered`); quiet |
+  | `compare` | `a0`, `a1` → `z` = `a0 < a1` (one bit; quiet less-than: false for NaN). The glue derives every predicate, maximum and minimum from less-than cores (docs/framework/float.md) |
   | `to_int.<rne\|rtz\|floor\|ceil>.<s\|u><w>` | `a0` → `z`, a `w`-bit integer, saturating |
   | `from_int.<s\|u><w>` | `a0` (integer) → `z`, nearest even; the widths are the result's |
   | `convert.e<E>m<M>` | `a0` → `z` in the (E, M) format, nearest even |
@@ -88,9 +88,10 @@ parameters and contracts from the vendors' documentation, listed in each module)
   result, a constant such as `3'b000`, or empty for an open output; an iterative core adds `clk`, `rst`,
   `start`, `done`), the `Contract` (accuracy: correctly rounded, faithful, n ulps, an absolute bound or
   unbounded; IEEE special values; subnormals IEEE or flushed), a delay hint (none yet: `characterize`
-  measures), the bit-level Python model (`ieee.<op>`: the IEEE operation correctly rounded at the instance's
-  widths under its subnormal mode; `reference.<op>`: the real function correctly rounded, within every
-  contract here; `flopoco.<op>` for FloPoCo's encoding changes), the source (`Library { name }`: a vendor
+  measures), the bit-level Python model (a name of `python/cc_float/models.py`, `MODEL_NAMES`; the
+  conformance test checks every offer's: `ieee.<op>`: the IEEE operation correctly rounded at the
+  instance's widths, exact by rationals; `reference.<op>`: the real function rounded once, within every
+  contract here; `flopoco.<from_ieee|to_ieee>` for FloPoCo's encoding changes), the source (`Library { name }`: a vendor
   library the flow links; `Generated { generator }`: a generator run in the RTL step), the encoding (IEEE or
   FloPoCo's) and the timing (combinational, or iterative with a cycle bound). A generated core's module is
   `<provider>_e<E>m<M>_<op>`; the primitive that holds it carries that id.
@@ -101,19 +102,25 @@ parameters and contracts from the vendors' documentation, listed in each module)
   |---|---|---|---|---|
   | `designware` | dc | add, sub, mul, div, sqrt, rsqrt (correctly rounded); exp, exp2 (2 ulps); ln (1 ulp), log2 (2 ulps), with `extra_prec = sig_width`, so `sig_width` ≤ 29; sin, cos (radians, unbounded relative error); compare; to_int (signed), from_int | IEEE subnormals (`ieee_compliance = 1`) | DesignWare (`dw_foundation.sldb`) |
   | `hardfloat` | dc, yosys | add, sub, mul, div and sqrt (iterative, at most p + 2 cycles), compare, to_int, from_int, convert; correctly rounded | IEEE subnormals | `hardfloat-gen` (Verilog) |
-  | `flopoco` | yosys | exp, ln, pow (faithful), from_ieee, to_ieee | subnormals flushed | `flopoco` (VHDL) |
+  | `flopoco` | dc, yosys | div, sqrt (correctly rounded), exp, ln, pow (faithful), from_ieee, to_ieee | subnormals flushed | `flopoco` (VHDL) |
   | `xls_math` | yosys | f32 sin, cos: \|error\| ≤ 2^-22 | subnormals flushed | `fp_sin_32`, `fp_cos_32` of `fp_sincos_32.x` |
 
   Ranges: DesignWare `exp_width` 3-31, `sig_width` 2-253 (exp 57, exp2 58, ln and log2 29, sin and cos 32;
-  integer sizes 3-512); HardFloat w ≥ 3, p = sig_width + 1 ≥ 3, p ≤ 2^(w-2) + 3; FloPoCo the widths its unit
-  tests run (`wE` 5-11, `wF` 5-52; exp and pow also `wF + 4 ≤ 2^(wE-1) - 1`); XLS f32 only. Round to integral
-  is not a core anywhere: `to_int` with the mode and `from_int` with glue (`routes`).
+  integer sizes 3-512); HardFloat w ≥ 3, p = sig_width + 1 ≥ 3, p ≤ 2^(w-2) + 3, to_int at least 3 bits
+  (`RecFNToIN`), add and sub only where `AddRawFN`'s alignment mask fits, `(p + 5)/4 ≤ 2^(⌈log2 p⌉ - 2)`
+  (generating them fails at p = 3, 4, 7, 8, 15, 16, 31: bf16's adder is not available); FloPoCo the widths its
+  unit tests run (`wE` 5-11, `wF` 5-52; exp and pow also `wF + 4 ≤ 2^(wE-1) - 1`); XLS f32 only. Round to
+  integral is not a core anywhere: `to_int` with the mode and `from_int` with glue. FloPoCo's VHDL is read by
+  Yosys through GHDL and by Design Compiler; the open flow takes division and square root from it
+  (HardFloat's are iterative), the industry flow only power, which DesignWare lacks (its logarithms stop at
+  29 significand bits, short of what an f32 power composition needs for 4 ulps).
 - **Selection and fit checks.** `[passes.characterize] providers` lists the providers of each flow in order
-  (default `dc = ["designware", "hardfloat"]`, `yosys = ["hardfloat", "flopoco", "xls_math"]`); the first
-  that answers is used. A provider listed for a flow it does not serve, or an unknown one, is a configuration
-  error. `cc_passes::ip::routes` maps every float op of the catalog to a core (native, or through a wider
-  format within the `[numerics]` budget), a composition, glue, an exclusion or a gap
-  (docs/passes/characterize.md §4.1).
+  (default `dc = ["designware", "hardfloat", "flopoco"]`, `yosys = ["hardfloat", "flopoco", "xls_math"]`);
+  the first that answers with a combinational core whose subnormal handling the wrapper allows is used. A
+  provider listed for a flow it does not serve, or an unknown one, is a configuration error.
+  `cc_passes::ip::plan` chooses every float op's wrapper and cores (native, through a wider format within
+  the `[numerics]` budget, a composition, glue, an exclusion or a gap) and `cc_passes::ip::routes` records
+  them (docs/passes/characterize.md §4.1a).
 
 ## PDK manifests (`cc_core::pdk`)
 

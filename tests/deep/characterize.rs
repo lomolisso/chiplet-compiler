@@ -180,6 +180,121 @@ fn characterize_reduced_catalog_on_every_flow() {
     std::fs::remove_dir_all(&build).unwrap();
 }
 
+/// Float rows through Design Compiler (Nangate45 at its clock): a subset that touches every kind of
+/// wrapper and core source of the industry flow: DesignWare cores at one more exponent bit (f32 and bf16
+/// divide), compare and clamp around `DW_fp_cmp`, rounding to integral (`DW_fp_flt2i` and
+/// `DW_fp_i2flt`), conversions (HardFloat's generated narrowing core, glue, integer cores), a power
+/// composition on DesignWare's log2 and exp2 (bf16) and FloPoCo's power core read as VHDL (f32). Every
+/// check of `verify` green and every float row's area above its glue's. Writes the build area's
+/// `runs/deep-float-dc/`, removed when the test passes.
+#[test]
+fn float_rows_synthesize_in_design_compiler() {
+    let area = std::env::var("CC_BUILD_AREA").unwrap_or_else(|_| {
+        format!(
+            "/scratch/{}/chiplet-compiler",
+            std::env::var("USER").unwrap_or_default()
+        )
+    });
+    let build = std::path::Path::new(&area).join("runs").join("deep-float-dc");
+    let _ = std::fs::remove_dir_all(&build);
+    let sets = vec![
+        format!("paths.build_dir={}", build.display()),
+        "passes.characterize.tool=\"dc\"".to_string(),
+        "passes.characterize.pdks=[\"nangate45\"]".to_string(),
+        "passes.characterize.targets=[\"clock\"]".to_string(),
+        "passes.characterize.ops=[\"divide\", \"compare\", \"clamp\", \"floor\", \"convert\", \"power\"]"
+            .to_string(),
+        "passes.characterize.int_widths=[8]".to_string(),
+        "passes.characterize.float_formats=[\"f32\", \"bf16\"]".to_string(),
+        "passes.characterize.mux_inputs=[2]".to_string(),
+        "passes.characterize.mux_widths=[8]".to_string(),
+        "passes.characterize.register_widths=[8]".to_string(),
+        "passes.characterize.split_multipliers=[]".to_string(),
+        "passes.characterize.resources.threads=4".to_string(),
+    ];
+    let cfg = LoadedConfig::load(&repo_root().join("config.toml"), &sets).unwrap();
+    assert!(
+        cfg.config.paths.eda_toggle.is_some(),
+        "deep tests need config.local.toml"
+    );
+    let mut text = Vec::new();
+    let env = doctor(
+        &cfg,
+        &Runners::from_config(&cfg),
+        DoctorOptions::default(),
+        &mut text,
+    )
+    .unwrap();
+    for name in ["pdk.db", "dc.nangate45"] {
+        let c = env.checks.iter().find(|c| c.name == name).unwrap();
+        assert_eq!(
+            c.status,
+            CheckStatus::Pass,
+            "{name}: {}",
+            String::from_utf8_lossy(&text)
+        );
+    }
+    let p = Pipeline::new(cc_passes::registry(), cfg).unwrap();
+    let s = p
+        .run(&RunOptions {
+            targets: vec!["characterize".into()],
+            ..RunOptions::default()
+        })
+        .unwrap();
+    let dir = p.store().pass_dir("characterize");
+    let report = dir.read_verify().unwrap().unwrap();
+    let failed: Vec<_> = report
+        .checks
+        .iter()
+        .filter(|c| c.status == CheckStatus::Fail)
+        .map(|c| (c.name.clone(), c.evidence.notes.clone()))
+        .collect();
+    assert!(failed.is_empty(), "{failed:#?}");
+    assert!(
+        matches!(
+            s.status_of("characterize"),
+            Some(RunStatus::Ok | RunStatus::CacheHit)
+        ),
+        "{s:?}"
+    );
+    let lib: Library = dir.kind(LIBRARY).read_json("library.json").unwrap();
+    let routes: cc_passes::ip::routes::Routes = dir.kind(LIBRARY).read_json("routes.json").unwrap();
+    assert!(routes.gaps.is_empty(), "{:?}", routes.gaps);
+    let row = |key: &str| {
+        lib.rows
+            .iter()
+            .find(|r| r.key == key)
+            .unwrap_or_else(|| panic!("no row {key}"))
+    };
+    for key in [
+        "divide@f32",
+        "divide@bf16",
+        "compare.LT@f32",
+        "clamp@bf16",
+        "floor@f32",
+        "convert@f32>bf16",
+        "convert@f32>i8",
+        "convert@ui8>bf16",
+        "power@bf16",
+        "power@f32",
+    ] {
+        let r = row(key);
+        let a = r.measured.area_um2.unwrap_or(0.0);
+        assert!(a > 20.0, "{key}: area {a}");
+        eprintln!(
+            "{key}: {a:.1} um2, {:?} ps, designware {}",
+            r.measured.delay_ps, r.designware
+        );
+    }
+    // The DesignWare cores are blocks of their own (kept, children in the area report); the f32 power
+    // core is FloPoCo's VHDL.
+    assert!(row("divide@f32").designware);
+    let pw = routes.routes.iter().find(|r| r.key == "power@f32").unwrap();
+    assert_eq!(pw.cores[0].provider, "flopoco");
+    assert!(row("divide@f32").measured.area_um2 > row("divide@bf16").measured.area_um2);
+    std::fs::remove_dir_all(&build).unwrap();
+}
+
 /// The standing Design Compiler library (`<build area>/build/.characterize`, or `CC_STANDING_BUILD`'s): the
 /// RTL and synthesis job directories that this code computes for the default configuration (Design
 /// Compiler, the equivalence check off) are exactly the ones there. Nothing is written; without the

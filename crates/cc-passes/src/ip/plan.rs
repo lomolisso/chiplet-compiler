@@ -82,6 +82,15 @@ pub struct Plan {
 }
 
 impl Plan {
+    /// The wrapper's Verilog around the plan's core instances (the FloPoCo ones through their IEEE
+    /// adapters), as the glue proofs read it.
+    pub fn built(&self) -> Result<cc_float::Built, String> {
+        let g = self.glue.as_ref().ok_or("no wrapper")?;
+        let instances: Vec<_> = self.cores.iter().map(wrapper_instance).collect();
+        g.build(&instances, cc_float::rtl::Mutation::None)
+            .map_err(|e| e.to_string())
+    }
+
     fn simple(kind: RouteKind, note: impl Into<String>, budget: f64) -> Plan {
         Plan {
             kind,

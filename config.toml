@@ -339,7 +339,7 @@ targets = ["clock", "fast"]      # clock: the area row at the clock target; fast
 fast_fraction = 0.05             # the fast period as a fraction of the clock target
 ops = []                         # element-wise ops of the catalog; [] = every op of the op table
 int_widths = [2, 4, 8, 16, 32]   # signed and unsigned integer widths (bool is the 1-bit type)
-float_formats = ["f32", "f16", "bf16", "f8e4m3fn"]   # RTL from XLS apfloat, provisional until float IP cores
+float_formats = ["f32", "f16", "bf16", "f8e4m3fn"]   # float primitives: wrappers around the flow's IP cores
 mux_inputs = [2, 3, 4, 5, 6, 7, 8]
 mux_widths = [1, 2, 4, 8, 16, 32]
 register_widths = [1, 2, 4, 8, 16, 32]
@@ -351,12 +351,14 @@ lec_timeout_min = 2              # with lec: limit per design (Formality verific
                                  # check does, and the row is marked inconclusive
 lec_strategies = []              # Formality alternate strategies (s2, s3, …) tried while a design is not proven;
                                  # none proved a wide divider (s2, s3, s1 on divide@ui32), so none by default
-batch = 24                       # designs per tool session (a job directory, reused by a rerun)
+batch = 24                       # designs per tool session within one op and type (a job directory, reused by a rerun)
 cores = 2                        # cores per Design Compiler session
 # Float IP providers per flow, in the order a core is looked for (docs/framework/adapters.md, IpProvider):
-# DesignWare in Design Compiler, HardFloat where it lacks a core (narrowing conversions); HardFloat, FloPoCo
-# and XLS's float library in the open flow. out/library/routes.json maps every float op to its cores or a gap.
-providers = { dc = ["designware", "hardfloat"], yosys = ["hardfloat", "flopoco", "xls_math"] }
+# DesignWare in Design Compiler, HardFloat where it lacks a core (narrowing conversions, unsigned integers),
+# FloPoCo for what neither has (f32 power); HardFloat, FloPoCo (division, square root, exp, log, power) and
+# XLS's float library in the open flow. The first combinational core that fits is used; out/library/
+# routes.json records every float op's wrapper and cores, or the gap.
+providers = { dc = ["designware", "hardfloat", "flopoco"], yosys = ["hardfloat", "flopoco", "xls_math"] }
 views = true                     # write views/library.md
 [passes.characterize.resources]
 threads = 2                      # parallel tool sessions (each also holds one of tools.eda.max_licenses)

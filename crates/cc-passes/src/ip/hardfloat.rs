@@ -10,13 +10,13 @@
 //! | `mul` | `MulRecFN` | `a`, `b`, `rnd`, `z`, `flags` |
 //! | `div`, `sqrt` | `DivSqrtRecFN_small` (iterative: at most p + 2 cycles) | `clock`, `reset`, `start`, `ready`, `a`, (`b`), `rnd`, `done`, `z`, `flags` |
 //! | `compare` | `CompareRecFN` (quiet; `lt` is `z`) | `a`, `b`, `lt`, `eq`, `gt`, `flags` |
-//! | `to_int.<rnd>.<s\|u><w>` | `RecFNToIN` (saturating) | `a`, `rnd`, `z`, `flags` |
+//! | `to_int.<rnd>.<s\|u><w>` | `RecFNToIN` (saturating; `w >= 3`) | `a`, `rnd`, `z`, `flags` |
 //! | `from_int.<s\|u><w>` | `INToRecFN` | `a`, `rnd`, `z`, `flags` |
 //! | `convert.e<E>m<M>` | `RecFNToRecFN` | `a`, `rnd`, `z`, `flags` |
 //!
 //! Formats: exponent width w >= 3, precision p = sig_width + 1 >= 3 and p <= 2^(w-2) + 3 (HardFloat
 //! Release 1 documentation, section 2), for operands and results; tested by its authors on f16, f32, f64
-//! and f128. `rnd` uses HardFloat's encoding: 0 nearest even, 1 toward zero, 2 down, 3 up. Round to integral
+//! and f128. The adder elaborates only where its alignment mask fits ([`add_ok`]: not at bf16's p = 8). `rnd` uses HardFloat's encoding: 0 nearest even, 1 toward zero, 2 down, 3 up. Round to integral
 //! has no HardFloat module; it composes `to_int` and `from_int` with glue (`routes`), as in DesignWare.
 
 use cc_core::adapters::{
@@ -34,6 +34,16 @@ pub struct HardFloat;
 pub fn format_ok(e: u32, s: u32) -> bool {
     let p = u64::from(s) + 1;
     (3..=32).contains(&e) && p >= 3 && p <= (1u64 << (e - 2)) + 3
+}
+
+/// A precision HardFloat's adder elaborates at: `AddRawFN` masks the alignment distance's high bits
+/// with `lowMask(alignDist(w - 1, 2), (p + 5) / 4, 0)`, `w = ceil(log2 p)`, whose bound must not exceed
+/// the `2^(w - 2)` values of that field (`AddRecFN.scala`, `primitives.scala` at the pinned commit). It
+/// fails, for instance, at bf16 (p = 8), at p = 3, 4, 7, 16 and 32.
+pub fn add_ok(s: u32) -> bool {
+    let p = u64::from(s) + 1;
+    let w = 64 - (p - 1).leading_zeros() as u64;
+    p >= 5 && (p + 5) / 4 <= 1u64 << (w - 2)
 }
 
 fn rnd(r: Rounding) -> &'static str {
@@ -92,7 +102,8 @@ impl IpProvider for HardFloat {
         ];
         let unary = [("a", "a0"), ("rnd", "3'b000"), ("z", "z"), ("flags", "")];
         let ports: Vec<(&str, &str)> = match op {
-            CoreOp::Add | CoreOp::Sub | CoreOp::Mul => binary.to_vec(),
+            CoreOp::Add | CoreOp::Sub if add_ok(s) => binary.to_vec(),
+            CoreOp::Mul => binary.to_vec(),
             CoreOp::Div | CoreOp::Sqrt => {
                 timing = Timing::Iterative { max_cycles: s + 3 };
                 let mut v = vec![
@@ -123,7 +134,7 @@ impl IpProvider for HardFloat {
                 rnd: r,
                 signed,
                 width,
-            } if (2..=256).contains(&width) => {
+            } if (3..=256).contains(&width) => {
                 args.extend([
                     "--int".into(),
                     width.to_string(),

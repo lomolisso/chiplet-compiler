@@ -100,6 +100,11 @@ impl Rtl {
         &self.name
     }
 
+    /// Give the module another name (the proofs name a query after its module).
+    pub fn rename(&mut self, name: impl Into<String>) {
+        self.name = name.into();
+    }
+
     pub fn inputs(&self) -> &[Port] {
         &self.inputs
     }

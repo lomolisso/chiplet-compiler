@@ -17,7 +17,7 @@ it to build one wrapper module per float primitive around the cores of the flow'
 | `recipe.rs` | the compositions' Verilog (power, tanh, log1p, rsqrt) and their special values |
 | `compose.rs` | `Budget` (default: the CUDA table), the recipes' error constants, `size` (extra bits `k` from the budget and the cores' accuracy) |
 | `proof.rs` | `yosys_script`, `query` (Yosys' SMT-LIB of a wrapper plus contracts and the specification), `Prover` (Yosys and the solvers in the toolchain image, the shared answer cache) |
-| `python/cc_float/` | the composition-error sampler and the sine/cosine measurement (section 6) |
+| `python/cc_float/` | the composition-error sampler and the sine/cosine measurement (section 6); `models.py`, the cores' bit-level models by the names the providers give |
 
 ## 2. Background
 
@@ -95,12 +95,23 @@ it to build one wrapper module per float primitive around the cores of the flow'
 | maximum, minimum | one less-than core (E4M3FN at f16) | DAZ; NaN if either operand is NaN; among zeros `-0 < +0`; else the core's order |
 | compare EQ, NE, LT, LE | one or two less-than cores | DAZ; quiet predicates from `a < b`, `b < a` and the NaN tests |
 | abs, negate, sign | none | DAZ; the sign bit; `sign`: NaN and zeros kept, else `±1` |
-| convert to integer | one float-to-integer core (rounding toward zero, saturating) | DAZ; NaN gives 0 (the core's NaN result is not used) |
+| convert to integer | one float-to-integer core (rounding toward zero, saturating; at least 3 bits) | DAZ; NaN gives 0 (the core's NaN result is not used); a 2-bit integer saturates the core's 3-bit result |
+| convert from integer | one integer-to-float core at the format (E4M3FN: at f16, f32 or an 8-exponent-bit format holding every integer of the width exactly) | the encoder for E4M3FN (saturating) |
+| convert to and from bool | none | `x != 0` (NaN true, after DAZ); 0 or 1 |
+| convert between f16 and bf16 | one conversion core (result at `(e + 1, m)` for bf16) | as narrowing |
+| clamp | two less-than cores | maximum, then minimum |
+| floor, ceil, round_nearest_even | a to-integer core of that rounding (`p + 1` bits, at the decoded format) and an integer-to-float core | below `2^(p-1)` in magnitude the cores' value (the encoder for E4M3FN, exact), else the operand; a zero result takes the operand's sign |
+| is_finite | none | neither NaN nor infinity |
+| reduce_precision | none | StableHLO's definition on the pattern: ties to even by an increment, outside the reduced exponent range infinity or zero |
 
 The **FP8 encoder** rounds an IEEE value of a wider format to E4M3FN by `cc_smt::float::from_f32`'s steps
 on the source's bits: the significand shifted by the exponent distance (more in the subnormal range),
 guard and sticky bits, the increment, the packed magnitude carrying into the exponent; beyond 448 NaN
 (arithmetic) or ±448 (conversion); NaN kept. It is the only rounding the glue does (design §4.12).
+
+An exact operator also runs through `Approx` on an f32 core with one rounding back where no core of its
+own format fits (a gradual format whose provider flushes, an adder that does not elaborate): the proof is
+relative to the core, and the double rounding is innocuous (q ≥ 2p + 2).
 
 **Compositions** (`recipe.rs`) compute in cores of the inner format `Q = (e + 2, q - 1)`: two more
 exponent bits keep every intermediate of a finite result in range. One conversion core rounds back to
@@ -110,12 +121,22 @@ infinite `y` by `|x|` against 1, zeros and infinities of `x` by the sign and par
 finite `x` with a non-integer `y` is NaN, with an integer `y` the core path on `|x|` with the sign of
 `x^y`); tanh is odd, NaN stays NaN, the clamp gives `±1` also for infinities; log1p gives NaN below `-1`,
 `-inf` at `-1`, `+inf` at `+inf`, and keeps zeros; rsqrt gives NaN below zero, `±inf` at `±0`, `+0` at
-`+inf` (IEEE 754-2019 §9.2). An FP8 result that would be infinite is NaN.
+`+inf` (IEEE 754-2019 §9.2). An FP8 result that would be infinite is NaN. `PowerCore` is power from one
+power core on `|x|` and `y` at the inner format (no extra bits needed: `C = e_pow`), with the same
+special-value glue, for a provider whose power core has no documented special values (FloPoCo's `FPPow`).
 
 **Sizing** (`compose::size`): the budget of the op and format, the cores' errors from their `Accuracy`
 (`CorrectlyRounded` 1/2, `Faithful` 1, `Ulp { ulp }`), the recipe's constant, `k`. A core with an
 absolute or no error bound is refused: the recipes need a relatively accurate core (a logarithm that is
 only absolutely accurate near 1 makes power need `k >= p + log2 tau + 1`, and log1p no `k` at all).
+
+**Core models** (`python/cc_float/models.py`): `model(name, op, e, m)` gives a function on bit patterns
+for every name a provider's offer carries (`MODEL_NAMES`; the provider conformance test checks each one):
+`ieee.<op>` exactly by rationals (add, sub, mul, div, sqrt, the less-than bit, to_int with its rounding and
+saturation, from_int, convert), `reference.<op>` as numpy's float64 function rounded once (exp, exp2, ln,
+log2, sin, cos, pow, rsqrt; correctly rounded except within one float64 ulp of a tie), and FloPoCo's
+encoding (`flopoco.from_ieee`, `flopoco.to_ieee`; subnormals flushed). `python/tests/test_float_models.py`
+compares them with numpy and ml_dtypes.
 
 ## 5. Configuration
 
@@ -152,13 +173,18 @@ for any cores; the specification (`compose_spec`) states the recipe and C11 Anne
 predicates (integer and odd tests by truncation, the half of `|y| >= 2` on its exponent field),
 independently of the glue's bit tests.
 
+**Row wrappers** (deep test `float_row_wrappers_prove_in_both_flows`): every distinct wrapper the
+`characterize` catalog builds in either flow, around its actual core instances (DesignWare, HardFloat,
+FloPoCo through its IEEE adapter, XLS), is proven the same way.
+
 Each query goes to the configured solver unless it names a float sort other than Float16, Float32,
 Float64 and Float128 (as a sort or as `to_fp` indices; Bitwuzla's release parses the latter without its
 sort check), then to the first solver declaring sorts of any width (Z3). Answers go through the shared
 cache. Negative controls, each `sat`: an f32 multiply and a bf16 add without the flush, an encoder
 rounding toward zero, an E4M3FN multiply without the overflow case, maximum without NaN propagation,
-minimum without the signed-zero order, float to integer without NaN to 0, and the compositions without
-their NaN case.
+minimum without the signed-zero order, float to integer without NaN to 0, clamp without NaN propagation,
+ceil without the operand's sign on a zero result, an integer into E4M3FN with an encoder rounding toward
+zero, and the compositions (`PowerCore` included) without their NaN case.
 
 Measured (deep test, iacoma227, Z3 5.3.3 and Bitwuzla 0.9.1 in image 0.5.0, an empty answer cache,
 2026-11-05): 80 wrappers of the standard set over f32, bf16, f16 and E4M3FN, three conversions into

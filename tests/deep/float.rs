@@ -240,3 +240,102 @@ fn float_glue_proofs_hold_and_controls_fail() {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }
+
+/// The wrappers of the float rows as `characterize` builds them, in both flows (the default catalog and
+/// providers): each around its actual core instances (DesignWare, HardFloat, FloPoCo through its IEEE
+/// adapter, XLS), proven like the standard set. Distinct wrappers only (a wrapper's Verilog decides its
+/// proof). Runs in `runs/deep-float-rows/`, removed when the test passes.
+#[test]
+fn float_row_wrappers_prove_in_both_flows() {
+    use cc_passes::characterize::{CharacterizeConfig, catalog};
+    use cc_passes::ip::plan::Planner;
+    use cc_passes::ip::routes::plan_of;
+
+    let area = std::env::var("CC_BUILD_AREA").unwrap_or_else(|_| {
+        format!(
+            "/scratch/{}/chiplet-compiler",
+            std::env::var("USER").unwrap_or_default()
+        )
+    });
+    let dir = std::path::Path::new(&area).join("runs").join("deep-float-rows");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let cfg = LoadedConfig::load(&repo_root().join("config.toml"), &[]).unwrap();
+    let mut set: Vec<cc_float::Built> = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    let mut names = std::collections::BTreeSet::new();
+    for flow in ["dc", "yosys"] {
+        let c = CharacterizeConfig {
+            tool: flow.into(),
+            ..CharacterizeConfig::default()
+        };
+        let providers = c.providers_of(flow).unwrap();
+        let planner = Planner {
+            providers: &providers,
+            numerics: &cfg.config.numerics,
+        };
+        let cat = catalog::catalog_with(&c, &providers, &cfg.config.numerics).unwrap();
+        for p in &cat {
+            let Some(plan) = plan_of(&planner, p) else {
+                continue;
+            };
+            if plan.glue.is_none() {
+                continue;
+            }
+            let mut b = plan.built().unwrap();
+            // One query per distinct wrapper, named after its first row.
+            if !seen.insert(b.rtl.verilog()) {
+                continue;
+            }
+            let mut name = format!("row_{flow}_{}", p.id);
+            while !names.insert(name.clone()) {
+                name.push('_');
+            }
+            b.rtl.rename(&name);
+            set.push(b);
+        }
+    }
+    assert!(set.len() > 150, "{}", set.len());
+    let runners = Runners::from_config(&cfg);
+    let runner = BoundRunner::new(
+        Arc::clone(&runners.docker),
+        Caps {
+            memory_gb: 32.0,
+            cpus: 8.0,
+            timeout_s: 3600.0,
+            pids_limit: 512,
+        },
+        ToolLog::new("deep-float-rows", dir.join("logs")),
+        CancelToken::new(),
+    );
+    let prover = Prover {
+        runner,
+        location: Location::Image,
+        solver: Solver::parse(&cfg.config.tools.smt.solver).unwrap(),
+        timeout_s: 1200,
+        cache: Cache::new(cfg.smt_cache_dir()),
+        jobs: 8,
+    };
+    let records = prover.prove(&dir, &set).unwrap();
+    let json = serde_json::to_string_pretty(&records).unwrap();
+    std::fs::write(dir.join("proofs.json"), &json).unwrap();
+    if let Ok(p) = std::env::var("CC_FLOAT_RECORDS") {
+        std::fs::write(p, &json).unwrap();
+    }
+    let bad: Vec<_> = records
+        .iter()
+        .filter(|r| !r.ok())
+        .map(|r| (r.name.clone(), r.verdict.clone()))
+        .collect();
+    assert!(bad.is_empty(), "{bad:#?}");
+    assert_eq!(records.len(), set.len());
+    eprintln!(
+        "{} distinct row wrappers proven ({} cached), {:.0} s of solver time",
+        records.len(),
+        records.iter().filter(|r| r.cached).count(),
+        records.iter().map(|r| r.seconds).sum::<f64>()
+    );
+    if std::env::var("CC_FLOAT_KEEP").is_err() {
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}

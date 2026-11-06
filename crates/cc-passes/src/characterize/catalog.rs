@@ -10,7 +10,6 @@ use std::collections::BTreeSet;
 
 use cc_core::adapters::{CoreSource, Encoding, Generator, IpProvider};
 use cc_core::config::NumericsConfig;
-use cc_float::rtl::Mutation;
 use cc_ir::ops::{Arity, ElemRule, TABLE};
 use cc_smt::float::Format;
 use cc_smt::ops::{Attrs, Ty};
@@ -479,9 +478,7 @@ fn core_dep(r: &Resolved, cores: &mut Cores) -> Option<String> {
 /// around the plan's cores and the primitive's module `<id>` with the ports the templates use (`a`, `b`,
 /// `c`, `out`).
 fn wrapper_rtl(id: &str, plan: &Plan) -> Result<String, String> {
-    let g = plan.glue.as_ref().ok_or("no wrapper")?;
-    let instances: Vec<_> = plan.cores.iter().map(wrapper_instance).collect();
-    let built = g.build(&instances, Mutation::None).map_err(|e| e.to_string())?;
+    let built = plan.built()?;
     let glue_name = format!("{id}_glue");
     let text = built.rtl.verilog().replacen(
         &format!("module {} (", built.rtl.name()),
@@ -914,7 +911,7 @@ endmodule
         family: "sint".into(),
         types: vec![t.name(), "f32".into()],
         width: n,
-        provisional: true,
+        provisional: false,
         pending: None,
         deps: vec![conv.to_string()],
         libraries: Vec::new(),

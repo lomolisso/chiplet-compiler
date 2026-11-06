@@ -33,8 +33,10 @@
      versions enter the cache key (`fingerprints`).
    - `out/library/catalog.json` (schema `characterize_catalog`): every primitive with its key
      (`<op>[.<variant>]@<type>[><type>]`: `add@i32`, `compare.LT@ui8`, `convert@f32>bf16`, `mux4@w8`,
-     `register@w8`, `accumulator.add@i32`, `split@w32n8`), kind, op, family, types, width, the
-     `provisional` and `pending` marks, dependencies and its RTL source (DSLX or Verilog).
+     `register@w8`, `accumulator.add@i32`, `split@w32n8`; `core@<module>` for an IP core), kind, op,
+     family, types, width, the `provisional` and `pending` marks (a pending primitive's reason: `gap: ...`
+     or `excluded: ...`), dependencies, vendor libraries and its RTL source (DSLX, Verilog, VHDL or
+     generated). The catalog depends on the flow: its float primitives wrap that flow's cores.
    - `out/library/library.json` (`Library`, schema `characterize_library`, `cc.characterize.library/2`):
      the flow (`tool`), the equivalence checker (`lec_tool`, absent when the check is off), the tool
      versions, the kits (library name, corner, time unit, driving cell, load, clock, the `.lib` and `.db`
@@ -43,17 +45,20 @@
      child instance: split pieces, DesignWare blocks), `estimator` (the flow), `lec_tool` and `lec`
      (verdict and compare point counts; both absent when the check is off), `inconclusive`, `designware`,
      `provisional`, the netlist path and hash, the report paths.
-   - `out/library/coverage.json` (`Coverage`): each primitive `measured`, `provisional` or `pending`
-     (with its reason) and its row count.
-   - `out/library/routes.json` (`Routes`, schema `characterize_routes`, `cc.characterize.routes/1`): the
+   - `out/library/coverage.json` (`Coverage`, `cc.characterize.coverage/2`): each primitive `measured`,
+     `provisional`, `pending` (with its reason) or `core` (an IP core's RTL or adapter, no rows) and its
+     row count.
+   - `out/library/routes.json` (`Routes`, schema `characterize_routes`, `cc.characterize.routes/2`): the
      flow and its IP providers, and per float op of the catalog its route (`core`, `composition`, `glue`,
-     `excluded` or `gap`) with the cores (provider, core op, format, module, accuracy, subnormal mode), the
-     recipe, the `[numerics]` budget, the bound and whether it is within the budget; the keys of the gaps.
+     `excluded` or `gap`), the wrapper's `cc_float` glue module, the recipe, the cores (provider, core op,
+     the format it was asked at, module, parameters, accuracy, subnormal mode, IEEE special values, source,
+     timing), a composition's extra precision `k`, the `[numerics]` budget, the bound and whether it is
+     within the budget, and a note (the reason of a gap); the keys of the gaps.
    - `out/library/rtl/<id>.{x,v,vhdl}`, `netlist/<kit>/<target>/<id>.v`,
      `reports/<kit>/<target>/<id>.{area,qor,timing,power,check,lec}.rpt` and `<id>.log` (the design's
      part of the session log, then `@@lec` and its part of the equivalence log).
-   - `out/library/summary.json` (`Summary`, `cc.characterize.summary/2`): the flow, whether the
-     equivalence check ran (`lec`), primitives by kind, measured / provisional / pending, rows, rows
+   - `out/library/summary.json` (`Summary`, `cc.characterize.summary/3`): the flow, whether the
+     equivalence check ran (`lec`), primitives by kind, measured / provisional / pending / cores, rows, rows
      proven equivalent, DesignWare rows, tool sessions run and reused, tool time.
    - `views/library.md`: area and delay per op and type, area against width with the fitted exponents
      and the flags, the pending primitives, the float routes' gaps. Outside `out/`: `eda/` (the job directories) and `alib/`
@@ -73,32 +78,56 @@
       the flip-flop check caught), a split multiplier per `split_multipliers` (w, n), and last, so that
       adding them keeps the earlier job batches, a `rescale@i<n>` per signed width of `int_widths` when
       `convert@i32>f32` has RTL (`merge`'s fixed requantization, `cc_smt::ops::rescale`).
-   1a. *Float routes* (`ip/routes.rs`, design §4.12). Every float op of the catalog (a `convert` with a
-      float side included) is mapped to the IP cores of the flow, through the providers of `providers` for
-      `tool` in order (docs/framework/adapters.md, `IpProvider`): one core at the op's format, or at a wider
-      one with exact widening and one rounding back (an exact operator only where that double rounding is
-      innocuous, q ≥ 2p + 2: FP8 through f16, f16 and bf16 through f32; an approximate one when 1/2 +
-      e 2^(p - q) ulps stays within its `[numerics]` budget, e the core's bound); without a candidate within
-      the budget, the first core found is accepted at its documented guarantee and marked so (or as having
-      no ulp bound: DesignWare's sine, XLS's absolute contract). E4M3FN has no core of its own; an integer
-      converts into it through a format that holds the integer exactly, so the encoding rounds once. A
-      composition lists its cores (rsqrt as sqrt(1/x) without an rsqrt core; power as one core, else
-      exp2(y log2 x), else exp(y ln x); tanh; log_plus_one by Goldberg's formula; round to integral by
-      `to_int` and `from_int`); sign, abs, negate, select, `is_finite`, exact widening, bool conversions and
-      the E4M3FN encoding are glue; float `remainder` is excluded (constant computation only). An op no
-      provider covers is a gap: listed in `routes.json`, the view and the log, never a failure. With the
-      defaults neither flow has a gap.
+   1a. *Float wrappers* (`ip/plan.rs`, `ip/routes.rs`, design §4.12). Every float op of the catalog (a
+      `convert` with a float side included) becomes one wrapper module around IP cores of the flow,
+      through the providers of `providers` for `tool` in order (docs/framework/adapters.md, `IpProvider`).
+      The wrapper is a `cc_float` glue (docs/framework/float.md), proven bit-exact with its cores bound by
+      their contracts; it fixes which cores at which formats it needs, and the first provider that offers
+      a **combinational** core there is used (an iterative core, HardFloat's divider and square root, is
+      skipped: the later RTL instantiates cores as combinational external modules), provided its subnormal
+      handling cannot matter (a core that flushes, FloPoCo's or XLS's, only for a flushing format at its
+      exponent width or wider, or where every subnormal of the format is normal in the core's format and
+      what the core flushes rounds to zero in the format). The candidates of an op, in order; the first
+      whose cores all exist and whose bound is within its `[numerics]` budget wins, else the first whose
+      cores exist, accepted at their documented guarantee and marked so (DesignWare's sine, XLS's absolute
+      contract):
+      - add, subtract, multiply, divide, sqrt: correctly rounded cores at the format (f16; f32 and bf16
+        sums), with one more exponent bit (f32 and bf16 products, quotients, roots: the flush is then
+        exact), on f16 (E4M3FN); else one f32 core and one rounding back (the double rounding is
+        innocuous, q ≥ 2p + 2, Figueroa 1995): the open flow's bf16 sums (HardFloat's adder does not
+        elaborate at p = 8) and f16 quotients and roots (FloPoCo flushes f16's subnormals);
+      - exponential, log, sine, cosine, rsqrt: one core at the format (one more exponent bit for f32 and
+        bf16; at the format itself only a core that flushes), else at f32 with one rounding back: within
+        `e` ulps native, `1/2 + e 2^(p - q)` through a core of precision `q`;
+      - compositions (`cc_float::recipe`) at the smallest extra precision `k` whose cores exist and whose
+        first-order bound `1/2 + C 2^-k` is within the budget (`cc_float::compose`, the cores' contracts):
+        rsqrt as `sqrt(1/x)` without an rsqrt core; power as `exp2(y log2 x)`, else one power core with
+        C11 Annex F's special values as glue; tanh; log_plus_one by Goldberg's formula. The industry flow's
+        f32 power needs `k = 7` with DesignWare's 2-ulp `log2`, whose bound holds only up to 29 significand
+        bits (`extra_prec = sig_width ≤ 59 - sig_width`); it takes FloPoCo's faithful power core (k = 0,
+        bound 1.5 ulps, budget 4);
+      - maximum, minimum, clamp, compare (EQ, NE, LT, LE): less-than cores and NaN and signed-zero glue;
+        floor, ceil, round_nearest_even: a to-integer core of that rounding and an integer-to-float core
+        below `2^(p-1)`, the operand itself above;
+      - conversions: exact widening (glue), narrowing or between f16 and bf16 (a conversion core; HardFloat
+        in both flows), into E4M3FN (the encoder, saturating), to an integer (a to-integer core toward
+        zero, saturating, NaN to 0; a 2-bit integer saturates a 3-bit core's result), from an integer (a
+        core at the format, for E4M3FN at a format that holds every integer of the width exactly, then the
+        encoder), bool both ways (glue);
+      - abs, negate, sign, is_finite, reduce_precision: glue (`reduce_precision` is StableHLO's bit-level
+        definition); select: the DSLX multiplexer; float `remainder`: excluded (constant computation only).
+
+      A core in FloPoCo's encoding is used through an adapter, a core primitive `<module>_ieee` (FloPoCo's
+      `InputIEEE` on each operand, the core, `OutputIEEE`), so every wrapper sees IEEE ports. An op no
+      candidate fits is a gap: pending with the reason (`gap: no combinational core ...`), listed in
+      `routes.json`, the view and the log, never a failure and never priced. With the defaults neither flow
+      has a gap; only float `remainder` is pending.
    2. *RTL.* Integer and bool ops are DSLX mirroring `cc_smt::ops`: wrapping arithmetic, XLA's results for
       `x / 0 = -1`, `INT_MIN / -1 = INT_MIN`, `x % 0 = x`, `INT_MIN % -1 = 0`, a remainder with the sign of
-      the dividend. Float ops call XLS's `apfloat` library (`add`, `sub`, `mul`, `eq_2`, `lt_2`, `lte_2`,
-      `negate`, `abs`, `floor_with_denorms`, `ceil_with_denorms`, `round`, `is_nan`/`is_inf`,
-      `upcast_with_denorms`, `downcast_rne`, `cast_from_fixed_using_rne`, `to_int`/`to_uint`); maximum
-      and minimum are written per the spec (NaN propagates, -0 < +0). A conversion between formats where
-      neither contains the other widens exactly to Float32 and rounds once. These rows are
-      **provisional**: `apfloat` flushes subnormals and models IEEE special values for every format (E4M3FN
-      has no infinities); third-party float IP cores (design §4.12) replace them. Float ops without an `apfloat` function
-      (divide, remainder, sqrt, rsqrt, exponential, log, log_plus_one, sine, cosine, tanh, power,
-      reduce_precision) are **pending**: no RTL, no rows. One container converts every DSLX file
+      the dividend. A float op is Verilog: the `cc_float` wrapper (module `<id>_glue`, ports `a0`, `a1`, `z`)
+      around its core instances and the module `<id>` with the templates' ports (`a`, `b`, `c`, `out`);
+      its dependencies are the generated cores it instantiates (and their adapters), its `libraries`
+      DesignWare when it instantiates DesignWare components. One container converts every DSLX file
       (`ir_converter_main`, `opt_main`, `codegen_main --generator=combinational`); registers,
       accumulators and split multipliers are Verilog templates that instantiate the generated modules.
       The split multiplier `split@w<w>n<n>` keeps every partial product `a_i * b_j` with `(i + j) n < w`
@@ -106,19 +135,24 @@
       for signed and unsigned operands, so one split serves both families. `rescale@i<n>` is a template
       too: `rescale_core_i<n>` decodes the f32 scale, multiplies `n x 24` bits exactly, shifts with
       rounding half up (or left by at most 7 places), saturates to i32, and `rescale_i<n>` converts the
-      result with the characterized `convert_i32_f32`. Its rows are provisional with that conversion; the
-      deep test `rescale_rtl_matches_its_reference` simulates the core (iverilog, in the image) against
+      result with the characterized `convert_i32_f32` (a wrapper around the flow's integer-to-float core).
+      The deep test `rescale_rtl_matches_its_reference` simulates the core (iverilog, in the image) against
       `cc_smt::ops::rescale_reference` on edge cases and 3000 operands per width.
       A source is DSLX, Verilog, VHDL (written as `<id>.vhdl`) or generated: an IP core written in the same
       container by a generator, one line of the RTL script each, after the DSLX loop, named after the
       primitive (`hardfloat-gen <args> --module <id> --out <id>.v`; `flopoco <args> name=<id>
-      outputFile=<id>.vhdl`; an XLS DSLX library function `top` of `$XLS_DSLX_PATH/<file>` through
-      `ir_converter_main`, `opt_main` and combinational `codegen_main` to `<id>.v`). A failing generator
+      outputFile=<id>.vhdl`, then every other entity of the file renamed `<id>_<entity>`, since FloPoCo names
+      sub-entities by a counter of its run and two cores of one design would define one entity twice; an
+      XLS DSLX library function `top` of `$XLS_DSLX_PATH/<file>` through `ir_converter_main`, `opt_main` and
+      combinational `codegen_main` to `<id>.v`). A failing generator
       prints an `Error:` line and fails the step; its messages are in `<id>.err`. A catalog without generated
       sources gets the script as before they existed, byte for byte; one without DSLX sets `nullglob`. A design reads its own RTL file after
       its dependencies', followed transitively (each file once), and carries the vendor libraries
       (`libraries`, e.g. `designware`) of all of them.
-   3. *Jobs.* The designs go in batches of `batch`, one job per (kit, target, batch): a directory
+   3. *Jobs.* The designs (every primitive with RTL but the cores) go in batches: grouped by op and
+      (first) type (`add@f32`, `convert@i8`, `compare@bf16`, `mux@w8`, `accumulator@i32`, `register`,
+      `split`, `rescale`), each group in chunks of `batch`, so that a change to one op at one type (a new
+      core, a template) touches only the jobs of that group; one job per (kit, target, batch): a directory
       `eda/<kit>-<target>-<hash>/` named by the hash of the flow's name, the `.lib` and `.db` hashes, the
       toolchain image (only for a flow that runs in it, Yosys; Design Compiler runs on the host, and the
       image's part in its input, the RTL, enters by its text) and the full text of every synthesis script
@@ -194,11 +228,11 @@
    [2, 4, 8, 16, 32]`, `float_formats = ["f32", "f16", "bf16", "f8e4m3fn"]`, `mux_inputs = [2 … 8]`,
    `mux_widths = [1, 2, 4, 8, 16, 32]`, `register_widths = [1, 2, 4, 8, 16, 32]`, `split_multipliers =
    [[8, 4], [16, 8], [32, 8], [32, 16]]`, `load_fanout = 4`, `lec_timeout_min = 2`, `lec_strategies = []`
-   (both with `lec`), `batch = 24`, `cores = 2` (per Design Compiler session), `providers = { dc =
-   ["designware", "hardfloat"], yosys = ["hardfloat", "flopoco", "xls_math"] }` (the float IP providers
-   per flow, in the order a core is looked for; a provider that does not serve its flow, or an unknown one,
-   is a configuration error), `views = true`. The routes also read `[numerics]` (design §6.4), whose hash
-   is part of the pass's cache key. The corner
+   (both with `lec`), `batch = 24` (designs per job within a group), `cores = 2` (per Design Compiler
+   session), `providers = { dc = ["designware", "hardfloat", "flopoco"], yosys = ["hardfloat", "flopoco",
+   "xls_math"] }` (the float IP providers per flow, in the order a core is looked for; a provider that does
+   not serve its flow, or an unknown one, is a configuration error), `views = true`. The float wrappers also
+   read `[numerics]` (design §6.4), whose hash is part of the pass's cache key. The corner
    is the manifest's: Nangate45's only corner (typical) and ASAP7's `vt`/`corner` (RVT, TT). Resources:
    `threads = 2`, `memory_gb = 8`, `timeout_min = 600`.
 
@@ -294,16 +328,14 @@
 
 8. **Limitations.**
    - The cheap checks parse the top module's Verilog: a VHDL core is a dependency of a Verilog wrapper,
-     never a top. GHDL analyzes every VHDL file of a job into one work library: two FloPoCo cores of one
-     design with a sub-entity of the same name but different contents would clash (a wrapper with several
-     FloPoCo operators of the same widths, as in the deep test, is fine).
-   - With `lec`, Formality is not set up for DesignWare components instantiated in the RTL (only inferred
-     ones, through the SVF).
-   - Float rows are provisional (XLS `apfloat`: subnormals flushed, IEEE special values for E4M3FN) and
-     12 float ops are pending until the third-party float IP cores are integrated; `merge` must treat pending
-     primitives as unpriced.
-   - Planned changes (design §4.9, §4.12): float primitives as wrappers around the flow's IP cores, float
-     `remainder` dropped (its only use is constant computation).
+     never a top.
+   - A float row prices the wrapper with its cores at the format and the error budget of `[numerics]`;
+     another budget, flow or provider order gives other cores (and other rows). Compositions are sized from
+     first-order bounds and the cores' documented contracts, measured by `cc_float`'s sampler, not proven.
+   - HardFloat's adder does not elaborate at some precisions (bf16 among them) and its divider and square
+     root are iterative: the open flow takes those from f32 cores or FloPoCo, at their area.
+   - Float `remainder` has no primitive (constant computation only): a datapath that needs it stays
+     unpriced in `merge`, as any pending primitive.
    - The cheap checks find a netlist that is not the design meant (missing ports, floating outputs, lost
      registers, lost logic); they do not prove a netlist computes the RTL's function. That is the
      equivalence check's job, which trusts nothing but is off by default (design §5).

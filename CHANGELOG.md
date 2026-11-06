@@ -32,6 +32,8 @@ All notable changes to this project are listed here. The format follows
 - `[numerics]`: the error budget of every float op and format in ulps, by default NVIDIA's CUDA table for f32 and 1 ulp for f16, bf16 and FP8.
 - `characterize` maps every float op to the flow's IP cores (`routes.json`) and lists the ops without one; it reads VHDL and generated cores (HardFloat, FloPoCo, XLS DSLX libraries) and links DesignWare's synthetic library for the jobs that instantiate it.
 - Toolchain image 0.6.0: Berkeley HardFloat (Chisel, pinned submodule) with our generator of IEEE-interface cores, firtool and Chisel pinned.
+- `characterize` float rows: every float op a wrapper around the flow's IP cores (DesignWare, HardFloat, FloPoCo, XLS) with proven glue, compositions sized to the `[numerics]` budget; an op without a combinational core is a listed gap.
+- Bit-level models of the IP cores (`python/cc_float/models.py`) for every model name the providers give.
 
 ### Changed
 
@@ -48,10 +50,13 @@ All notable changes to this project are listed here. The format follows
 - `chipc doctor` checks every patch set under `third_party/patches/` as a series, and its image self-test covers external modules, the XLS float library and FloPoCo through GHDL.
 - Toolchain image 0.4.0: GraMi's directed build takes a `maxNodes` bound on the pattern size (`third_party/patches/grami/0002`).
 - `scripts/on-build-host --pick` chooses among iacoma227, iacoma231 and iacoma232 by their scarcest resource (idle cores, RAM, disk); both scripts run directly on the local host.
+- `characterize` job batches grouped by op and type (catalog 4); `routes.json` 2 records each wrapper's cores, parameters and `k`; `coverage.json` 2 and `summary.json` 3 count the IP cores.
+- The compare core is a quiet less-than; FloPoCo also provides division and square root, and power in the Design Compiler flow.
 
 ### Removed
 
 - The Genus and Conformal synthesis path (`tool = "genus"`) and their `chipc doctor` license checks.
+- The provisional XLS `apfloat` float rows and the pending soft-float primitives.
 
 ### Fixed
 

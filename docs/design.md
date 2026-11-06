@@ -346,14 +346,13 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
 - **Method.**
   - The primitive set follows the op semantics: every element-wise op of the op table at every
     configured type the SMT semantics defines it on.
-  - Generate each primitive once (DSLX → XLS → Verilog, or a small Verilog template). Float RTL comes
-    from XLS's `apfloat` (provisional) until the third-party float IP cores of section 4.12 are
-    integrated *(planned)*: then a float primitive is a wrapper module around the flow's IP core(s) and
-    glue. Every float op is already mapped to the flow's cores (`routes.json`, section 4.12), and an op no
-    provider covers is reported as a gap. Float `remainder` has no primitive *(planned)*: its only use is
-    constant computation. Besides DSLX and Verilog, a source may be VHDL or RTL generated in the image's
-    RTL step (HardFloat's generator, FloPoCo, an XLS DSLX library function); a design reads its
-    dependencies' RTL transitively.
+  - Generate each primitive once (DSLX → XLS → Verilog, or a small Verilog template). A float primitive
+    is a wrapper module around the flow's IP core(s) and proven glue (section 4.12), its cores chosen per
+    format and budget (`routes.json`); an op no provider covers is a gap, pending with its reason and never
+    priced. Float `remainder` has no primitive: its only use is constant computation. Besides DSLX and
+    Verilog, a source may be VHDL or RTL generated in the image's RTL step (HardFloat's generator,
+    FloPoCo, an XLS DSLX library function); a design reads its dependencies' RTL transitively.
+  - Jobs batch the designs by op and type, so a change to one op at one type reruns only its jobs.
   - Synthesize through the configured `SynthFlow`: DC (Nangate45 and a merged ASAP7 `.db`, both built by
     `lc_shell` in `chipc doctor` from the kits' manifests) or Yosys with ABC on the same Liberty files, at
     two timing points: the clock target (the area) and a tight constraint (the minimum delay).
@@ -432,10 +431,15 @@ For each pass: purpose, method, reused tools, outputs and **verification**. The 
   follow from the cores' accuracy class and the budget; the special values (C11 Annex F) are glue and
   proven like it; the accuracy is measured by a sampler, exhaustively for the 16-bit and 8-bit formats.
   FP8 operators run on f16 or f32 cores through the wrapper.
-- **Status.** Providers, contracts, sources and routes (`cc_core::adapters`), the glue, its proofs and the
-  compositions (`cc-float`) are implemented; `characterize`'s float rows on them are *(planned)*: until then
-  `characterize` prices floats with XLS
-  `apfloat` (provisional, section 4.9).
+- **Cores in a wrapper** are combinational (the later RTL instantiates them as combinational external
+  modules: HardFloat's iterative divider is not used) and keep subnormals wherever the format needs them (a
+  flushing core runs only where no subnormal can arise or matter). Where a flow's cores cannot meet a
+  budget through a composition (DesignWare's logarithms stop at 29 significand bits, short of an f32 power
+  within 4 ulps), a single core of another provider of the flow is used (FloPoCo's power core, read by
+  Design Compiler as VHDL), with the special values as glue.
+- **Status.** Implemented: providers, contracts, sources (`cc_core::adapters`), the glue, its proofs and
+  the compositions (`cc-float`), and `characterize`'s float rows on them (every wrapper of either flow's
+  catalog proven).
 
 ### 4.13 `allo_emit`
 
@@ -705,7 +709,7 @@ build/         (ignored) build/.<pass>/ artifacts
 | Constant computation (no path from a data argument) tagged and never hardware | Kernels for every op | Position and rotary tables depend only on sizes; float `remainder` occurs only there |
 | f32 and bf16 flush to zero; f16 and FP8 keep subnormals | IEEE gradual underflow in every format | Most accelerators flush bf16 and many f32 (our JAX reference on XLA:CPU runs f32 flush-to-zero); FP8's subnormals are a real part of its range |
 | Conversions into FP8 saturate to ±max, NaN kept | Non-saturating conversion (overflow to NaN or infinity, ml_dtypes' default) | OCP OFP8's saturating mode; the ports clip to ±448 before converting, so the clip and the convert agree on model data |
-| Open-flow f32 sine and cosine: XLS `fp_sincos_32` under \|error\| ≤ 2^-22 *(planned)* | A ulp-bounded open soft macro; reporting a gap | No open core with a ulp guarantee exists; narrower formats computed through it stay within 0.51 ulp on every input (exhaustive, on its IR: 0.5054 ulp at most) |
+| Open-flow f32 sine and cosine: XLS `fp_sincos_32` under \|error\| ≤ 2^-22 | A ulp-bounded open soft macro; reporting a gap | No open core with a ulp guarantee exists; narrower formats computed through it stay within 0.51 ulp on every input (exhaustive, on its IR: 0.5054 ulp at most) |
 | Accumulation by f32 IP cores in a recorded order *(planned)* | An exact integer FP8 accumulator; block-fused alignment as in GPU matrix units | Cores only; a recorded order keeps the proof bit-exact |
 | Approximate operators: a configurable error budget, by default NVIDIA's CUDA table (f32) and 1 ulp (f16, bf16, FP8); a core at its documented guarantee | At most 1 ulp everywhere | Precision beyond what the workload keeps costs area; a core's guarantee does not depend on the target |
 | E4M3FN through a bit-level wrapper around f16 or f32 cores | A native FP8 core | No core implements E4M3FN's encoding without infinities |
@@ -716,5 +720,10 @@ build/         (ignored) build/.<pass>/ artifacts
 | Sums and differences of the flushing formats on cores of the format's own width, flushed when subnormal | One more exponent bit, as for products | An underflowing sum is exact (Hauser 1996); one exponent bit less; Z3 has no addition in bf16 with one more exponent bit |
 | Composition proofs with every core but the final conversion a free function of its operands | The cores' operations interpreted | The glue decides the special values, the wiring and the last rounding for any core; the accuracy is the sampler's and the error analysis's |
 | E5M2 arithmetic on cores of its own width; conversions into E5M2 by a conversion core and saturation glue | The FP8 encoder for E5M2 too | E5M2 is IEEE-like, so cores implement it; the E4M3FN encoder stays the only rounding in the glue |
+| Wrappers take combinational cores only; the open flow divides and takes square roots with FloPoCo, not HardFloat's iterative unit | A sequential row format with a handshake | The RTL instantiates cores as combinational external modules (XLS supports no other); FloPoCo's are correctly rounded |
+| A core that flushes subnormals only where none can arise or matter (a flushing format at its exponent width or wider; else the format's subnormals normal in the core's format and its flushed range rounding to zero) | Every core regardless of its subnormal mode | f16 and FP8 keep gradual underflow; f16 runs through f32 cores where only flushing ones exist |
+| Industry-flow f32 power on FloPoCo's power core (VHDL in Design Compiler) with C11's special values as glue | An f32 power composition on DesignWare's logarithm | `exp2(y log2 x)` within 4 ulps needs a 31-bit logarithm; DesignWare bounds its logarithms only up to 29 significand bits; the faithful core is within 1.5 ulps |
+| The compare core is a quiet less-than (`z`); predicates, maximum and minimum are glue around it | Each provider's own compare outputs | One proven wrapper per predicate for every provider |
+| Design Compiler jobs batched by op and type | Fixed-size chunks of the whole catalog | A change to one op at one type reruns only its own jobs, not every later batch |
 | External modules through an `hls_extern_verilog` attribute in `xlscc` (pinned patch) | Annotating the IR after `xlscc`; Allo's HLS backends | XLS IR already instantiates foreign functions; the attribute makes it a front-end feature, checked where the C++ is parsed |
 | Array units delivered as their PE plus a description; grids in later versions *(planned)* | A fixed-size array per unit | The PE does not depend on the grid size, which is chosen together with the memory system |

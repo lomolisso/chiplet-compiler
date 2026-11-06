@@ -466,12 +466,14 @@ fn documented(provider: &str, op: &str, e: u32, s: u32) -> bool {
             _ => false,
         },
         "hardfloat" => match core {
-            CoreOp::Add | CoreOp::Sub | CoreOp::Mul | CoreOp::Div | CoreOp::Sqrt | CoreOp::Compare => {
-                hf_fmt(e, s)
+            // The adder's alignment mask (`AddRawFN`) bounds the precisions it elaborates at; generating
+            // it fails at bf16 (p = 8) and at p = 4, 7, and works at f16, f32, p = 5, 6, 9, 10, 13.
+            CoreOp::Add | CoreOp::Sub => {
+                hf_fmt(e, s) && matches!(s + 1, 5..=6 | 9..=14 | 17..=30 | 33..=62 | 65..=126 | 129..=254)
             }
-            CoreOp::ToInt { width, .. } | CoreOp::FromInt { width, .. } => {
-                hf_fmt(e, s) && (2..=256).contains(&width)
-            }
+            CoreOp::Mul | CoreOp::Div | CoreOp::Sqrt | CoreOp::Compare => hf_fmt(e, s),
+            CoreOp::ToInt { width, .. } => hf_fmt(e, s) && (3..=256).contains(&width),
+            CoreOp::FromInt { width, .. } => hf_fmt(e, s) && (2..=256).contains(&width),
             CoreOp::Convert { exp_width, sig_width } => {
                 hf_fmt(e, s) && hf_fmt(exp_width, sig_width) && (exp_width, sig_width) != (e, s)
             }

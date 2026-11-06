@@ -336,7 +336,7 @@ impl Glue {
             Glue::ToInt { fmt, signed, w } => vec![need(
                 Role::ToInt {
                     signed: *signed,
-                    w: *w,
+                    w: (*w).max(TO_INT_MIN),
                 },
                 decoded(*fmt),
                 1,
@@ -586,11 +586,34 @@ impl Glue {
             Glue::Compose { recipe, fmt, q } => {
                 crate::recipe::build(&mut r, *recipe, *fmt, *q, &xs, cores, mutation)?
             }
-            Glue::ToInt { fmt, w, .. } => {
+            Glue::ToInt { fmt, w, signed } => {
                 let cf = core_fmt(&needs[0]);
                 let x = r.daz(*fmt, &xs[0]);
                 let wx = r.widen(*fmt, cf, &x)?;
-                let (_, z) = r.core(&cores[0], &[wx], cf.bits(), *w)?;
+                let cw = (*w).max(TO_INT_MIN);
+                let (_, z) = r.core(&cores[0], &[wx], cf.bits(), cw)?;
+                // A narrower integer than the cores convert to: saturate the core's result (monotone, so
+                // saturating twice is saturating once).
+                let z = if cw == *w {
+                    z
+                } else if *signed {
+                    let hi = (1u128 << (w - 1)) - 1;
+                    let lo = (1u128 << cw) - (1u128 << (w - 1));
+                    let big = r.wire(1, format!("$signed({z}) > $signed({cw}'d{hi})"));
+                    let small = r.wire(1, format!("$signed({z}) < $signed({cw}'d{lo})"));
+                    r.wire(
+                        *w,
+                        format!(
+                            "{big} ? {w}'d{hi} : ({small} ? {w}'d{} : {z}[{}:0])",
+                            1u128 << (w - 1),
+                            w - 1
+                        ),
+                    )
+                } else {
+                    let hi = (1u128 << w) - 1;
+                    let big = r.wire(1, format!("{z} > {cw}'d{hi}"));
+                    r.wire(*w, format!("{big} ? {w}'d{hi} : {z}[{}:0]", w - 1))
+                };
                 if mutation == Mutation::NoNanCase {
                     z
                 } else {
@@ -609,6 +632,10 @@ impl Glue {
         })
     }
 }
+
+/// The narrowest integer a float-to-integer core converts to (HardFloat's `RecFNToIN` needs three bits,
+/// DesignWare's `DW_fp_flt2i` too); a narrower integer saturates the core's result in glue.
+pub const TO_INT_MIN: u32 = 3;
 
 /// The catalog name of a rounding to integral.
 pub fn round_op(rnd: Rounding) -> &'static str {
@@ -769,7 +796,7 @@ pub fn standard(formats: &[Format]) -> Vec<Glue> {
         for op in [SignOp::Abs, SignOp::Negate, SignOp::Sign] {
             out.push(Glue::Sign { op, fmt: f });
         }
-        for (signed, w) in [(true, 32), (true, 8)] {
+        for (signed, w) in [(true, 32), (true, 8), (true, 2), (false, 2)] {
             out.push(Glue::ToInt { fmt: f, signed, w });
         }
         for &g in formats {
