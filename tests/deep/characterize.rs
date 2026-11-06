@@ -225,11 +225,7 @@ fn characterize_job_keys_match_the_standing_library() {
         .collect();
     let env = cc_core::ArtifactStore::new(build.clone()).pass_dir(cc_pipeline::env::doctor::ENV_DIR);
     let kits = flow::kits_of(&env, &pdks, &cfg).unwrap();
-    let designs: Vec<_> = cat
-        .iter()
-        .filter(|p| p.source.is_some())
-        .map(flow::design)
-        .collect();
+    let designs = flow::designs(&cat);
     let jobs = flow::job_list(
         &cfg,
         &kits,

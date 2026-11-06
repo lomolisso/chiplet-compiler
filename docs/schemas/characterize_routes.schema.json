@@ -1,0 +1,157 @@
+{
+  "$defs": {
+    "Route": {
+      "additionalProperties": false,
+      "description": "The route of one catalog primitive.",
+      "properties": {
+        "bound_ulp": {
+          "description": "The route's error bound in ulps of the op's format, when the contracts give one.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "budget_ulp": {
+          "description": "The op's budget in ulps (`[numerics]`; 0: correctly rounded).",
+          "format": "double",
+          "type": "number"
+        },
+        "cores": {
+          "items": {
+            "$ref": "#/$defs/RouteCore"
+          },
+          "type": "array"
+        },
+        "key": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/RouteKind"
+        },
+        "note": {
+          "type": "string"
+        },
+        "op": {
+          "type": "string"
+        },
+        "recipe": {
+          "description": "What is built around or from the cores.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "types": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "within_budget": {
+          "description": "Whether the bound is within the budget (absent: no bound to compare).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "key",
+        "op",
+        "types",
+        "kind",
+        "cores",
+        "budget_ulp",
+        "note"
+      ],
+      "type": "object"
+    },
+    "RouteCore": {
+      "additionalProperties": false,
+      "description": "One core of a route.",
+      "properties": {
+        "accuracy": {
+          "description": "The contract's accuracy: `correctly_rounded`, `faithful`, `<n> ulp`, `absolute <bound>`,\n`unbounded`; and its subnormal mode (`ieee`, `flush`).",
+          "type": "string"
+        },
+        "format": {
+          "description": "The operand format: a format name (`f32`, `f16`, `bf16`, `f8e5m2`) or `e<E>m<M>`.",
+          "type": "string"
+        },
+        "module": {
+          "type": "string"
+        },
+        "op": {
+          "description": "The core operation (`cc_core::adapters::CoreOp` syntax).",
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "subnormals": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "op",
+        "format",
+        "module",
+        "accuracy",
+        "subnormals"
+      ],
+      "type": "object"
+    },
+    "RouteKind": {
+      "enum": [
+        "core",
+        "composition",
+        "glue",
+        "excluded",
+        "gap"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`out/library/routes.json`.",
+  "properties": {
+    "flow": {
+      "description": "The synthesis flow and its providers, in order.",
+      "type": "string"
+    },
+    "gaps": {
+      "description": "Keys of the routes that are gaps.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "providers": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "routes": {
+      "items": {
+        "$ref": "#/$defs/Route"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "flow",
+    "providers",
+    "routes",
+    "gaps"
+  ],
+  "title": "Routes",
+  "type": "object"
+}

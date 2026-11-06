@@ -581,6 +581,54 @@ fn a_flow_that_does_not_exist_is_a_config_error() {
     );
 }
 
+#[test]
+fn a_provider_its_flow_cannot_use_is_a_config_error() {
+    for (set, want) in [
+        (
+            "passes.characterize.providers={yosys = [\"designware\"]}",
+            "`designware` does not serve the yosys flow",
+        ),
+        (
+            "passes.characterize.providers={dc = [\"softfloat\"]}",
+            "IP provider `softfloat` is not available",
+        ),
+    ] {
+        let s = Setup::new();
+        s.sets.lock().unwrap().push(set.into());
+        let e = match Pipeline::new(cc_passes::registry(), s.config()) {
+            Ok(p) => format!("{:?}", p.run(&RunOptions::default())),
+            Err(e) => e.to_string(),
+        };
+        assert!(e.contains(want), "{set}: {e}");
+    }
+}
+
+#[test]
+fn float_routes_are_written_and_verified() {
+    let s = Setup::green();
+    let r: cc_passes::ip::routes::Routes =
+        serde_json::from_str(&std::fs::read_to_string(s.out("routes.json")).unwrap()).unwrap();
+    assert_eq!((r.flow.as_str(), r.providers.clone()), ("dc", vec!["designware".to_string(), "hardfloat".to_string()]));
+    assert!(r.gaps.is_empty(), "{:?}", r.gaps);
+    let add = r.routes.iter().find(|x| x.key == "add@f16").unwrap();
+    assert_eq!(add.cores[0].module, "DW_fp_add");
+    // Without a provider for the transcendentals, they are gaps: listed, the run stays green.
+    let s = Setup::new();
+    s.sets
+        .lock()
+        .unwrap()
+        .push("passes.characterize.providers={dc = [\"hardfloat\"]}".into());
+    let sum = s.run();
+    assert!(sum.ok, "{sum:?}");
+    let r: cc_passes::ip::routes::Routes =
+        serde_json::from_str(&std::fs::read_to_string(s.out("routes.json")).unwrap()).unwrap();
+    assert!(r.gaps.iter().any(|g| g == "exponential@f16"), "{:?}", r.gaps);
+    assert!(s.failing().is_empty(), "{:?}", s.failing());
+    // An edited routes file fails verify.
+    s.edit_json("routes.json", |v| v["gaps"] = serde_json::json!([]));
+    s.expect("routes");
+}
+
 fn datapath(dir: &Path, id: &str, op: &str, elem: &str) {
     let dp = serde_json::json!({
         "schema": "cc.datapaths.datapath/1", "id": id, "route": "datapath", "class": "map", "core": "",

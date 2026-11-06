@@ -244,11 +244,9 @@ object Generate {
 
   def main(args: Array[String]): Unit = {
     val s = parse(args)
-    // Chisel's side files (annotations) go to a scratch directory, never next to the output.
-    val scratch = java.nio.file.Files.createTempDirectory("hardfloat-gen")
     val v = ChiselStage.emitSystemVerilog(
       module(s),
-      Array("--target-dir", scratch.toString),
+      Array.empty[String],
       Array(
         "-disable-all-randomization",
         "-strip-debug-info",
@@ -256,7 +254,9 @@ object Generate {
       )
     )
     val text = prefix(v, s.module)
-    java.nio.file.Files.write(java.nio.file.Paths.get(s.out), text.getBytes("UTF-8"))
-    scala.reflect.io.Directory(scratch.toFile).deleteRecursively()
+    // `--out` is relative to the caller's directory (the launcher runs Java in a scratch directory, where
+    // Chisel leaves its side files).
+    val base = java.nio.file.Paths.get(sys.props.getOrElse("hardfloat.cwd", "."))
+    java.nio.file.Files.write(base.resolve(s.out), text.getBytes("UTF-8"))
   }
 }
